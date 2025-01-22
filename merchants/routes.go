@@ -194,6 +194,7 @@ func LoginHandler(c *gin.Context) {
 }
 
 // CallbackHandler processes M-Pesa callback responses
+// CallbackHandler processes M-Pesa callback responses
 func CallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
@@ -221,6 +222,13 @@ func CallbackHandler(c *gin.Context) {
 	stkCallback := callbackBody.Body.StkCallback
 	db := database.GetConnection()
 
+	// Retrieve the transaction by MerchantRequestID
+	var transaction transactions.TransactionModel
+	if err := db.Where("merchantRequestID = ?", stkCallback.MerchantRequestID).First(&transaction).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
 	// Process the ResultCode to determine transaction success or failure
 	if stkCallback.ResultCode == 0 { // Success
 		// Extract metadata
@@ -229,33 +237,37 @@ func CallbackHandler(c *gin.Context) {
 			metadata[item.Name] = item.Value
 		}
 
-		// Update the transaction status in the database
+		// Update the transaction status to SUCCESS
 		if err := db.Model(&transactions.TransactionModel{}).
-			Where("merchantRequestID = ?", stkCallback.MerchantRequestID).
+			Where("id = ?", transaction.ID).
 			Updates(map[string]interface{}{
 				"transactionStatus": "SUCCESS",
-				// "response_description": stkCallback.ResultDesc,
-				// "receipt_number":       metadata["MpesaReceiptNumber"],
-				// "amount":               metadata["Amount"],
-				// "transaction_date":     metadata["TransactionDate"],
-				// "phone_number":         metadata["PhoneNumber"],
+				"callbackStatus":    "SENT",
 			}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 			return
 		}
 	} else { // Failure
+		// Update the transaction status to FAILED
 		if err := db.Model(&transactions.TransactionModel{}).
-			Where("merchantRequestID = ?", stkCallback.MerchantRequestID).
+			Where("id = ?", transaction.ID).
 			Updates(map[string]interface{}{
 				"transactionStatus":   "FAILED",
 				"responseDescription": stkCallback.ResultDesc,
+				"callbackStatus":      "SENT",
 			}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 			return
 		}
 	}
+	// Call the SendCallback function to send the callback response to the merchant
+	// body, err := ioutil.ReadAll(r.Body)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Callback processed successfully"})
+	if err := SendCallback(transaction.ID, callbackBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
 }
 
 // RegisterRoutes registers the USDC-related routes with the router.
