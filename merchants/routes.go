@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"com.mam-laka/auth"
+	"com.mam-laka/card"
 	"com.mam-laka/database"
 	"com.mam-laka/mpesa"
 	"com.mam-laka/transactions"
@@ -38,9 +39,17 @@ type MobilePaymentRequest struct {
 	ExternalID       string `json:"externalId" binding:"required"`
 	CallbackURL      string `json:"callbackUrl" binding:"required"`
 }
+type CardPaymentRequest struct {
+	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
+	Currency         string `json:"currency" binding:"required"`
+	Amount           int    `json:"amount" binding:"required"`
+	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
+	ExternalID       string `json:"externalId" binding:"required"`
+	CallbackURL      string `json:"callbackUrl" binding:"required"`
+}
 
-// PaymentHandler to handle mobile payment initiation
-func PaymentHandler(c *gin.Context) {
+// MobilePaymentHandler to handle mobile payment initiation
+func MobilePaymentHandler(c *gin.Context) {
 	// Get the Authorization header
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
@@ -136,6 +145,109 @@ func PaymentHandler(c *gin.Context) {
 
 }
 
+// card paymnet hander
+func CardPaymentHandler(c *gin.Context) {
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader { // Token not prefixed with "Bearer "
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	var req CardPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// Verify the merchant ID exists (or perform any business logic)
+	fmt.Println(req.ImpalaMerchantId)
+	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+	fmt.Println(userID)
+
+	// Get user by ID (you can use this data for logging or processing)
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
+	fmt.Printf("Payment initiated for user: %s with amount: %d\n", user.Name, req.Amount)
+
+	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
+	// This is just an example response.
+	//call the initiate payment method
+	//StkPush(phoneNumber string, amount int, callbackURL, accountReference string
+
+	// Generate secureId and other dynamic fields
+	secureID := mpesa.GenerateSecureID()
+
+	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+
+	// Replace with actual logic for initiating the M-Pesa request
+	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
+	cardLinkResponse, card_errror := card.GenerateCardPaymentLink(req.Currency, float64(req.Amount), req.ExternalID, req.CallbackURL, secureID)
+	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+
+	if card_errror != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+		return
+	}
+	cardResponse := "Card payment"
+	cardResponseCode := "200"
+	// Create the transaction record in the database
+	newTransaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    req.ImpalaMerchantId,
+		MerchantRequestID:   &secureID,
+		CheckoutRequestID:   &secureID,
+		ResponseDescription: &cardResponse,
+		ResponseCode:        &cardResponseCode,
+		Currency:            req.Currency,
+		Amount:              req.Amount,
+		Msisdn:              "Null",
+		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
+		SecureID:            &secureID,
+		SourceOfFunds:       req.MobileMoneySP,
+		ExternalID:          &req.ExternalID,
+		CallbackURL:         &req.CallbackURL,
+		DateAdded:           dateAdded,
+		TransactionReport:   "collection",
+		TransactionStatus:   "PENDING", // Set an initial status
+	}
+
+	db := database.GetConnection()
+	if err := db.Create(newTransaction).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "card Payment  initiation successful",
+		"cardLink": cardLinkResponse,
+		"secureId": secureID,
+	})
+
+}
+
 func LoginHandler(c *gin.Context) {
 	// Get the Authorization header
 	authHeader := c.GetHeader("Authorization")
@@ -193,9 +305,9 @@ func LoginHandler(c *gin.Context) {
 	})
 }
 
-// CallbackHandler processes M-Pesa callback responses
-// CallbackHandler processes M-Pesa callback responses
-func CallbackHandler(c *gin.Context) {
+// MobileCallbackHandler processes M-Pesa callback responses
+// MobileCallbackHandler processes M-Pesa callback responses
+func MobileCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
 			StkCallback struct {
@@ -270,11 +382,73 @@ func CallbackHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
 }
 
+func CardCallbackHandler(c *gin.Context) {
+	var callbackBody struct {
+		TransactionStatus string `json:"transactionStatus"`
+		TransactionReport string `json:"transactionReport"`
+		Currency          string `json:"currency"`
+		Amount            string `json:"amount"`
+		NetAmount         string `json:"netAmount"`
+		SecureID          string `json:"secureId"`
+		ExternalID        string `json:"externalId"`
+		RedirectURL       string `json:"redirectUrl"`
+	}
+
+	// Parse the incoming JSON request
+	if err := c.ShouldBindJSON(&callbackBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
+		return
+	}
+
+	// Extract the MerchantRequestID from the RedirectURL
+	merchantRequestID := callbackBody.RedirectURL
+
+	db := database.GetConnection()
+
+	// Retrieve the transaction by RedirectURL (MerchantRequestID)
+	var transaction transactions.TransactionModel
+	if err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	// Determine transaction success or failure
+	transactionStatus := "FAILED"
+	callbackStatus := "SENT"
+	if callbackBody.TransactionStatus == "COMPLETED" {
+		transactionStatus = "SUCCESS"
+	}
+
+	// Update the transaction status in the database
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", transaction.ID).
+		Updates(map[string]interface{}{
+			"transactionStatus":   transactionStatus,
+			"responseDescription": callbackBody.TransactionReport,
+			"callbackStatus":      callbackStatus,
+		}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+		return
+	}
+
+	// Call the SendCallback function to send the callback response to the merchant
+	if err := SendCallback(transaction.ID, callbackBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+		return
+	}
+
+	// Respond with success
+	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
 	// router.POST("/check-balance", CheckBalanceHandler)
 	// router.POST("/send/usdc", SendUSDCHandler)
 	router.GET("/", LoginHandler)
-	router.POST("mobile/initiate", PaymentHandler)
-	router.POST("mobile/callback", CallbackHandler)
+	router.POST("mobile/initiate", MobilePaymentHandler)
+	router.POST("card/initiate", CardPaymentHandler)
+	router.POST("mobile/callback", MobileCallbackHandler)
+	router.POST("card/callback", CardCallbackHandler)
+
 }

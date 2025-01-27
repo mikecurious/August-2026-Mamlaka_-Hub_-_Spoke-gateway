@@ -7,5 +7,6 @@ use (
     ./auth
     ./users
     ./mpesa
+    ./card
     
 )
