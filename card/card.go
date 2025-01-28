@@ -90,7 +90,7 @@ func GenerateCardPaymentLink(currency string, amount float64, externalId, callba
 		"currency":         currency,
 		"amount":           amount,
 		"externalId":       externalId,
-		"callbackUrl":      callbackUrl,
+		"callbackUrl":      "https://payments.mam-laka.com/api/v1/mobile/callback",
 		"redirectUrl":      redirectUrl,
 	}
 	jsonPayload, err := json.Marshal(payload)
