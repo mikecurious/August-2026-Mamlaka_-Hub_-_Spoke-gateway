@@ -441,6 +441,73 @@ func CardCallbackHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
 }
 
+func TagsHandler(c *gin.Context) {
+	var Tag struct {
+		Tag      string `json:"tag" binding:"required"`
+		Amount   int    `json:"amount" binding:"required"`
+		Currency string `json:"currency" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&Tag); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format", "details": err.Error()})
+		return
+	}
+
+	// Generate secureId and other dynamic fields
+	secureID := mpesa.GenerateSecureID()
+
+	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+
+	// Replace with actual logic for initiating the M-Pesa request
+	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
+	cardLinkResponse, card_errror := card.GenerateCardPaymentLink(Tag.Currency, float64(Tag.Amount), secureID, secureID, secureID)
+	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+
+	if card_errror != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+		return
+	}
+	cardResponse := "Card payment"
+	cardResponseCode := "200"
+	externalId := "200"
+	callbackUrl := "200"
+
+	// Create the transaction record in the database
+	newTransaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    Tag.Tag,
+		MerchantRequestID:   &secureID,
+		CheckoutRequestID:   &secureID,
+		ResponseDescription: &cardResponse,
+		ResponseCode:        &cardResponseCode,
+		Currency:            Tag.Currency,
+		Amount:              Tag.Amount,
+		Msisdn:              "Null",
+		NetAmount:           float64(Tag.Amount), // Adjust if there are transaction fees
+		SecureID:            &secureID,
+		SourceOfFunds:       "card",
+		ExternalID:          &externalId,
+		CallbackURL:         &callbackUrl,
+		DateAdded:           dateAdded,
+		TransactionReport:   "collection",
+		TransactionStatus:   "PENDING", // Set an initial status
+	}
+
+	db := database.GetConnection()
+	if err := db.Create(newTransaction).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "card Payment  initiation successful",
+		"cardLink": cardLinkResponse,
+		"secureId": secureID,
+	})
+
+	// fmt.Println(Tag.Amount)
+
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
 	// router.POST("/check-balance", CheckBalanceHandler)
@@ -450,5 +517,6 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("card/initiate", CardPaymentHandler)
 	router.POST("mobile/callback", MobileCallbackHandler)
 	router.POST("card/callback", CardCallbackHandler)
+	router.POST("links/tags", TagsHandler)
 
 }

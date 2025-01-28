@@ -8,5 +8,6 @@ use (
     ./users
     ./mpesa
     ./card
+    ./tags
     
 )
