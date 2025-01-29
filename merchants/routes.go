@@ -205,13 +205,13 @@ func CardPaymentHandler(c *gin.Context) {
 
 	// Replace with actual logic for initiating the M-Pesa request
 	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
-	cardLinkResponse, card_errror := card.GenerateCardPaymentLink(req.Currency, float64(req.Amount), req.ExternalID, req.CallbackURL, secureID)
-	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+	// cardLinkResponse, card_errror := card.GenerateCardPaymentLink(req.Currency, float64(req.Amount), req.ExternalID, req.CallbackURL, secureID)
+	// // StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
-	if card_errror != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
-		return
-	}
+	// if card_errror != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+	// 	return
+	// }
 	cardResponse := "Card payment"
 	cardResponseCode := "200"
 	// Create the transaction record in the database
@@ -239,10 +239,18 @@ func CardPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
 		return
 	}
+	data := fmt.Sprintf("amount=%d&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
+
+	// Encode the string in Base64
+	encoded := base64.StdEncoding.EncodeToString([]byte(data))
+
+	// Print the Base64 encoded string
+	fmt.Println("Base64 Encoded Data:", encoded)
+	cardlink := "https://mpgs.cradlevoices.com/mpgs.php?data=" + encoded
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "card Payment  initiation successful",
-		"cardLink": cardLinkResponse,
+		"cardLink": cardlink,
 		"secureId": secureID,
 	})
 
