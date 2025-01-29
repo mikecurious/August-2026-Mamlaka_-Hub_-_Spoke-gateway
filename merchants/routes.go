@@ -239,7 +239,7 @@ func CardPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
 		return
 	}
-	data := fmt.Sprintf("amount=%sf&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
+	data := fmt.Sprintf("amount=%.2f&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
 
 	// Encode the string in Base64
 	encoded := base64.StdEncoding.EncodeToString([]byte(data))
