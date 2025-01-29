@@ -40,12 +40,12 @@ type MobilePaymentRequest struct {
 	CallbackURL      string `json:"callbackUrl" binding:"required"`
 }
 type CardPaymentRequest struct {
-	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
-	Currency         string `json:"currency" binding:"required"`
-	Amount           int    `json:"amount" binding:"required"`
-	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string `json:"externalId" binding:"required"`
-	CallbackURL      string `json:"callbackUrl" binding:"required"`
+	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
+	Currency         string  `json:"currency" binding:"required"`
+	Amount           float32 `json:"amount" binding:"required"`
+	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
+	ExternalID       string  `json:"externalId" binding:"required"`
+	CallbackURL      string  `json:"callbackUrl" binding:"required"`
 }
 
 // MobilePaymentHandler to handle mobile payment initiation
@@ -222,7 +222,7 @@ func CardPaymentHandler(c *gin.Context) {
 		ResponseDescription: &cardResponse,
 		ResponseCode:        &cardResponseCode,
 		Currency:            req.Currency,
-		Amount:              req.Amount,
+		Amount:              int(req.Amount),
 		Msisdn:              "Null",
 		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
 		SecureID:            &secureID,
@@ -239,7 +239,7 @@ func CardPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
 		return
 	}
-	data := fmt.Sprintf("amount=%d&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
+	data := fmt.Sprintf("amount=%sf&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
 
 	// Encode the string in Base64
 	encoded := base64.StdEncoding.EncodeToString([]byte(data))
