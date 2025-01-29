@@ -191,7 +191,7 @@ func CardPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
 		return
 	}
-	fmt.Printf("Payment initiated for user: %s with amount: %d\n", user.Name, req.Amount)
+	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
 
 	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
 	// This is just an example response.
@@ -240,6 +240,7 @@ func CardPaymentHandler(c *gin.Context) {
 		return
 	}
 	data := fmt.Sprintf("amount=%.2f&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
+	fmt.Println(data)
 
 	// Encode the string in Base64
 	encoded := base64.StdEncoding.EncodeToString([]byte(data))
