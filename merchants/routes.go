@@ -451,9 +451,9 @@ func CardCallbackHandler(c *gin.Context) {
 
 func TagsHandler(c *gin.Context) {
 	var Tag struct {
-		Tag      string `json:"tag" binding:"required"`
-		Amount   int    `json:"amount" binding:"required"`
-		Currency string `json:"currency" binding:"required"`
+		Tag      string  `json:"tag" binding:"required"`
+		Amount   float32 `json:"amount" binding:"required"`
+		Currency string  `json:"currency" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&Tag); err != nil {
@@ -488,7 +488,7 @@ func TagsHandler(c *gin.Context) {
 		ResponseDescription: &cardResponse,
 		ResponseCode:        &cardResponseCode,
 		Currency:            Tag.Currency,
-		Amount:              Tag.Amount,
+		Amount:              int(Tag.Amount),
 		Msisdn:              "Null",
 		NetAmount:           float64(Tag.Amount), // Adjust if there are transaction fees
 		SecureID:            &secureID,
