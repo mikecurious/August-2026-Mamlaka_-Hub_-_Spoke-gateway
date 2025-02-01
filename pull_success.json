@@ -1,0 +1,52 @@
+{
+    "Result": {
+      "ResultType": 0,
+      "ResultCode": 0,
+      "ResultDesc": "The service request is processed successfully.",
+      "OriginatorConversationID": "9021-4f51-8691-8604c07e13de14061111",
+      "ConversationID": "AG_20250201_206051c643ca6389833f",
+      "TransactionID": "TB18E731YO",
+      "ResultParameters": {
+        "ResultParameter": [
+          {
+            "Key": "ReceiverPartyPublicName",
+            "Value": "0768899729 - Collins Ochieng Otieno"
+          },
+          {
+            "Key": "TransactionCompletedDateTime",
+            "Value": "01.02.2025 21:28:54"
+          },
+          {
+            "Key": "B2CUtilityAccountAvailableFunds",
+            "Value": 6918.7
+          },
+          {
+            "Key": "B2CWorkingAccountAvailableFunds",
+            "Value": 0
+          },
+          {
+            "Key": "B2CRecipientIsRegisteredCustomer",
+            "Value": "Y"
+          },
+          {
+            "Key": "B2CChargesPaidAccountAvailableFunds",
+            "Value": 0
+          },
+          {
+            "Key": "TransactionAmount",
+            "Value": 10
+          },
+          {
+            "Key": "TransactionReceipt",
+            "Value": "TB18E731YO"
+          }
+        ]
+      },
+      "ReferenceData": {
+        "ReferenceItem": {
+          "Key": "QueueTimeoutURL",
+          "Value": "http://internalapi.safaricom.co.ke/mpesa/b2cresults/v1/submit"
+        }
+      }
+    }
+  }

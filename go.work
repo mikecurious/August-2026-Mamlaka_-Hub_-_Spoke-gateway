@@ -9,5 +9,6 @@ use (
     ./mpesa
     ./card
     ./tags
+    ./balances
     
 )

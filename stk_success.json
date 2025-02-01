@@ -1,0 +1,32 @@
+
+{
+  "Body": {
+    "stkCallback": {
+      "MerchantRequestID": "6b16-43f4-a9f6-8e81ad29eeab7100721",
+      "CheckoutRequestID": "ws_CO_21012025132712034768899729",
+      "ResultCode": 0,
+      "ResultDesc": "The service request is processed successfully.",
+      "CallbackMetadata": {
+        "Item": [
+          {
+            "Name": "Amount",
+            "Value": 1.00
+          },
+          {
+            "Name": "MpesaReceiptNumber",
+            "Value": "NLJ7RT61SV"
+          },
+          {
+            "Name": "TransactionDate",
+            "Value": 20250121132712
+          },
+          {
+            "Name": "PhoneNumber",
+            "Value": 254768899729
+          }
+        ]
+      }
+    }
+  }
+}
+
