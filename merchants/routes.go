@@ -180,7 +180,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "Payment initiation successful",
-		"transactionId": newTransaction.ID,
+		"transactionId": &stkResponse.MerchantRequestID,
 		"secureId":      secureID,
 	})
 
@@ -292,7 +292,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "Payment initiation successful",
-		"transactionId": newTransaction.ID,
+		"transactionId": &b2bResponse.OriginatorConversationID,
 		"secureId":      secureID,
 	})
 
