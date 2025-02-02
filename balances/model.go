@@ -81,3 +81,32 @@ func DeleteMerchantBalance(impalaMerchantID string) error {
 	}
 	return nil
 }
+
+
+// DeductKESBalance deducts the specified amount from the merchant's KES balance.
+func DeductKESBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Check if the merchant has sufficient balance
+	if balance.KESBalance < amount {
+		return fmt.Errorf("insufficient KES balance")
+	}
+
+	// Deduct the amount
+	balance.KESBalance -= amount
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}

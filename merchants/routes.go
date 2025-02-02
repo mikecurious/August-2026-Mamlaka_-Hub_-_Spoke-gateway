@@ -254,6 +254,13 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		return
 
 	}
+
+	// Deduct the balance
+	err = balances.DeductKESBalance(req.ImpalaMerchantId, float64(req.Amount))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deduct amount", "details": err.Error()})
+		return
+	}
 	fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
 
 	// Replace with actual logic for initiating the M-Pesa request
