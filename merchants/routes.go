@@ -60,13 +60,13 @@ type B2BResponse struct {
 	}
 */
 type MobileWithdrawalRequest struct {
-	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
-	Currency         string `json:"currency" binding:"required"`
-	Amount           int    `json:"amount" binding:"required"`
-	RecipientPhone   string `json:"recipientPhone" binding:"required"`
-	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string `json:"externalId" binding:"required"`
-	CallbackURL      string `json:"callbackUrl" binding:"required"`
+	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
+	Currency         string  `json:"currency" binding:"required"`
+	Amount           float32 `json:"amount" binding:"required"`
+	RecipientPhone   string  `json:"recipientPhone" binding:"required"`
+	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
+	ExternalID       string  `json:"externalId" binding:"required"`
+	CallbackURL      string  `json:"callbackUrl" binding:"required"`
 }
 
 // MobilePaymentRequest structure to bind incoming JSON request
@@ -229,7 +229,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
 		return
 	}
-	fmt.Printf("Payment initiated for user: %s with amount: %d\n", user.Name, req.Amount)
+	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
 
 	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
 	// This is just an example response.
@@ -279,7 +279,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		ResponseDescription: &b2bResponse.ResponseDescription,
 		ResponseCode:        &b2bResponse.ResponseCode,
 		Currency:            req.Currency,
-		Amount:              req.Amount,
+		Amount:              int(req.Amount),
 		Msisdn:              req.RecipientPhone,
 		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
 		SecureID:            &secureID,
