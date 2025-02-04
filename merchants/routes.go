@@ -151,7 +151,7 @@ func MobilePaymentHandler(c *gin.Context) {
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_stk != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": errror_stk})
 		return
 	}
 	// Create the transaction record in the database
