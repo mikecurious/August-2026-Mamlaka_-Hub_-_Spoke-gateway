@@ -91,6 +91,14 @@ type CardPaymentRequest struct {
 	CallbackURL      string  `json:"callbackUrl" binding:"required"`
 }
 
+// remove prfix
+func RemovePlusPrefix(phone string) string {
+	if strings.HasPrefix(phone, "+") {
+		return phone[1:] // Remove the first character
+	}
+	return phone
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Get the Authorization header
@@ -146,8 +154,10 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	dateAdded := time.Now().Format("2006-01-02 15:04:05")
 
+	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
+
 	// Replace with actual logic for initiating the M-Pesa request
-	stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
+	stkResponse, errror_stk := mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, req.DisplayName)
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_stk != nil {
@@ -266,7 +276,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
 
 	// Replace with actual logic for initiating the M-Pesa request
-	b2bResponse, errror_b2b := mpesa.GenerateB2CRequest(req.RecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID)
+	b2bResponse, errror_b2b := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID)
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_b2b != nil {
