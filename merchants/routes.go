@@ -2,7 +2,9 @@ package merchants
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -613,26 +615,19 @@ func MobileCallbackHandler(c *gin.Context) {
 				CallbackMetadata  struct {
 					Items []struct {
 						Name  string      `json:"Name"`
-						Value interface{} `json:"Value"`
+						Value interface{} `json:"Value,omitempty"` // Make Value optional
 					} `json:"Item"`
 				} `json:"CallbackMetadata"`
 			} `json:"stkCallback"`
 		} `json:"Body"`
-		Result struct {
-			ResultCode               int    `json:"ResultCode"`
-			ResultDesc               string `json:"ResultDesc"`
-			OriginatorConversationID string `json:"OriginatorConversationID"`
-			TransactionID            string `json:"TransactionID"`
-			ResultParameters         struct {
-				ResultParameter []struct {
-					Key   string `json:"Key"`
-					Value string `json:"Value"`
-				} `json:"ResultParameters"`
-			} `json:"ResultParameters"`
-		} `json:"Result"`
 	}
 
-	if err := c.ShouldBindJSON(&callbackBody); err != nil {
+	// Debugging: Print received JSON
+	bodyBytes, _ := ioutil.ReadAll(c.Request.Body)
+	fmt.Println("Received JSON:", string(bodyBytes))
+
+	// Parse JSON request
+	if err := json.Unmarshal(bodyBytes, &callbackBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
 		return
 	}
@@ -640,33 +635,28 @@ func MobileCallbackHandler(c *gin.Context) {
 	db := database.GetConnection()
 	var transaction transactions.TransactionModel
 
-	var merchantRequestID string
-	var resultCode int
-	var resultDesc string
+	merchantRequestID := callbackBody.Body.StkCallback.MerchantRequestID
+	resultCode := callbackBody.Body.StkCallback.ResultCode
+	resultDesc := callbackBody.Body.StkCallback.ResultDesc
 
-	if callbackBody.Body.StkCallback.MerchantRequestID != "" {
-		merchantRequestID = callbackBody.Body.StkCallback.MerchantRequestID
-		resultCode = callbackBody.Body.StkCallback.ResultCode
-		resultDesc = callbackBody.Body.StkCallback.ResultDesc
-	} else if callbackBody.Result.OriginatorConversationID != "" {
-		merchantRequestID = callbackBody.Result.OriginatorConversationID
-		resultCode = callbackBody.Result.ResultCode
-		resultDesc = callbackBody.Result.ResultDesc
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback: Missing MerchantRequestID or OriginatorConversationID"})
+	if merchantRequestID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing MerchantRequestID"})
 		return
 	}
 
+	// Check if transaction exists in the database
 	if err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
 		return
 	}
 
+	// Determine transaction status
 	transactionStatus := "FAILED"
 	if resultCode == 0 {
 		transactionStatus = "COMPLETED"
 	}
 
+	// Prepare update data for database
 	updateData := map[string]interface{}{
 		"transactionStatus":   transactionStatus,
 		"responseDescription": resultDesc,
@@ -680,21 +670,36 @@ func MobileCallbackHandler(c *gin.Context) {
 		return
 	}
 
+	// Extract additional metadata (Amount)
+	var amount float64
+	for _, item := range callbackBody.Body.StkCallback.CallbackMetadata.Items {
+		if item.Name == "Amount" {
+			if val, ok := item.Value.(float64); ok {
+				amount = val
+			}
+		}
+	}
+
+	// Construct callback response (externalId comes from the database)
 	callbackResponse := map[string]interface{}{
 		"transactionStatus": transactionStatus,
 		"transactionReport": resultDesc,
 		"currency":          transaction.Currency,
-		"amount":            transaction.Amount,
+		"amount":            amount,
 		"netAmount":         transaction.NetAmount,
 		"secureId":          transaction.SecureID,
-		"externalId":        transaction.ExternalID,
+		"externalId":        transaction.ExternalID, // Get from DB, not callback
 	}
 
+	// Debugging: Print outgoing response
+	fmt.Println("Sending callback:", callbackResponse)
+
+	// Send callback to external system
 	if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 		return
 	}
-	fmt.Println(callbackResponse)
+
 	c.JSON(http.StatusOK, callbackResponse)
 }
 
