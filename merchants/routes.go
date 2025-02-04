@@ -3,7 +3,6 @@ package merchants
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -695,7 +694,7 @@ func MobileCallbackHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 		return
 	}
-	log.Println(callbackResponse)
+	fmt.Println(callbackResponse)
 	c.JSON(http.StatusOK, callbackResponse)
 }
 
