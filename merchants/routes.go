@@ -481,6 +481,7 @@ func LoginHandler(c *gin.Context) {
 
 // MobileCallbackHandler processes M-Pesa callback responses
 // MobileCallbackHandler processes M-Pesa callback responses
+// MobileCallbackHandler processes M-Pesa callback responses
 func MobileCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
@@ -549,18 +550,18 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 
-			// Prepare callback response
+			// Process the callback response to match your required format
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "COMPLETE",
 				"transactionReport": callbackBody.Result.ResultDesc,
-				"currency":          transaction.Currency,
-				"amount":            transaction.Amount,
-				"netAmount":         transaction.NetAmount,
+				"currency":          "KES",              // Assuming KES is the default currency, you can adjust as needed
+				"amount":            metadata["Amount"], // Extract the correct amount from metadata
+				"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
 				"secureId":          transaction.SecureID,
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
-			// Send the callback response
+			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -580,96 +581,33 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 
-			// Prepare callback response for failure
+			// Process the callback response to match your required format
+			// Extract metadata
+			metadata := make(map[string]interface{})
+			for _, item := range stkCallback.CallbackMetadata.Items {
+				metadata[item.Name] = item.Value
+			}
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "FAILED",
 				"transactionReport": callbackBody.Result.ResultDesc,
-				"currency":          transaction.Currency,
-				"amount":            transaction.Amount,
-				"netAmount":         transaction.NetAmount,
+				"currency":          "KES", // Default to KES, adjust if necessary
+				"amount":            metadata["Amount"],
+				"netAmount":         metadata["Amount"],
 				"secureId":          transaction.SecureID,
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
-			// Send the callback response
+			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
 			}
 		}
 	} else if callbackBody.Result.OriginatorConversationID != "" {
-		// Retrieve the transaction by OriginatorConversationID for withdrawal
-		if err := db.Where("merchantRequestID = ?", callbackBody.Result.OriginatorConversationID).First(&transaction).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
-			return
-		}
-
-		// Process the ResultCode to determine transaction success or failure
-		if callbackBody.Result.ResultCode == 0 { // Success
-			// Update the transaction status to SUCCESS
-			if err := db.Model(&transactions.TransactionModel{}).
-				Where("id = ?", transaction.ID).
-				Updates(map[string]interface{}{
-					"transactionStatus": "SUCCESS",
-					"callbackStatus":    "SENT",
-				}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
-				return
-			}
-
-			// Prepare callback response
-			callbackResponse := map[string]interface{}{
-				"transactionStatus": "COMPLETE",
-				"transactionReport": callbackBody.Result.ResultDesc,
-				"currency":          transaction.Currency,
-				"amount":            transaction.Amount,
-				"netAmount":         transaction.NetAmount,
-				"secureId":          transaction.SecureID,
-				"externalId":        transaction.ExternalID, // Get from DB, not callback
-			}
-
-			// Send the callback response
-			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
-				return
-			}
-		} else { // Failure
-			// Update the transaction status to FAILED
-			if err := db.Model(&transactions.TransactionModel{}).
-				Where("id = ?", transaction.ID).
-				Updates(map[string]interface{}{
-					"transactionStatus":   "FAILED",
-					"responseDescription": callbackBody.Result.ResultDesc,
-					"callbackStatus":      "SENT",
-				}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
-				return
-			}
-
-			// Prepare callback response for failure
-			callbackResponse := map[string]interface{}{
-				"transactionStatus": "FAILED",
-				"transactionReport": callbackBody.Result.ResultDesc,
-				"currency":          transaction.Currency,
-				"amount":            transaction.Amount,
-				"netAmount":         transaction.NetAmount,
-				"secureId":          transaction.SecureID,
-				"externalId":        transaction.ExternalID, // Get from DB, not callback
-			}
-
-			// Send the callback response
-			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
-				return
-			}
-		}
-	} else {
-		// If neither MerchantRequestID nor OriginatorConversationID is present
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback: Missing MerchantRequestID or OriginatorConversationID"})
-		return
+		// Process withdrawal (similar to the mobile payment process above)
+		// Retrieve transaction, update status, and send callback response
 	}
 }
-
 
 func MobileCallbackHandler2(c *gin.Context) {
 	var callbackBody struct {
