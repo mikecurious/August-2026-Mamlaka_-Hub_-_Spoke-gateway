@@ -209,7 +209,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 	// Extract the token from the Bearer scheme
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenString == authHeader { // Token not prefixed with "Bearer "
+	if tokenString == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
 		return
 	}
@@ -224,47 +224,41 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	// Parse the mobile payment request
 	var req MobileWithdrawalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input 2"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
 		return
 	}
 
-	// Verify the merchant ID exists (or perform any business logic)
+	// Check if the merchant ID exists
 	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Merchant not found"})
 		return
 	}
 
-	// Get user by ID (you can use this data for logging or processing)
+	// Get user by ID
 	user, err := users.GetUserByID(uint(userID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user", "details": err.Error()})
 		return
 	}
+
 	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
 
-	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
-	// This is just an example response.
-	//call the initiate payment method
-	//StkPush(phoneNumber string, amount int, callbackURL, accountReference string
-
-	// Generate secureId and other dynamic fields
+	// Generate secureId
 	secureID := mpesa.GenerateSecureID()
-
 	dateAdded := time.Now().Format("2006-01-02 15:04:05")
-	//check the balance for the marchant
-	// Call GetMerchantBalance to retrieve the merchant's balance
+
+	// Check merchant's balance
 	balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get  payout balance ", "details": "test"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
 		return
 	}
 
-	// Print the KES balance
+	// Insufficient balance check
 	if balance.KESBalance < float64(req.Amount) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate transaction kindly top up your payout wallet", "details": "test"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient balance", "message": "Please top up your payout wallet"})
 		return
-
 	}
 
 	// Deduct the balance
@@ -275,15 +269,14 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	}
 	fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
 
-	// Replace with actual logic for initiating the M-Pesa request
-	b2bResponse, errror_b2b := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID)
-	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
-
-	if errror_b2b != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+	// Initiate payment via M-Pesa
+	b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
 		return
 	}
-	// Create the transaction record in the database
+
+	// Create transaction record
 	newTransaction := &transactions.TransactionModel{
 		ImpalaMerchantID:    req.ImpalaMerchantId,
 		MerchantRequestID:   &b2bResponse.OriginatorConversationID,
@@ -293,28 +286,28 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		Currency:            req.Currency,
 		Amount:              int(req.Amount),
 		Msisdn:              req.RecipientPhone,
-		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
+		NetAmount:           float64(req.Amount),
 		SecureID:            &secureID,
 		SourceOfFunds:       req.MobileMoneySP,
 		ExternalID:          &req.ExternalID,
 		CallbackURL:         &req.CallbackURL,
 		DateAdded:           dateAdded,
 		TransactionReport:   "withdraw",
-		TransactionStatus:   "PENDING", // Set an initial status
+		TransactionStatus:   "PENDING",
 	}
 
 	db := database.GetConnection()
 	if err := db.Create(newTransaction).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
 		return
 	}
 
+	// Success response
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "Payment initiation successful",
 		"transactionId": req.ExternalID,
 		"secureId":      secureID,
 	})
-
 }
 
 // card paymnet hander
