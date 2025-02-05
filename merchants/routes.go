@@ -480,6 +480,7 @@ func LoginHandler(c *gin.Context) {
 }
 
 // MobileCallbackHandler processes M-Pesa callback responses
+// MobileCallbackHandler processes M-Pesa callback responses
 func MobileCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
@@ -547,7 +548,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
-			// Call the SendCallback function to send the callback response to the merchant
+
+			// Prepare callback response
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "COMPLETE",
 				"transactionReport": callbackBody.Result.ResultDesc,
@@ -558,6 +560,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
+			// Send the callback response
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -576,7 +579,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
-			// Call the SendCallback function to send the callback response to the merchant
+
+			// Prepare callback response for failure
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "FAILED",
 				"transactionReport": callbackBody.Result.ResultDesc,
@@ -587,6 +591,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
+			// Send the callback response
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -611,6 +616,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
+
+			// Prepare callback response
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "COMPLETE",
 				"transactionReport": callbackBody.Result.ResultDesc,
@@ -621,6 +628,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
+			// Send the callback response
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -637,8 +645,10 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
+
+			// Prepare callback response for failure
 			callbackResponse := map[string]interface{}{
-				"transactionStatus": "",
+				"transactionStatus": "FAILED",
 				"transactionReport": callbackBody.Result.ResultDesc,
 				"currency":          transaction.Currency,
 				"amount":            transaction.Amount,
@@ -647,6 +657,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 
+			// Send the callback response
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -657,8 +668,8 @@ func MobileCallbackHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback: Missing MerchantRequestID or OriginatorConversationID"})
 		return
 	}
-
 }
+
 
 func MobileCallbackHandler2(c *gin.Context) {
 	var callbackBody struct {
