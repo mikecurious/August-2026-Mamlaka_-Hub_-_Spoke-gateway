@@ -412,7 +412,7 @@ func CardPaymentHandler(c *gin.Context) {
 
 	// Print the Base64 encoded string
 	fmt.Println("Base64 Encoded Data:", encoded)
-	cardlink := "https://mpgs.cradlevoices.com/mpgs.php?data=" + encoded
+	cardlink := "https://mpgs.cradlevoices.com/uba.php?data=" + encoded
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "card Payment  initiation successful",
