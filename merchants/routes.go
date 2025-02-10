@@ -526,7 +526,7 @@ func MobileCallbackHandler(c *gin.Context) {
 	var transaction transactions.TransactionModel
 	log.Println("checkign callback type ")
 	// Check if the callback is a mobile payment initialization (stkCallback)
-	if callbackBody.Body.StkCallback.MerchantRequestID != "" {
+	// if callbackBody.Body.StkCallback.MerchantRequestID != "" {
 		// Retrieve the transaction by MerchantRequestID for mobile payment initialization
 		log.Println("gettig the transaciton ")
 		if err := db.Where("merchantRequestID = ?", callbackBody.Body.StkCallback.MerchantRequestID).First(&transaction).Error; err != nil {
@@ -612,10 +612,10 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 		}
-	} else if callbackBody.Result.OriginatorConversationID != "" {
-		log.Println("am inside the other code! ")
+	// } else if callbackBody.Result.OriginatorConversationID != "" {
+	// 	log.Println("am inside the other code! ")
 
-	}
+	// }
 }
 
 func MobileCallbackHandler2(c *gin.Context) {
