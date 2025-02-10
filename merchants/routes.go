@@ -484,58 +484,91 @@ func LoginHandler(c *gin.Context) {
 // MobileCallbackHandler processes M-Pesa callback responses
 // MobileCallbackHandler processes M-Pesa callback responses
 func MobileCallbackHandler(c *gin.Context) {
-	log.Println("inside a callabck level 1")
-	var callbackBody struct {
-		Body struct {
-			StkCallback struct {
-				MerchantRequestID string `json:"MerchantRequestID"`
-				CheckoutRequestID string `json:"CheckoutRequestID"`
-				ResultCode        int    `json:"ResultCode"`
-				ResultDesc        string `json:"ResultDesc"`
-				CallbackMetadata  struct {
-					Item []struct {
-						Name  string      `json:"Name"`
-						Value interface{} `json:"Value,omitempty"`
-					} `json:"Item"`
-				} `json:"CallbackMetadata,omitempty"` // Use `omitempty` to handle missing `CallbackMetadata`
-			} `json:"stkCallback"`
-		} `json:"Body"`
-	}
+	log.Println("inside a callback level 1")
 
-	log.Println("Parsing parsed!")
-
-	// Parse the incoming JSON request
-	if err := c.ShouldBindJSON(&callbackBody); err != nil {
+	// Parse the incoming JSON request into a map
+	var response map[string]interface{}
+	if err := c.ShouldBindJSON(&response); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
 		return
 	}
-	log.Println("iGetting database connection ")
+
+	// Debug the parsed response
+	log.Println("Parsed response:", response)
+
+	// Extract fields dynamically
+	body, ok := response["Body"].(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body: missing Body"})
+		return
+	}
+
+	stkCallback, ok := body["stkCallback"].(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body: missing stkCallback"})
+		return
+	}
+
+	// Extract MerchantRequestID and CheckoutRequestID
+	merchantRequestID, _ := stkCallback["MerchantRequestID"].(string)
+	checkoutRequestID, _ := stkCallback["CheckoutRequestID"].(string)
+	resultCode, _ := stkCallback["ResultCode"].(float64) // JSON numbers are unmarshaled as float64
+	resultDesc, _ := stkCallback["ResultDesc"].(string)
+
+	// Debug the extracted fields
+	log.Println("MerchantRequestID:", merchantRequestID)
+	log.Println("CheckoutRequestID:", checkoutRequestID)
+	log.Println("ResultCode:", resultCode)
+	log.Println("ResultDesc:", resultDesc)
+	log.Println("Parsing parsed!")
+
+	// Get database connection
 	db := database.GetConnection()
-	// var transaction transactions.TransactionModel
-	log.Println("checkign callback type ")
-	// Check if the callback is a mobile payment initialization (stkCallback)
-	// if callbackBody.Body.StkCallback.MerchantRequestID != "" {
-	// Retrieve the transaction by MerchantRequestID for mobile payment initialization
-	log.Println("gettig the transaciton ")
-	log.Println("callbackBody.Body.StkCallback.MerchantRequestID", callbackBody.Body.StkCallback.MerchantRequestID)
-	transaction, err := transactions.GetTransactionByMerchantRequestID(callbackBody.Body.StkCallback.MerchantRequestID)
+	log.Println("iGetting database connection")
+
+	// Retrieve the transaction by MerchantRequestID
+	transaction, err := transactions.GetTransactionByMerchantRequestID(merchantRequestID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
 		return
 	}
+
 	// Print the transaction details
 	fmt.Printf("Transaction received: %+v\n", transaction)
 
-	stkCallback := callbackBody.Body.StkCallback
-	log.Println("checking the result code ")
-
 	// Process the ResultCode to determine transaction success or failure
-	if stkCallback.ResultCode == 0 { // Success
+	if resultCode == 0 { // Success
+		// Extract CallbackMetadata (if present)
+		callbackMetadata, ok := stkCallback["CallbackMetadata"].(map[string]interface{})
+		if ok {
+			items, ok := callbackMetadata["Item"].([]interface{})
+			if ok {
+				for _, item := range items {
+					itemMap, ok := item.(map[string]interface{})
+					if ok {
+						name, _ := itemMap["Name"].(string)
+						value := itemMap["Value"]
+						log.Printf("CallbackMetadata Item - Name: %s, Value: %v\n", name, value)
+					}
+				}
+			}
+		}
 		// Extract metadata
 		metadata := make(map[string]interface{})
-		for _, item := range stkCallback.CallbackMetadata.Item {
-			metadata[item.Name] = item.Value
+		if callbackMetadata != nil {
+			items, ok := callbackMetadata["Item"].([]interface{})
+			if ok {
+				for _, item := range items {
+					itemMap, ok := item.(map[string]interface{})
+					if ok {
+						name, _ := itemMap["Name"].(string)
+						value := itemMap["Value"]
+						metadata[name] = value
+					}
+				}
+			}
 		}
+
 		log.Println("set up model")
 
 		// Update the transaction status to SUCCESS
@@ -553,7 +586,7 @@ func MobileCallbackHandler(c *gin.Context) {
 		callbackResponse := map[string]interface{}{
 			"transactionStatus": "COMPLETE",
 			"transactionReport": "COMPLETE",
-			"currency":          "KES",              // Assuming KES is the default currency, you can adjust as needed
+			"currency":          "KES",              // Assuming KES is the default currency
 			"amount":            metadata["Amount"], // Extract the correct amount from metadata
 			"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
 			"secureId":          transaction.SecureID,
@@ -568,48 +601,57 @@ func MobileCallbackHandler(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
-	} else { // Failure
+	} else { // Failure or Canceled
 		// Update the transaction status to FAILED
 		if err := db.Model(&transactions.TransactionModel{}).
 			Where("id = ?", transaction.ID).
 			Updates(map[string]interface{}{
 				"transactionStatus":   "FAILED",
-				"responseDescription": stkCallback.ResultDesc,
+				"responseDescription": resultDesc, // Include the failure reason
 				"callbackStatus":      "SENT",
 			}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 			return
 		}
 
+		// Extract metadata (if available)
+		// metadata := make(map[string]interface{})
+		// if callbackMetadata != nil {
+		// 	items, ok := callbackMetadata["Item"].([]interface{})
+		// 	if ok {
+		// 		for _, item := range items {
+		// 			itemMap, ok := item.(map[string]interface{})
+		// 			if ok {
+		// 				name, _ := itemMap["Name"].(string)
+		// 				value := itemMap["Value"]
+		// 				metadata[name] = value
+		// 			}
+		// 		}
+		// 	}
+		// }
+
 		// Process the callback response to match your required format
-		// Extract metadata
-		metadata := make(map[string]interface{})
-		for _, item := range stkCallback.CallbackMetadata.Item {
-			metadata[item.Name] = item.Value
-		}
 		callbackResponse := map[string]interface{}{
 			"transactionStatus": "FAILED",
 			"transactionReport": "FAILED",
 			"currency":          "KES", // Default to KES, adjust if necessary
-			"amount":            metadata["Amount"],
-			"netAmount":         metadata["Amount"],
+			"amount":            transaction.Amount,
+			"netAmount":         transaction.Amount,
 			"secureId":          transaction.SecureID,
 			"externalId":        transaction.ExternalID, // Get from DB, not callback
 		}
-		log.Println("call the callabck")
+		fmt.Println(callbackResponse)
+		log.Println("call the callback", callbackResponse)
 
 		// Call the SendCallback function to send the callback response to the merchant
 		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 			return
 		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to FAILED"})
 	}
-	// } else if callbackBody.Result.OriginatorConversationID != "" {
-	// 	log.Println("am inside the other code! ")
-
-	// }
 }
-
 func MobileCallbackHandler2(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
