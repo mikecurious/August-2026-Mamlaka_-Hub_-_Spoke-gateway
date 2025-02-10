@@ -17,17 +17,17 @@ type TransactionModel struct {
 	Amount              int     `gorm:"column:amount" json:"amount"`
 	Msisdn              string  `gorm:"column:msisdn" json:"msisdn"`
 	NetAmount           float64 `gorm:"column:netAmount" json:"netAmount"`
-	SecureID            *string `gorm:"column:secureId" json:"secureId"`
+	SecureID            string `gorm:"column:secureId" json:"secureId"`
 	SourceOfFunds       string  `gorm:"column:sourceOfFunds" json:"sourceOfFunds"`
-	ExternalID          *string `gorm:"column:externalId" json:"externalId"`
-	CallbackURL         *string `gorm:"column:callbackUrl" json:"callbackUrl"`
-	RedirectURL         *string `gorm:"column:redirectUrl" json:"redirectUrl"`
+	ExternalID          string `gorm:"column:externalId" json:"externalId"`
+	CallbackURL         string `gorm:"column:callbackUrl" json:"callbackUrl"`
+	RedirectURL         string `gorm:"column:redirectUrl" json:"redirectUrl"`
 	DateAdded           string  `gorm:"column:dateAdded;type:string" json:"dateAdded"`
-	MerchantRequestID   *string `gorm:"column:merchantRequestID" json:"merchantRequestID"`
-	CheckoutRequestID   *string `gorm:"column:checkoutRequestID" json:"checkoutRequestID"`
-	ResponseCode        *string `gorm:"column:responseCode" json:"responseCode"`
-	ResponseDescription *string `gorm:"column:responseDescription" json:"responseDescription"`
-	CallbackStatus      *string `gorm:"column:callbackStatus" json:"callbackStatus"`
+	MerchantRequestID   string `gorm:"column:merchantRequestID" json:"merchantRequestID"`
+	CheckoutRequestID   string `gorm:"column:checkoutRequestID" json:"checkoutRequestID"`
+	ResponseCode        string `gorm:"column:responseCode" json:"responseCode"`
+	ResponseDescription string `gorm:"column:responseDescription" json:"responseDescription"`
+	CallbackStatus      string `gorm:"column:callbackStatus" json:"callbackStatus"`
 }
 
 func (TransactionModel) TableName() string {

@@ -23,9 +23,9 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 2: Check if CallbackURL exists
 	log.Println("Checking callback")
 
-	if transaction.CallbackURL == nil || *transaction.CallbackURL == "" {
-		return fmt.Errorf("callback URL is missing or empty")
-	}
+	// if transaction.CallbackURL == nil || transaction.CallbackURL == "" {
+	// 	return fmt.Errorf("callback URL is missing or empty")
+	// }
 	log.Println("Callback found")
 
 	// Step 3: Marshal the callbackBody to JSON
@@ -41,7 +41,7 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 5: Send the raw response body to the CallbackURL
 	//send
 	log.Println("send  raw response body to the CallbackURL")
-	resp, err := http.Post(*transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
+	resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
 	if err != nil {
 		return fmt.Errorf("failed to send callback: %v", err)
 	}
