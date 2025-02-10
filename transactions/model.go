@@ -199,3 +199,22 @@ func GenerateSecureID() string {
 	_, _ = rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)
 }
+
+func GetTransactionByMerchantRequestID(merchantRequestID string) (TransactionModel, error) {
+	db := database.GetConnection()
+	var transaction TransactionModel
+
+	// Enable debug mode to log the SQL query
+	db = db.Debug()
+
+	// Fetch the transaction
+	err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error
+	if err != nil {
+		return transaction, err
+	}
+
+	// Print the transaction details
+	// printTransaction(transaction)
+
+	return transaction, nil
+}
