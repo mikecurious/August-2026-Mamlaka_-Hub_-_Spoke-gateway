@@ -113,7 +113,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference strin
 		PartyA:            phoneNumber,
 		PartyB:            businessShortCode,
 		PhoneNumber:       phoneNumber,
-		CallBackURL:       callbackURL,
+		CallBackURL:       "https://payments.mam-laka.com/api/v1/mobile/callback",
 		AccountReference:  accountReference,
 		TransactionDesc:   "Payment",
 	}
