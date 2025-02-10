@@ -486,6 +486,15 @@ func LoginHandler(c *gin.Context) {
 func MobileCallbackHandler(c *gin.Context) {
 	log.Println("inside a callback level 1")
 
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body", "details": err.Error()})
+		return
+	}
+
+	// Log the raw request body
+	log.Println("Raw request body:", string(rawBody))
+
 	// Parse the incoming JSON request into a map
 	var response map[string]interface{}
 	if err := c.ShouldBindJSON(&response); err != nil {
