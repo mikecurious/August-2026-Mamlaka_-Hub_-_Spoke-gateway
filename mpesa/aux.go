@@ -250,8 +250,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		PartyA:                   businessShortCode,
 		PartyB:                   phoneNumberStr,
 		Remarks:                  "payments done",
-		QueueTimeOutURL:          callbackURL,
-		ResultURL:                callbackURL,
+		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/callback",
+		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
 		Occassion:                "Ok",
 	}
 
