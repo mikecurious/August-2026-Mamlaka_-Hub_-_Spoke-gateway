@@ -496,48 +496,42 @@ func MobileCallbackHandler(c *gin.Context) {
 	// Debug the parsed response
 	log.Println("Parsed response:", response)
 
-	// Extract fields dynamically
-	body, ok := response["Body"].(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body: missing Body"})
-		return
-	}
+	// Check if this is an STK callback
+	if body, ok := response["Body"].(map[string]interface{}); ok {
+		log.Println("Processing STK callback")
 
-	stkCallback, ok := body["stkCallback"].(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body: missing stkCallback"})
-		return
-	}
+		stkCallback, ok := body["stkCallback"].(map[string]interface{})
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid STK callback: missing stkCallback"})
+			return
+		}
 
-	// Extract MerchantRequestID and CheckoutRequestID
-	merchantRequestID, _ := stkCallback["MerchantRequestID"].(string)
-	checkoutRequestID, _ := stkCallback["CheckoutRequestID"].(string)
-	resultCode, _ := stkCallback["ResultCode"].(float64) // JSON numbers are unmarshaled as float64
-	resultDesc, _ := stkCallback["ResultDesc"].(string)
+		// Extract fields from STK callback
+		merchantRequestID, _ := stkCallback["MerchantRequestID"].(string)
+		checkoutRequestID, _ := stkCallback["CheckoutRequestID"].(string)
+		resultCode, _ := stkCallback["ResultCode"].(float64)
+		resultDesc, _ := stkCallback["ResultDesc"].(string)
 
-	// Debug the extracted fields
-	log.Println("MerchantRequestID:", merchantRequestID)
-	log.Println("CheckoutRequestID:", checkoutRequestID)
-	log.Println("ResultCode:", resultCode)
-	log.Println("ResultDesc:", resultDesc)
-	log.Println("Parsing parsed!")
+		// Debug the extracted fields
+		log.Println("MerchantRequestID:", merchantRequestID)
+		log.Println("CheckoutRequestID:", checkoutRequestID)
+		log.Println("ResultCode:", resultCode)
+		log.Println("ResultDesc:", resultDesc)
 
-	// Get database connection
-	db := database.GetConnection()
-	log.Println("iGetting database connection")
+		// Get database connection
+		db := database.GetConnection()
+		log.Println("iGetting database connection")
 
-	// Retrieve the transaction by MerchantRequestID
-	transaction, err := transactions.GetTransactionByMerchantRequestID(merchantRequestID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
-		return
-	}
+		// Retrieve the transaction by MerchantRequestID
+		transaction, err := transactions.GetTransactionByMerchantRequestID(merchantRequestID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+			return
+		}
 
-	// Print the transaction details
-	fmt.Printf("Transaction received: %+v\n", transaction)
+		// Print the transaction details
+		fmt.Printf("Transaction received: %+v\n", transaction)
 
-	// Process the ResultCode to determine transaction success or failure
-	if resultCode == 0 { // Success
 		// Extract CallbackMetadata (if present)
 		callbackMetadata, ok := stkCallback["CallbackMetadata"].(map[string]interface{})
 		if ok {
@@ -553,103 +547,138 @@ func MobileCallbackHandler(c *gin.Context) {
 				}
 			}
 		}
-		// Extract metadata
-		metadata := make(map[string]interface{})
-		if callbackMetadata != nil {
-			items, ok := callbackMetadata["Item"].([]interface{})
-			if ok {
-				for _, item := range items {
-					itemMap, ok := item.(map[string]interface{})
-					if ok {
-						name, _ := itemMap["Name"].(string)
-						value := itemMap["Value"]
-						metadata[name] = value
+
+		// Process the ResultCode to determine transaction success or failure
+		if resultCode == 0 { // Success
+			// Extract metadata
+			metadata := make(map[string]interface{})
+			if callbackMetadata != nil {
+				items, ok := callbackMetadata["Item"].([]interface{})
+				if ok {
+					for _, item := range items {
+						itemMap, ok := item.(map[string]interface{})
+						if ok {
+							name, _ := itemMap["Name"].(string)
+							value := itemMap["Value"]
+							metadata[name] = value
+						}
 					}
 				}
 			}
+
+			log.Println("set up model")
+
+			// Update the transaction status to SUCCESS
+			if err := db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Updates(map[string]interface{}{
+					"transactionStatus": "SUCCESS",
+					"callbackStatus":    "SENT",
+				}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+				return
+			}
+
+			// Process the callback response to match your required format
+			callbackResponse := map[string]interface{}{
+				"transactionStatus": "COMPLETE",
+				"transactionReport": "COMPLETE",
+				"currency":          "KES",              // Assuming KES is the default currency
+				"amount":            metadata["Amount"], // Extract the correct amount from metadata
+				"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
+				"secureId":          transaction.SecureID,
+				"externalId":        transaction.ExternalID, // Get from DB, not callback
+			}
+			log.Println("callback response", callbackResponse)
+
+			// Call the SendCallback function to send the callback response to the merchant
+			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
+		} else { // Failure or Canceled
+			// Update the transaction status to FAILED
+			if err := db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Updates(map[string]interface{}{
+					"transactionStatus":   "FAILED",
+					"responseDescription": resultDesc, // Include the failure reason
+					"callbackStatus":      "SENT",
+				}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+				return
+			}
+
+			// Extract metadata (if available)
+			metadata := make(map[string]interface{})
+			if callbackMetadata != nil {
+				items, ok := callbackMetadata["Item"].([]interface{})
+				if ok {
+					for _, item := range items {
+						itemMap, ok := item.(map[string]interface{})
+						if ok {
+							name, _ := itemMap["Name"].(string)
+							value := itemMap["Value"]
+							metadata[name] = value
+						}
+					}
+				}
+			}
+
+			// Process the callback response to match your required format
+			callbackResponse := map[string]interface{}{
+				"transactionStatus": "FAILED",
+				"transactionReport": "FAILED",
+				"currency":          "KES", // Default to KES, adjust if necessary
+				"amount":            metadata["Amount"],
+				"netAmount":         metadata["Amount"],
+				"secureId":          transaction.SecureID,
+				"externalId":        transaction.ExternalID, // Get from DB, not callback
+			}
+			fmt.Println(callbackResponse)
+			log.Println("call the callback", callbackResponse)
+
+			// Call the SendCallback function to send the callback response to the merchant
+			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to FAILED"})
 		}
+	} else if transID, ok := response["TransID"].(string); ok {
+		log.Println("Processing C2B callback")
 
-		log.Println("set up model")
+		// Extract fields from C2B callback
+		transAmount, _ := response["TransAmount"].(string)
+		msisdn, _ := response["MSISDN"].(string)
+		firstName, _ := response["FirstName"].(string)
+		billRefNumber, _ := response["BillRefNumber"].(string)
+		businessShortCode, _ := response["BusinessShortCode"].(string)
+		orgAccountBalance, _ := response["OrgAccountBalance"].(string)
+		transTime, _ := response["TransTime"].(string)
+		transactionType, _ := response["TransactionType"].(string)
 
-		// Update the transaction status to SUCCESS
-		if err := db.Model(&transactions.TransactionModel{}).
-			Where("id = ?", transaction.ID).
-			Updates(map[string]interface{}{
-				"transactionStatus": "SUCCESS",
-				"callbackStatus":    "SENT",
-			}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
-			return
-		}
+		// Debug the extracted fields
+		log.Println("TransID:", transID)
+		log.Println("TransAmount:", transAmount)
+		log.Println("MSISDN:", msisdn)
+		log.Println("FirstName:", firstName)
+		log.Println("BillRefNumber:", billRefNumber)
+		log.Println("BusinessShortCode:", businessShortCode)
+		log.Println("OrgAccountBalance:", orgAccountBalance)
+		log.Println("TransTime:", transTime)
+		log.Println("TransactionType:", transactionType)
 
-		// Process the callback response to match your required format
-		callbackResponse := map[string]interface{}{
-			"transactionStatus": "COMPLETE",
-			"transactionReport": "COMPLETE",
-			"currency":          "KES",              // Assuming KES is the default currency
-			"amount":            metadata["Amount"], // Extract the correct amount from metadata
-			"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
-			"secureId":          transaction.SecureID,
-			"externalId":        transaction.ExternalID, // Get from DB, not callback
-		}
-		log.Println("callback response", callbackResponse)
+		// Process the C2B callback (e.g., save to database, send response, etc.)
+		// Add your logic here...
 
-		// Call the SendCallback function to send the callback response to the merchant
-		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
-	} else { // Failure or Canceled
-		// Update the transaction status to FAILED
-		if err := db.Model(&transactions.TransactionModel{}).
-			Where("id = ?", transaction.ID).
-			Updates(map[string]interface{}{
-				"transactionStatus":   "FAILED",
-				"responseDescription": resultDesc, // Include the failure reason
-				"callbackStatus":      "SENT",
-			}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
-			return
-		}
-
-		// Extract metadata (if available)
-		// metadata := make(map[string]interface{})
-		// if callbackMetadata != nil {
-		// 	items, ok := callbackMetadata["Item"].([]interface{})
-		// 	if ok {
-		// 		for _, item := range items {
-		// 			itemMap, ok := item.(map[string]interface{})
-		// 			if ok {
-		// 				name, _ := itemMap["Name"].(string)
-		// 				value := itemMap["Value"]
-		// 				metadata[name] = value
-		// 			}
-		// 		}
-		// 	}
-		// }
-
-		// Process the callback response to match your required format
-		callbackResponse := map[string]interface{}{
-			"transactionStatus": "FAILED",
-			"transactionReport": "FAILED",
-			"currency":          "KES", // Default to KES, adjust if necessary
-			"amount":            transaction.Amount,
-			"netAmount":         transaction.Amount,
-			"secureId":          transaction.SecureID,
-			"externalId":        transaction.ExternalID, // Get from DB, not callback
-		}
-		fmt.Println(callbackResponse)
-		log.Println("call the callback", callbackResponse)
-
-		// Call the SendCallback function to send the callback response to the merchant
-		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to FAILED"})
+		c.JSON(http.StatusOK, gin.H{"message": "C2B callback processed successfully"})
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown callback type"})
+		return
 	}
 }
 func MobileCallbackHandler2(c *gin.Context) {
