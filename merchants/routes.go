@@ -493,25 +493,13 @@ func MobileCallbackHandler(c *gin.Context) {
 				ResultCode        int    `json:"ResultCode"`
 				ResultDesc        string `json:"ResultDesc"`
 				CallbackMetadata  struct {
-					Items []struct {
+					Item []struct {
 						Name  string      `json:"Name"`
-						Value interface{} `json:"Value"`
+						Value interface{} `json:"Value,omitempty"`
 					} `json:"Item"`
-				} `json:"CallbackMetadata"`
+				} `json:"CallbackMetadata,omitempty"` // Use `omitempty` to handle missing `CallbackMetadata`
 			} `json:"stkCallback"`
 		} `json:"Body"`
-		Result struct {
-			ResultCode               int    `json:"ResultCode"`
-			ResultDesc               string `json:"ResultDesc"`
-			OriginatorConversationID string `json:"OriginatorConversationID"`
-			TransactionID            string `json:"TransactionID"`
-			ResultParameters         struct {
-				ResultParameter []struct {
-					Key   string `json:"Key"`
-					Value string `json:"Value"`
-				} `json:"ResultParameter"`
-			} `json:"ResultParameters"`
-		} `json:"Result"`
 	}
 
 	log.Println("Parsing parsed!")
@@ -529,6 +517,7 @@ func MobileCallbackHandler(c *gin.Context) {
 	// if callbackBody.Body.StkCallback.MerchantRequestID != "" {
 	// Retrieve the transaction by MerchantRequestID for mobile payment initialization
 	log.Println("gettig the transaciton ")
+	log.Println("callbackBody.Body.StkCallback.MerchantRequestID", callbackBody.Body.StkCallback.MerchantRequestID)
 	transaction, err := transactions.GetTransactionByMerchantRequestID(callbackBody.Body.StkCallback.MerchantRequestID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
@@ -544,7 +533,7 @@ func MobileCallbackHandler(c *gin.Context) {
 	if stkCallback.ResultCode == 0 { // Success
 		// Extract metadata
 		metadata := make(map[string]interface{})
-		for _, item := range stkCallback.CallbackMetadata.Items {
+		for _, item := range stkCallback.CallbackMetadata.Item {
 			metadata[item.Name] = item.Value
 		}
 		log.Println("set up model")
@@ -563,7 +552,7 @@ func MobileCallbackHandler(c *gin.Context) {
 		// Process the callback response to match your required format
 		callbackResponse := map[string]interface{}{
 			"transactionStatus": "COMPLETE",
-			"transactionReport": callbackBody.Result.ResultDesc,
+			"transactionReport": "COMPLETE",
 			"currency":          "KES",              // Assuming KES is the default currency, you can adjust as needed
 			"amount":            metadata["Amount"], // Extract the correct amount from metadata
 			"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
@@ -595,12 +584,12 @@ func MobileCallbackHandler(c *gin.Context) {
 		// Process the callback response to match your required format
 		// Extract metadata
 		metadata := make(map[string]interface{})
-		for _, item := range stkCallback.CallbackMetadata.Items {
+		for _, item := range stkCallback.CallbackMetadata.Item {
 			metadata[item.Name] = item.Value
 		}
 		callbackResponse := map[string]interface{}{
 			"transactionStatus": "FAILED",
-			"transactionReport": callbackBody.Result.ResultDesc,
+			"transactionReport": "FAILED",
 			"currency":          "KES", // Default to KES, adjust if necessary
 			"amount":            metadata["Amount"],
 			"netAmount":         metadata["Amount"],
