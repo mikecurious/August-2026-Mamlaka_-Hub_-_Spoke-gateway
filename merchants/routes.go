@@ -613,6 +613,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 		}
 	} else if callbackBody.Result.OriginatorConversationID != "" {
+		log.Println("am inside the other code! ")
 
 	}
 }
