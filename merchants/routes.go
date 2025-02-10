@@ -643,8 +643,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				"transactionStatus": "FAILED",
 				"transactionReport": "FAILED",
 				"currency":          "KES", // Default to KES, adjust if necessary
-				"amount":            metadata["Amount"],
-				"netAmount":         metadata["Amount"],
+				"amount":            transaction.Amount,
+				"netAmount":         transaction.Amount,
 				"secureId":          transaction.SecureID,
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
