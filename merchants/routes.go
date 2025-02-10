@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 
@@ -483,6 +484,7 @@ func LoginHandler(c *gin.Context) {
 // MobileCallbackHandler processes M-Pesa callback responses
 // MobileCallbackHandler processes M-Pesa callback responses
 func MobileCallbackHandler(c *gin.Context) {
+	log.Println("inside a callabck level 1")
 	var callbackBody struct {
 		Body struct {
 			StkCallback struct {
@@ -512,24 +514,28 @@ func MobileCallbackHandler(c *gin.Context) {
 		} `json:"Result"`
 	}
 
+	log.Println("Parsing parsed!")
+
 	// Parse the incoming JSON request
 	if err := c.ShouldBindJSON(&callbackBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
 		return
 	}
-
+	log.Println("iGetting database connection ")
 	db := database.GetConnection()
 	var transaction transactions.TransactionModel
-
+	log.Println("checkign callback type ")
 	// Check if the callback is a mobile payment initialization (stkCallback)
 	if callbackBody.Body.StkCallback.MerchantRequestID != "" {
 		// Retrieve the transaction by MerchantRequestID for mobile payment initialization
+		log.Println("gettig the transaciton ")
 		if err := db.Where("merchantRequestID = ?", callbackBody.Body.StkCallback.MerchantRequestID).First(&transaction).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
 			return
 		}
 
 		stkCallback := callbackBody.Body.StkCallback
+		log.Println("checking the result code ")
 
 		// Process the ResultCode to determine transaction success or failure
 		if stkCallback.ResultCode == 0 { // Success
@@ -538,6 +544,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			for _, item := range stkCallback.CallbackMetadata.Items {
 				metadata[item.Name] = item.Value
 			}
+			log.Println("set up model")
 
 			// Update the transaction status to SUCCESS
 			if err := db.Model(&transactions.TransactionModel{}).
@@ -560,6 +567,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"secureId":          transaction.SecureID,
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
+			log.Println("callback response", callbackResponse)
 
 			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
@@ -596,6 +604,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"secureId":          transaction.SecureID,
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
+			log.Println("call the callabck")
 
 			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
@@ -604,8 +613,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 		}
 	} else if callbackBody.Result.OriginatorConversationID != "" {
-		// Process withdrawal (similar to the mobile payment process above)
-		// Retrieve transaction, update status, and send callback response
+
 	}
 }
 
