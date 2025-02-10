@@ -659,7 +659,10 @@ func MobileCallbackHandler(c *gin.Context) {
 
 			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to FAILED"})
 		}
-	} //hanlde pull
+	} else { //hanlde pull request
+		fmt.Println("this is a pull request ")
+		log.Println("this is a pull request")
+	}
 
 }
 func MobileCallbackHandler2(c *gin.Context) {
