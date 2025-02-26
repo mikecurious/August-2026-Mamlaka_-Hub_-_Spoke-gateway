@@ -153,7 +153,7 @@ func MobilePaymentHandler(c *gin.Context) {
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
 
-	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+	dateAdded := time.Now().Unix()
 
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
 
@@ -247,7 +247,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 	// Generate secureId
 	secureID := mpesa.GenerateSecureID()
-	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+	dateAdded := time.Now().Unix()
 
 	// Check merchant's balance
 	balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
@@ -367,7 +367,7 @@ func CardPaymentHandler(c *gin.Context) {
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
 
-	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+	dateAdded := time.Now().Unix()
 
 	// Replace with actual logic for initiating the M-Pesa request
 	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
@@ -998,7 +998,7 @@ func TagsHandler(c *gin.Context) {
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
 
-	dateAdded := time.Now().Format("2006-01-02 15:04:05")
+	dateAdded := time.Now().Unix()
 
 	// Replace with actual logic for initiating the M-Pesa request
 	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)

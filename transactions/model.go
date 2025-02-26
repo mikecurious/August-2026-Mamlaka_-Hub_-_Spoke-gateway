@@ -22,7 +22,7 @@ type TransactionModel struct {
 	ExternalID          string `gorm:"column:externalId" json:"externalId"`
 	CallbackURL         string `gorm:"column:callbackUrl" json:"callbackUrl"`
 	RedirectURL         string `gorm:"column:redirectUrl" json:"redirectUrl"`
-	DateAdded           string  `gorm:"column:dateAdded;type:string" json:"dateAdded"`
+	DateAdded           int64  `gorm:"column:dateAdded;type:string" json:"dateAdded"`
 	MerchantRequestID   string `gorm:"column:merchantRequestID" json:"merchantRequestID"`
 	CheckoutRequestID   string `gorm:"column:checkoutRequestID" json:"checkoutRequestID"`
 	ResponseCode        string `gorm:"column:responseCode" json:"responseCode"`
