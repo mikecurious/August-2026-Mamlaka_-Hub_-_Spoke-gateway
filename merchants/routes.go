@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	// "net/http"
@@ -924,6 +925,64 @@ func MobileCallbackHandler2(c *gin.Context) {
 	c.JSON(http.StatusOK, callbackResponse)
 }
 
+// func CardCallbackHandler(c *gin.Context) {
+// 	var callbackBody struct {
+// 		TransactionStatus string `json:"transactionStatus"`
+// 		TransactionReport string `json:"transactionReport"`
+// 		Currency          string `json:"currency"`
+// 		Amount            string `json:"amount"`
+// 		NetAmount         string `json:"netAmount"`
+// 		SecureID          string `json:"secureId"`
+// 		ExternalID        string `json:"externalId"`
+// 		RedirectURL       string `json:"redirectUrl"`
+// 	}
+
+// 	// Parse the incoming JSON request
+// 	if err := c.ShouldBindJSON(&callbackBody); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
+// 		return
+// 	}
+
+// 	// Extract the MerchantRequestID from the RedirectURL
+// 	merchantRequestID := callbackBody.RedirectURL
+
+// 	db := database.GetConnection()
+
+// 	// Retrieve the transaction by RedirectURL (MerchantRequestID)
+// 	var transaction transactions.TransactionModel
+// 	if err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error; err != nil {
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+// 		return
+// 	}
+
+// 	// Determine transaction success or failure
+// 	transactionStatus := "FAILED"
+// 	callbackStatus := "SENT"
+// 	if callbackBody.TransactionStatus == "COMPLETED" {
+// 		transactionStatus = "SUCCESS"
+// 	}
+
+// 	// Update the transaction status in the database
+// 	if err := db.Model(&transactions.TransactionModel{}).
+// 		Where("id = ?", transaction.ID).
+// 		Updates(map[string]interface{}{
+// 			"transactionStatus":   transactionStatus,
+// 			"responseDescription": callbackBody.TransactionReport,
+// 			"callbackStatus":      callbackStatus,
+// 		}).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+// 		return
+// 	}
+
+// 	// Call the SendCallback function to send the callback response to the merchant
+// 	if err := SendCallback(transaction.ID, callbackBody); err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+// 		return
+// 	}
+
+//		// Respond with success
+//		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
+//	}
 func CardCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		TransactionStatus string `json:"transactionStatus"`
@@ -973,7 +1032,71 @@ func CardCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Call the SendCallback function to send the callback response to the merchant
+	// If the transaction was successful, update the merchant's balance
+	if callbackBody.TransactionStatus == "COMPLETED" {
+		log.Println("Transaction successful. Updating merchant balance for:", transaction.ImpalaMerchantID)
+
+		// Retrieve the merchant's balance
+		var balance balances.MerchantBalance
+		if err := db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&balance).Error; err != nil {
+			log.Println("Error retrieving merchant balance:", err)
+			c.JSON(http.StatusNotFound, gin.H{"error": "Merchant balance not found", "details": err.Error()})
+			return
+		}
+		log.Printf("Current balance retrieved: %+v\n", balance)
+
+		// Convert the amount to a float
+		amount, err := strconv.ParseFloat(callbackBody.NetAmount, 64)
+		if err != nil {
+			log.Println("Invalid amount format:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid amount format", "details": err.Error()})
+			return
+		}
+		log.Println("Transaction amount:", amount, "Currency:", callbackBody.Currency)
+
+		// Update the correct currency balance
+		updateData := make(map[string]interface{})
+		switch callbackBody.Currency {
+		case "KES":
+			updateData["kesBalance"] = balance.KESBalance + amount
+		case "USD":
+			updateData["usdBalance"] = balance.USDBalance + amount
+		case "USDC":
+			updateData["usdcBalance"] = balance.USDCBalance + amount
+		case "IMPA":
+			updateData["impaBalance"] = balance.ImpaBalance + amount
+		case "LUMEN":
+			updateData["lumenBalance"] = balance.LumenBalance + amount
+		case "USDT":
+			updateData["usdtBalance"] = balance.USDTBalance + amount
+		case "EUR":
+			updateData["eurBalance"] = balance.EURBalance + amount
+		case "GBP":
+			updateData["gbpBalance"] = balance.GBPBalance + amount
+		case "TZS":
+			updateData["tzsBalance"] = balance.TZSBalance + amount
+		case "UGX":
+			updateData["ugxBalance"] = balance.UGXBalance + amount
+		default:
+			log.Println("Unsupported currency:", callbackBody.Currency)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported currency"})
+			return
+		}
+		log.Printf("Updated balance data: %+v\n", updateData)
+
+		// Update the merchant's balance in the database
+		if err := db.Model(&balances.MerchantBalance{}).
+			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+			Updates(updateData).Error; err != nil {
+			log.Println("Failed to update merchant balance:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
+			return
+		}
+
+		log.Println("Merchant balance successfully updated for:", transaction.ImpalaMerchantID)
+	}
+
+	// Call the SendCallback function to notify the merchant
 	if err := SendCallback(transaction.ID, callbackBody); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 		return
