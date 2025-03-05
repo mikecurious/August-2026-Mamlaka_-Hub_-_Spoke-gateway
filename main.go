@@ -5,6 +5,11 @@ import (
 	"com.mam-laka/main/merchants"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	// "github.com/swaggo/gin-swagger/swaggerFiles"
+	"github.com/swaggo/files"
+
 	"gorm.io/gorm"
 )
 
@@ -29,6 +34,9 @@ func main() {
 	// users.Create(sun.Group("/users"))
 	merchants.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))
+	// Add Swagger UI
+	url := ginSwagger.URL("http://localhost:8090/swagger/doc.json") // Update port if needed
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, url))
 	//port 8080
 	if err := router.Run(":8090"); err != nil {
 		panic(err)

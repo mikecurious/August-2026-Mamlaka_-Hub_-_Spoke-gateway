@@ -943,3 +943,4 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("links/tags", TagsHandler)
 
 }
+

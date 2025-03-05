@@ -1,0 +1,2 @@
+go install github.com/swaggo/swag/cmd/swag@latest
+hash@hash:~/Desktop/MAM/mpesa$ export PATH=$PATH:$(go env GOPATH)/bin

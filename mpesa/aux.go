@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	consumerKey       = "4lfHAgdiHnIf3c5fMaaNSKOKpdHyO5xbT38iT0suJzJg0nbw"
-	consumerSecret    = "QFgAD4B6mGCG1Hn9aCsLYhDLGn3p8RFpnoE0HNFhzcuzQxw8ccjww2C8xHue61nO"
-	businessShortCode = "4904606"
-	passKey           = "5aa7cbe3bb62309914d03219211169df449418b3b723f959e1210429b8f6e425"
+	consumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
+	consumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
+	businessShortCode = "4130455"
+	passKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
 	phoneNumber       = "254768899729" // Replace with a valid phone number
 	callbackURL       = "https://example.com/callback"
 	accountReference  = "Account123"
@@ -94,6 +94,7 @@ func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 	return tokenResponse.AccessToken, nil
 }
 
+// alias payins
 func StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 	url := "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
 	timestamp := time.Now().Format("20060102150405")
