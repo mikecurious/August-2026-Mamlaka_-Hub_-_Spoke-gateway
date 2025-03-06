@@ -91,6 +91,7 @@ type CardPaymentRequest struct {
 	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
 	ExternalID       string  `json:"externalId" binding:"required"`
 	CallbackURL      string  `json:"callbackUrl" binding:"required"`
+	RedirectURL      string  `json:"redirectUrl" binding:"required"`
 }
 
 // remove prfix
@@ -406,7 +407,7 @@ func CardPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
 		return
 	}
-	data := fmt.Sprintf("amount=%.2f&merchant=%s&callback=%s&redirect=%s&externalid=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID)
+	data := fmt.Sprintf("amount=%.2f&merchant=%s&callback=%s&redirect=%s&externalid=%s&redirectUrl=%s", req.Amount, req.ImpalaMerchantId, req.CallbackURL, secureID, req.ExternalID, req.RedirectURL)
 	fmt.Println(data)
 
 	// Encode the string in Base64
