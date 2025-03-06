@@ -91,7 +91,7 @@ type CardPaymentRequest struct {
 	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
 	ExternalID       string  `json:"externalId" binding:"required"`
 	CallbackURL      string  `json:"callbackUrl" binding:"required"`
-	RedirectURL      string  `json:"redirectUrl" binding:"required"`
+	RedirectURL      string  `json:"redirectUrl"`
 }
 
 // remove prfix
