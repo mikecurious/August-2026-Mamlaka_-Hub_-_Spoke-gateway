@@ -8,7 +8,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	// "github.com/swaggo/gin-swagger/swaggerFiles"
-	"github.com/swaggo/files"
+	swaggerFiles "github.com/swaggo/files"
 
 	"gorm.io/gorm"
 )
@@ -20,6 +20,8 @@ func Migration(database *gorm.DB) {
 
 func main() {
 	// Initialize the database connection
+	// Set Gin to release mode for production
+	gin.SetMode(gin.ReleaseMode)
 	database := database.Init()
 	Migration(database)
 
