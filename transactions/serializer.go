@@ -17,7 +17,7 @@ func (s *TransactionSerializer) Response() map[string]interface{} {
 	return map[string]interface{}{
 		// "id":               s.Transaction.ID,
 		"impalaMerchantId": s.Transaction.ImpalaMerchantID,
-		// "transaction_status":   s.Transaction.TransactionStatus,
+		"transaction_status":   s.Transaction.TransactionStatus,
 		"transaction_report": s.Transaction.TransactionReport,
 		"currency":           s.Transaction.Currency,
 		"amount":             s.Transaction.Amount,
