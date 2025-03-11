@@ -193,6 +193,19 @@ func GetMerchantPayouts(merchantId string) ([]TransactionModel, error) {
 	return transactions, nil
 }
 
+// gett transation by merchantid and secureid
+func GetTransactionByMerchantIDAndSecureID(merchantID, secureID string) (TransactionModel, error) {
+	db := database.GetConnection()
+	var transaction TransactionModel
+
+	err := db.Where("impalaMerchantId = ? AND secureId = ?", merchantID, secureID).First(&transaction).Error
+	if err != nil {
+		return transaction, err
+	}
+
+	return transaction, nil
+}
+
 // Helper function to generate a secure random string
 func GenerateSecureID() string {
 	b := make([]byte, 16) // Generate 16 random bytes

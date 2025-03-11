@@ -1189,10 +1189,28 @@ func TagsHandler(c *gin.Context) {
 
 }
 
+func GetTransactionHandler(c *gin.Context) {
+	// Extract query parameters
+	merchantID := c.Query("merchant")
+	secureID := c.Query("secureId") // Ensure the key matches the actual query parameter
+
+	// Retrieve transaction
+	transaction, err := transactions.GetTransactionByMerchantIDAndSecureID(merchantID, secureID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve transaction", "details": err.Error()})
+		return
+	}
+
+	// Serialize transaction
+	serializer := transactions.NewTransactionSerializer(c, transaction)
+	response := serializer.Response()
+
+	// Send response
+	c.JSON(http.StatusOK, gin.H{"transaction": response})
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
-	// router.POST("/check-balance", CheckBalanceHandler)
-	// router.POST("/send/usdc", SendUSDCHandler)
 	router.GET("/", LoginHandler)
 	router.POST("mobile/initiate", MobilePaymentHandler)
 	router.POST("mobile/transfer", MobileWithdrawalHandler)
@@ -1200,5 +1218,6 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("mobile/callback", MobileCallbackHandler)
 	router.POST("card/callback", CardCallbackHandler)
 	router.POST("links/tags", TagsHandler)
+	router.GET("transaction", GetTransactionHandler)
 
 }
