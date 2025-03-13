@@ -991,7 +991,7 @@ func CardCallbackHandler(c *gin.Context) {
 		Currency          string `json:"currency"`
 		Amount            string `json:"amount"`
 		NetAmount         string `json:"netAmount"`
-		SecureID          string `json:"secureId"`
+		SecureID          string `json:"redirect"`
 		ExternalID        string `json:"externalId"`
 		RedirectURL       string `json:"redirectUrl"`
 	}
