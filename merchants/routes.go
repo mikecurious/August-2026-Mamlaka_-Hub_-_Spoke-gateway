@@ -1003,21 +1003,21 @@ func CardCallbackHandler(c *gin.Context) {
 	}
 	//testing
 	// Convert struct to JSON (map representation)
-	jsonData, _ := json.Marshal(callbackBody)
+	// jsonData, _ := json.Marshal(callbackBody)
 
-	// Convert JSON to map[string]interface{}
-	var callbackMap map[string]interface{}
-	json.Unmarshal(jsonData, &callbackMap)
+	// // Convert JSON to map[string]interface{}
+	// var callbackMap map[string]interface{}
+	// json.Unmarshal(jsonData, &callbackMap)
 
-	// Print key-value pairs
-	for key, value := range callbackMap {
-		fmt.Printf("%s: %v\n", key, value)
-	}
+	// // Print key-value pairs
+	// for key, value := range callbackMap {
+	// 	fmt.Printf("%s: %v\n", key, value)
+	// }
 
 	// Extract the MerchantRequestID from the RedirectURL
-	merchantRequestID := callbackBody.SecureID
-	fmt.Println("callback data: ", callbackBody)
-	fmt.Print("merchantRequestID: ", callbackBody.SecureID)
+	merchantRequestID := callbackBody.RedirectURL
+	// fmt.Println("callback data: ", callbackBody)
+	// fmt.Print("merchantRequestID: ", callbackBody.SecureID)
 
 	db := database.GetConnection()
 
