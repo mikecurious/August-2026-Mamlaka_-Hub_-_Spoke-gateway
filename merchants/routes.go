@@ -1004,7 +1004,7 @@ func CardCallbackHandler(c *gin.Context) {
 
 	// Extract the MerchantRequestID from the RedirectURL
 	merchantRequestID := callbackBody.SecureID
-	fmt.Println("merchantRequestID", merchantRequestID)
+	fmt.Println("callback data", callbackBody)
 
 	db := database.GetConnection()
 
