@@ -1003,7 +1003,8 @@ func CardCallbackHandler(c *gin.Context) {
 	}
 
 	// Extract the MerchantRequestID from the RedirectURL
-	merchantRequestID := callbackBody.RedirectURL
+	merchantRequestID := callbackBody.SecureID
+	fmt.Println("merchantRequestID", merchantRequestID)
 
 	db := database.GetConnection()
 
@@ -1022,6 +1023,7 @@ func CardCallbackHandler(c *gin.Context) {
 	}
 
 	// Update the transaction status in the database
+	fmt.Println("Updating transaction status")
 	if err := db.Model(&transactions.TransactionModel{}).
 		Where("id = ?", transaction.ID).
 		Updates(map[string]interface{}{
