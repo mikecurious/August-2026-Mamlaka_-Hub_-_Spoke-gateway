@@ -160,7 +160,7 @@ func MobilePaymentHandler(c *gin.Context) {
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
 
 	// Replace with actual logic for initiating the M-Pesa request
-	stkResponse, errror_stk := mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, req.DisplayName)
+	stkResponse, errror_stk := mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name)
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_stk != nil {
@@ -452,6 +452,7 @@ func LoginHandler(c *gin.Context) {
 	// Make request to function to get user by username
 	user_id, err := users.GetUserByMerchantId(username)
 	fmt.Println("user id", user_id)
+	//get user details using the id
 
 	// Authenticate the user
 	if err != nil {
@@ -469,7 +470,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	// Generate a JWT token and get expiration date
-	token, expirationDate, err := auth.CreateToken(username)
+	token, expirationDate, err := auth.CreateToken(user.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
