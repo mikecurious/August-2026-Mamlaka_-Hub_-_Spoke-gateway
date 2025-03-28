@@ -82,7 +82,6 @@ func DeleteMerchantBalance(impalaMerchantID string) error {
 	return nil
 }
 
-
 // DeductKESBalance deducts the specified amount from the merchant's KES balance.
 func DeductKESBalance(impalaMerchantID string, amount float64) error {
 	db := database.GetConnection()
@@ -103,6 +102,91 @@ func DeductKESBalance(impalaMerchantID string, amount float64) error {
 	balance.KESBalance -= amount
 
 	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// ConvertBalance converts a given amount from one currency to another and updates the balances.
+func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string, amount, exchangeRate float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Get the origin currency balance
+	var originBalance *float64
+	var destinationBalance *float64
+
+	switch originCurrency {
+	case "USD":
+		originBalance = &balance.USDBalance
+	case "USDC":
+		originBalance = &balance.USDCBalance
+	case "IMPA":
+		originBalance = &balance.ImpaBalance
+	case "LUMEN":
+		originBalance = &balance.LumenBalance
+	case "USDT":
+		originBalance = &balance.USDTBalance
+	case "KES":
+		originBalance = &balance.KESBalance
+	case "EUR":
+		originBalance = &balance.EURBalance
+	case "GBP":
+		originBalance = &balance.GBPBalance
+	case "TZS":
+		originBalance = &balance.TZSBalance
+	case "UGX":
+		originBalance = &balance.UGXBalance
+	default:
+		return fmt.Errorf("invalid origin currency: %s", originCurrency)
+	}
+
+	// Get the destination currency balance
+	switch destinationCurrency {
+	case "USD":
+		destinationBalance = &balance.USDBalance
+	case "USDC":
+		destinationBalance = &balance.USDCBalance
+	case "IMPA":
+		destinationBalance = &balance.ImpaBalance
+	case "LUMEN":
+		destinationBalance = &balance.LumenBalance
+	case "USDT":
+		destinationBalance = &balance.USDTBalance
+	case "KES":
+		destinationBalance = &balance.KESBalance
+	case "EUR":
+		destinationBalance = &balance.EURBalance
+	case "GBP":
+		destinationBalance = &balance.GBPBalance
+	case "TZS":
+		destinationBalance = &balance.TZSBalance
+	case "UGX":
+		destinationBalance = &balance.UGXBalance
+	default:
+		return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
+	}
+
+	// Check if there is enough balance to convert
+	if *originBalance < amount {
+		return fmt.Errorf("insufficient balance in %s", originCurrency)
+	}
+
+	// Perform conversion
+	convertedAmount := amount * exchangeRate
+	*originBalance -= amount
+	*destinationBalance += convertedAmount
+
+	// Save the updated balance
 	err = db.Save(&balance).Error
 	if err != nil {
 		return fmt.Errorf("could not update merchant balance: %w", err)

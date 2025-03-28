@@ -18,81 +18,12 @@ import (
 	"com.mam-laka/balances"
 	"com.mam-laka/database"
 	"com.mam-laka/mpesa"
+	"com.mam-laka/pesalink"
 	"com.mam-laka/transactions"
 	"com.mam-laka/users"
 
 	"github.com/gin-gonic/gin"
 )
-
-type STKResponse struct {
-	MerchantRequestID   string `json:"MerchantRequestID"`
-	CheckoutRequestID   string `json:"CheckoutRequestID"`
-	ResponseCode        string `json:"ResponseCode"`
-	ResponseDescription string `json:"ResponseDescription"`
-	CustomerMessage     string `json:"CustomerMessage"`
-}
-
-/*
- go run main.go
-VgN8mZljJJg4ycWhVTKxeOrWEqRlResponse: {
-            "ConversationID": "AG_20250201_206051c643ca6389833f",
-            "OriginatorConversationID": "9021-4f51-8691-8604c07e13de14061111",
-            "ResponseCode":"0",
-            "ResponseDescription": "Accept the service request successfully."
-        }
-
-*/
-
-type B2BResponse struct {
-	ConversationID           string `json:"ConversationID"`
-	OriginatorConversationID string `json:"OriginatorConversationID"`
-	ResponseCode             string `json:"ResponseCode"`
-	ResponseDescription      string `json:"ResponseDescription"`
-}
-
-//WITHdrawal sample request
-
-/*
-	{
-	    "impalaMerchantId":"{{username}}",
-	    "currency":"KES",
-	    "amount":10,
-	    "recipientPhone":"254112299271",
-	    "mobileMoneySP":"M-Pesa",
-	    "externalId":"joeltest4",
-	    "callbackUrl":""
-	}
-*/
-type MobileWithdrawalRequest struct {
-	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
-	Currency         string  `json:"currency" binding:"required"`
-	Amount           float32 `json:"amount" binding:"required"`
-	RecipientPhone   string  `json:"recipientPhone" binding:"required"`
-	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string  `json:"externalId" binding:"required"`
-	CallbackURL      string  `json:"callbackUrl" binding:"required"`
-}
-
-// MobilePaymentRequest structure to bind incoming JSON request
-type MobilePaymentRequest struct {
-	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
-	Currency         string `json:"currency" binding:"required"`
-	Amount           int    `json:"amount" binding:"required"`
-	DisplayName      string `json:"displayName" binding:"required"`
-	PayerPhone       string `json:"payerPhone" binding:"required"`
-	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string `json:"externalId" binding:"required"`
-	CallbackURL      string `json:"callbackUrl" binding:"required"`
-}
-type CardPaymentRequest struct {
-	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
-	Currency         string  `json:"currency" binding:"required"`
-	Amount           float32 `json:"amount" binding:"required"`
-	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string  `json:"externalId" binding:"required"`
-	CallbackURL      string  `json:"callbackUrl" binding:"required"`
-	RedirectURL      string  `json:"redirectUrl"`
-}
 
 // remove prfix
 func RemovePlusPrefix(phone string) string {
@@ -273,7 +204,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
 
 	// Initiate payment via M-Pesa
-	b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID)
+	b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
 		return
@@ -449,6 +380,7 @@ func LoginHandler(c *gin.Context) {
 
 	username := parts[0]
 	password := parts[1]
+	merchantID := username
 	// Make request to function to get user by username
 	user_id, err := users.GetUserByMerchantId(username)
 	fmt.Println("user id", user_id)
@@ -456,7 +388,7 @@ func LoginHandler(c *gin.Context) {
 
 	// Authenticate the user
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "merchant not found"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "merchant not found 2"})
 		return
 	}
 	// Get user by user id
@@ -470,7 +402,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	// Generate a JWT token and get expiration date
-	token, expirationDate, err := auth.CreateToken(user.Name)
+	token, expirationDate, err := auth.CreateToken(user.Name, merchantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -926,65 +858,6 @@ func MobileCallbackHandler2(c *gin.Context) {
 
 	c.JSON(http.StatusOK, callbackResponse)
 }
-
-// func CardCallbackHandler(c *gin.Context) {
-// 	var callbackBody struct {
-// 		TransactionStatus string `json:"transactionStatus"`
-// 		TransactionReport string `json:"transactionReport"`
-// 		Currency          string `json:"currency"`
-// 		Amount            string `json:"amount"`
-// 		NetAmount         string `json:"netAmount"`
-// 		SecureID          string `json:"secureId"`
-// 		ExternalID        string `json:"externalId"`
-// 		RedirectURL       string `json:"redirectUrl"`
-// 	}
-
-// 	// Parse the incoming JSON request
-// 	if err := c.ShouldBindJSON(&callbackBody); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
-// 		return
-// 	}
-
-// 	// Extract the MerchantRequestID from the RedirectURL
-// 	merchantRequestID := callbackBody.RedirectURL
-
-// 	db := database.GetConnection()
-
-// 	// Retrieve the transaction by RedirectURL (MerchantRequestID)
-// 	var transaction transactions.TransactionModel
-// 	if err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error; err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
-// 		return
-// 	}
-
-// 	// Determine transaction success or failure
-// 	transactionStatus := "FAILED"
-// 	callbackStatus := "SENT"
-// 	if callbackBody.TransactionStatus == "COMPLETED" {
-// 		transactionStatus = "SUCCESS"
-// 	}
-
-// 	// Update the transaction status in the database
-// 	if err := db.Model(&transactions.TransactionModel{}).
-// 		Where("id = ?", transaction.ID).
-// 		Updates(map[string]interface{}{
-// 			"transactionStatus":   transactionStatus,
-// 			"responseDescription": callbackBody.TransactionReport,
-// 			"callbackStatus":      callbackStatus,
-// 		}).Error; err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
-// 		return
-// 	}
-
-// 	// Call the SendCallback function to send the callback response to the merchant
-// 	if err := SendCallback(transaction.ID, callbackBody); err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
-// 		return
-// 	}
-
-//		// Respond with success
-//		c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
-//	}
 func CardCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		TransactionStatus string `json:"transactionStatus"`
@@ -1194,15 +1067,6 @@ func TagsHandler(c *gin.Context) {
 		"cardLink": cardlink,
 		"secureId": secureID,
 	})
-
-	// c.JSON(http.StatusOK, gin.H{
-	// 	"message":  "card Payment  initiation successful",
-	// 	"cardLink": cardLinkResponse,
-	// 	"secureId": secureID,
-	// })
-
-	// fmt.Println(Tag.Amount)
-
 }
 
 func GetTransactionHandler(c *gin.Context) {
@@ -1225,6 +1089,321 @@ func GetTransactionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"transaction": response})
 }
 
+// handle using pasa pal ...
+func BankTransferHandler(c *gin.Context) {
+	fmt.Println(c)
+	merchantID, merchantExists := c.Get("merchantID")
+	fmt.Println("merchantID", merchantID)
+	username, userExists := c.Get("username")
+	fmt.Println("username", username)
+
+	if !merchantExists || !userExists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Missing authentication details",
+		})
+		return
+	}
+
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	var req PesalinkBankTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	// Check if the merchant ID exists
+
+	userID, err := users.GetUserByMerchantId(merchantID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Merchant not found"})
+		return
+	}
+
+	// Get user by ID
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user", "details": err.Error()})
+		return
+	}
+
+	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
+
+	// Generate secureId
+	// secureID := mpesa.GenerateSecureID()
+	dateAdded := time.Now().Unix()
+
+	// Check merchant's balance
+	balance, err := balances.GetMerchantBalance(merchantID.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+		return
+	}
+
+	// Insufficient balance check
+	// floatAmount, err := strconv.ParseFloat(req.Amount, 64)
+	// if err != nil {
+	// 	fmt.Println("Error converting string to float:", err)
+	// 	return
+	// }
+
+	if balance.KESBalance < float64(req.Amount) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient balance", "message": "Please top up your payout wallet"})
+		return
+	}
+
+	// Deduct the balance
+	err = balances.DeductKESBalance(merchantID.(string), float64(req.Amount))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deduct amount", "details": err.Error()})
+		return
+	}
+	fmt.Printf("KES Balance for Merchant %s: %.2f\n", merchantID, balance.KESBalance)
+
+	// Initiate payment via M-Pesa
+	// b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
+	requestID := pesalink.GenerateSecureID()
+	strVal := fmt.Sprintf("%.2f", req.Amount)
+	bankTransferResponse, err := pesalink.SendPesalinkPayment(strVal, req.DestinationAccount, req.DestinationBankCode, username.(string), requestID)
+	var transactionStatus string
+
+	if err != nil {
+		transactionStatus = "FAILED"
+		fmt.Println("error ", err)
+		// c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
+		// return
+	} else {
+		transactionStatus = "SUCCESS"
+
+	}
+	// Check if the transaction was successful
+	// if  == "SUCCESS" && bankTransferResponse.StatusCode == "0" {
+
+	// 	fmt.Println("Transaction Successful:", bankTransferResponse.StatusMessage)
+	// } else {
+	// 	transactionStatus = "FAILED"
+	// 	fmt.Println("Transaction Failed:", bankTransferResponse.StatusMessage)
+	// }
+	fmt.Println("Transaction Status:", transactionStatus)
+	fmt.Println("Transaction Response:", bankTransferResponse)
+
+	// Create transaction record
+	newTransaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    merchantID.(string),
+		MerchantRequestID:   requestID,
+		CheckoutRequestID:   requestID,
+		ResponseDescription: bankTransferResponse,
+		ResponseCode:        "200",
+		Currency:            "KES",
+		Amount:              int(req.Amount),
+		Msisdn:              req.DestinationAccount,
+		NetAmount:           float64(req.Amount),
+		SecureID:            requestID,
+		SourceOfFunds:       "MAM-LAKA",
+		ExternalID:          requestID,
+		CallbackURL:         "NULL",
+		DateAdded:           dateAdded,
+		TransactionReport:   "withdraw",
+		TransactionStatus:   transactionStatus,
+	}
+
+	db := database.GetConnection()
+	if err := db.Create(newTransaction).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusOK, gin.H{
+		"message":           bankTransferResponse,
+		"transactionId":     requestID,
+		"transactionStatus": transactionStatus,
+	})
+}
+
+// get merchant balances
+func GetMerchantBalanceHandler(c *gin.Context) {
+	merchantID, merchantExists := c.Get("merchantID")
+	fmt.Println("merchantID", merchantID)
+	username, userExists := c.Get("username")
+	fmt.Println("username", username)
+
+	if !merchantExists || !userExists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Missing authentication details",
+		})
+		return
+	}
+
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	// var req PesalinkBankTransferRequest
+	// if err := c.ShouldBindJSON(&req); err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+	// 	return
+	// }
+
+	// Check if the merchant ID exists
+
+	userID, err := users.GetUserByMerchantId(merchantID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Merchant not found"})
+		return
+	}
+
+	// Get user by ID
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user", "details": err.Error()})
+		return
+	}
+	fmt.Println(user)
+
+	// fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
+
+	// Generate secureId
+	// secureID := mpesa.GenerateSecureID()
+	// dateAdded := time.Now().Unix()
+
+	// Check merchant's balance
+	balance, err := balances.GetMerchantBalance(merchantID.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "success",
+		"balances": balance,
+	})
+}
+
+func ConvertMerchantBalancesHandler(c *gin.Context) {
+	merchantID, merchantExists := c.Get("merchantID")
+	fmt.Println("merchantID", merchantID)
+	username, userExists := c.Get("username")
+	fmt.Println("username", username)
+
+	if !merchantExists || !userExists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Missing authentication details",
+		})
+		return
+	}
+
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	var req ConvertBalance
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	// Check if the merchant ID exists
+
+	// userID, err := users.GetUserByMerchantId(merchantID.(string))
+	// if err != nil {
+	// 	c.JSON(http.StatusNotFound, gin.H{"error": "Merchant not found"})
+	// 	return
+	// }
+
+	// Get user by ID
+	// user, err := users.GetUserByID(uint(userID))
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user", "details": err.Error()})
+	// 	return
+	// }
+	// fmt.Println(user)
+
+	// fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
+	err1 := balances.ConvertBalance(merchantID.(string), req.OriginCurrency, req.DestinationCurrency, req.Amount, req.Amount)
+	if err1 != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert balance", "details": err.Error()})
+		return
+	}
+
+	// Generate secureId
+	// secureID := mpesa.GenerateSecureID()
+	// dateAdded := time.Now().Unix()
+
+	// Check merchant's balance
+	balance, err := balances.GetMerchantBalance(merchantID.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "balance updated successfully",
+		"balances": balance,
+	})
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
 	router.GET("/", LoginHandler)
@@ -1235,5 +1414,14 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("card/callback", CardCallbackHandler)
 	router.POST("links/tags", TagsHandler)
 	router.GET("transaction", GetTransactionHandler)
+	// add a route for bank transfers
+	//these are protected routes
+	protected := router.Group("/")
+	protected.Use(auth.AuthMiddleware())
+	protected.POST("bank/transfer", BankTransferHandler)
+	//add a protected route to get all merchant balance in differnt currency
+	protected.GET("wallet/balances", GetMerchantBalanceHandler)
+	// converts the merchant balance
+	protected.POST("wallet/convert", ConvertMerchantBalancesHandler)
 
 }

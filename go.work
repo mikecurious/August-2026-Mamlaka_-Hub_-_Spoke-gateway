@@ -10,5 +10,6 @@ use (
     ./card
     ./tags
     ./balances
+    ./pesalink
     
 )

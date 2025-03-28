@@ -54,8 +54,11 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		expirationTimestamp, ok := claims["exp"].(float64)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Expiration time not found"})
+		merchandID, merchandOk := claims["merchantID"]
+		username, usernameOk := claims["username"]
+
+		if !ok || !merchandOk || !usernameOk {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			c.Abort()
 			return
 		}
@@ -65,6 +68,8 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// Log the expiration date or include it in the response
 		c.Set("token_expiration", expirationTime)
+		c.Set("merchantID", merchandID)
+		c.Set("username", username)
 
 		// Proceed to the next middleware/handler
 		c.Next()

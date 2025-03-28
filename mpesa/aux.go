@@ -228,7 +228,7 @@ func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) 
 	return token, nil
 }
 
-func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string) (*B2BResponse, error) {
+func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier string) (*B2BResponse, error) {
 	// Sanitize phone number
 	consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
 	consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
@@ -240,10 +240,11 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 	re := regexp.MustCompile(`\D`)
 	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
+	fmt.Println("identifier", identifier)
 
 	// B2C Request parameters
 	b2cRequest := B2CRequest{
-		OriginatorConversationID: externalID,
+		OriginatorConversationID: identifier,
 		InitiatorName:            "b2cInit",
 		SecurityCredential:       password,
 		CommandID:                "PromotionPayment",

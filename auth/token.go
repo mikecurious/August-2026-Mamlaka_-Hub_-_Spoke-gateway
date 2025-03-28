@@ -10,13 +10,14 @@ import (
 var secretKey = []byte("secret-key")
 
 // CreateToken generates the JWT token and the expiration date
-func CreateToken(username string) (string, string, error) {
+func CreateToken(username, merchantID string) (string, string, error) {
 	// Define expiration time
 	expirationTime := time.Now().Add(time.Hour * 24) // 24 hours from now
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		jwt.MapClaims{
-			"username": username,
-			"exp":      expirationTime.Unix(),
+			"username":   username,
+			"merchantID": merchantID,
+			"exp":        expirationTime.Unix(),
 		})
 
 	tokenString, err := token.SignedString(secretKey)
