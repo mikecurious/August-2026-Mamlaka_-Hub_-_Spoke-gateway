@@ -13,8 +13,9 @@ import (
 // SendCallback now accepts the callbackBody.Body type directly
 func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 1: Retrieve the transaction by ID
-	log.Println("Getting transaction by id")
+	log.Println("Getting transaction by id", transactionID)
 	transaction, err := transactions.GetTransactionByID(transactionID)
+	fmt.Println(transaction)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve transaction: %v", err)
 	}
@@ -40,7 +41,7 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 
 	// Step 5: Send the raw response body to the CallbackURL
 	//send
-	log.Println("send  raw response body to the CallbackURL")
+	log.Println("send  raw response body to the CallbackURL", transaction.CallbackURL)
 	resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
 	if err != nil {
 		return fmt.Errorf("failed to send callback: %v", err)

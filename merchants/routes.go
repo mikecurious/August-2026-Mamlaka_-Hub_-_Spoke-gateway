@@ -1,7 +1,9 @@
 package merchants
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -354,6 +356,248 @@ func CardPaymentHandler(c *gin.Context) {
 		"secureId": secureID,
 	})
 
+}
+
+// card paymnet crypto Payment Handler
+func UsdcPaymentHandler(c *gin.Context) {
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader { // Token not prefixed with "Bearer "
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	var req CardPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// Verify the merchant ID exists (or perform any business logic)
+	fmt.Println(req.ImpalaMerchantId)
+	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+	fmt.Println(userID)
+
+	// Get user by ID (you can use this data for logging or processing)
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
+	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
+
+	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
+	// This is just an example response.
+	//call the initiate payment method
+	//StkPush(phoneNumber string, amount int, callbackURL, accountReference string
+
+	// Generate secureId and other dynamic fields
+	secureIDBytes := make([]byte, 5) // 5 bytes = 10 hex characters
+	if _, err := rand.Read(secureIDBytes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to generate secure ID",
+			"details": err.Error(),
+		})
+		return
+	}
+	secureID := hex.EncodeToString(secureIDBytes) // e.g., "a7f9c23b1d"
+
+	dateAdded := time.Now().Unix()
+
+	// Replace with actual logic for initiating the M-Pesa request
+	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
+	// cardLinkResponse, card_errror := card.GenerateCardPaymentLink(req.Currency, float64(req.Amount), req.ExternalID, req.CallbackURL, secureID)
+	// // StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+
+	// if card_errror != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+	// 	return
+	// }
+	cardResponse := "Card payment"
+	cardResponseCode := "200"
+	fmt.Println("callback", req.CallbackURL)
+	// Create the transaction record in the database
+	newTransaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    req.ImpalaMerchantId,
+		MerchantRequestID:   secureID,
+		CheckoutRequestID:   secureID,
+		ResponseDescription: cardResponse,
+		ResponseCode:        cardResponseCode,
+		Currency:            req.Currency,
+		Amount:              int(req.Amount),
+		Msisdn:              "Null",
+		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
+		SecureID:            secureID,
+		SourceOfFunds:       "CRYPTO",
+		ExternalID:          req.ExternalID,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           dateAdded,
+		TransactionReport:   "collection",
+		TransactionStatus:   "PENDING", // Set an initial status
+	}
+
+	db := database.GetConnection()
+	if err := db.Create(newTransaction).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
+		return
+	}
+	memo := fmt.Sprintf("MHS-%s-%s", req.ImpalaMerchantId, secureID)
+	// fmt.Println(data)
+
+	// Encode the string in Base64
+	// encoded := base64.StdEncoding.EncodeToString([]byte(data))
+
+	// Print the Base64 encoded string
+	// fmt.Println("Base64 Encoded Data:", encoded)
+	// cardlink := "https://commetagri.mam-laka.com/uba.php?data=" + encoded
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "success",
+		"Memo":     memo,
+		"address":  "GACPWTGCILSIZNCQABZLU5LIXUVQMIYMIY7JY3CIBMRHXSQQM5UTXEBX",
+		"secureId": secureID,
+	})
+}
+
+// usdt payment handler
+func UsdtPaymentHandler(c *gin.Context) {
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader { // Token not prefixed with "Bearer "
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the mobile payment request
+	var req CardPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// Verify the merchant ID exists (or perform any business logic)
+	fmt.Println(req.ImpalaMerchantId)
+	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+	fmt.Println(userID)
+
+	// Get user by ID (you can use this data for logging or processing)
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
+	fmt.Printf("Payment initiated for user: %s with amount: %.2f\n", user.Name, req.Amount)
+
+	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
+	// This is just an example response.
+	//call the initiate payment method
+	//StkPush(phoneNumber string, amount int, callbackURL, accountReference string
+
+	// Generate secureId and other dynamic fields
+	secureIDBytes := make([]byte, 5) // 5 bytes = 10 hex characters
+	if _, err := rand.Read(secureIDBytes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to generate secure ID",
+			"details": err.Error(),
+		})
+		return
+	}
+	secureID := hex.EncodeToString(secureIDBytes) // e.g., "a7f9c23b1d"
+
+	dateAdded := time.Now().Unix()
+
+	// Replace with actual logic for initiating the M-Pesa request
+	// stkResponse, errror_stk := mpesa.StkPush(req.PayerPhone, req.Amount, req.CallbackURL, req.DisplayName)
+	// cardLinkResponse, card_errror := card.GenerateCardPaymentLink(req.Currency, float64(req.Amount), req.ExternalID, req.CallbackURL, secureID)
+	// // StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+
+	// if card_errror != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": "test"})
+	// 	return
+	// }
+	cardResponse := "Card payment"
+	cardResponseCode := "200"
+	fmt.Println("callback", req.CallbackURL)
+	// Create the transaction record in the database
+	newTransaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    req.ImpalaMerchantId,
+		MerchantRequestID:   secureID,
+		CheckoutRequestID:   secureID,
+		ResponseDescription: cardResponse,
+		ResponseCode:        cardResponseCode,
+		Currency:            "USDT",
+		Amount:              int(req.Amount),
+		Msisdn:              "Null",
+		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
+		SecureID:            secureID,
+		SourceOfFunds:       "CRYPTO",
+		ExternalID:          req.ExternalID,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           dateAdded,
+		TransactionReport:   "collection",
+		TransactionStatus:   "PENDING", // Set an initial status
+	}
+
+	db := database.GetConnection()
+	if err := db.Create(newTransaction).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transaction", "details": err.Error()})
+		return
+	}
+	memo := fmt.Sprintf("MHS-%s-%s", req.ImpalaMerchantId, secureID)
+	// fmt.Println(data)
+
+	// Encode the string in Base64
+	// encoded := base64.StdEncoding.EncodeToString([]byte(data))
+
+	// Print the Base64 encoded string
+	// fmt.Println("Base64 Encoded Data:", encoded)
+	// cardlink := "https://commetagri.mam-laka.com/uba.php?data=" + encoded
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "success",
+		"Memo":     memo,
+		"address":  "GACPWTGCILSIZNCQABZLU5LIXUVQMIYMIY7JY3CIBMRHXSQQM5UTXEBX",
+		"secureId": secureID,
+	})
 }
 
 func LoginHandler(c *gin.Context) {
@@ -758,8 +1002,8 @@ func MobileCallbackHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown callback type"})
 		return
 	}
-
 }
+
 func MobileCallbackHandler2(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
@@ -858,6 +1102,7 @@ func MobileCallbackHandler2(c *gin.Context) {
 
 	c.JSON(http.StatusOK, callbackResponse)
 }
+
 func CardCallbackHandler(c *gin.Context) {
 	var callbackBody struct {
 		TransactionStatus string `json:"transactionStatus"`
@@ -898,6 +1143,144 @@ func CardCallbackHandler(c *gin.Context) {
 	// Retrieve the transaction by RedirectURL (MerchantRequestID)
 	var transaction transactions.TransactionModel
 	if err := db.Where("merchantRequestID = ?", merchantRequestID).First(&transaction).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	// Determine transaction success or failure
+	transactionStatus := "FAILED"
+	callbackStatus := "SENT"
+	if callbackBody.TransactionStatus == "COMPLETED" {
+		transactionStatus = "SUCCESS"
+	}
+
+	// Update the transaction status in the database
+	fmt.Println("Updating transaction status")
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", transaction.ID).
+		Updates(map[string]interface{}{
+			"transactionStatus":   transactionStatus,
+			"responseDescription": callbackBody.TransactionReport,
+			"callbackStatus":      callbackStatus,
+		}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+		return
+	}
+
+	// If the transaction was successful, update the merchant's balance
+	if callbackBody.TransactionStatus == "COMPLETED" {
+		log.Println("Transaction successful. Updating merchant balance for:", transaction.ImpalaMerchantID)
+
+		// Retrieve the merchant's balance
+		var balance balances.MerchantBalance
+		if err := db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&balance).Error; err != nil {
+			log.Println("Error retrieving merchant balance:", err)
+			c.JSON(http.StatusNotFound, gin.H{"error": "Merchant balance not found", "details": err.Error()})
+			return
+		}
+		log.Printf("Current balance retrieved: %+v\n", balance)
+
+		// Convert the amount to a float
+		amount, err := strconv.ParseFloat(callbackBody.NetAmount, 64)
+		if err != nil {
+			log.Println("Invalid amount format:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid amount format", "details": err.Error()})
+			return
+		}
+		log.Println("Transaction amount:", amount, "Currency:", callbackBody.Currency)
+
+		// Update the correct currency balance
+		updateData := make(map[string]interface{})
+		switch callbackBody.Currency {
+		case "KES":
+			updateData["kesBalance"] = balance.KESBalance + amount
+		case "USD":
+			updateData["usdBalance"] = balance.USDBalance + amount
+		case "USDC":
+			updateData["usdcBalance"] = balance.USDCBalance + amount
+		case "IMPA":
+			updateData["impaBalance"] = balance.ImpaBalance + amount
+		case "LUMEN":
+			updateData["lumenBalance"] = balance.LumenBalance + amount
+		case "USDT":
+			updateData["usdtBalance"] = balance.USDTBalance + amount
+		case "EUR":
+			updateData["eurBalance"] = balance.EURBalance + amount
+		case "GBP":
+			updateData["gbpBalance"] = balance.GBPBalance + amount
+		case "TZS":
+			updateData["tzsBalance"] = balance.TZSBalance + amount
+		case "UGX":
+			updateData["ugxBalance"] = balance.UGXBalance + amount
+		default:
+			log.Println("Unsupported currency:", callbackBody.Currency)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported currency"})
+			return
+		}
+		log.Printf("Updated balance data: %+v\n", updateData)
+
+		// Update the merchant's balance in the database
+		if err := db.Model(&balances.MerchantBalance{}).
+			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+			Updates(updateData).Error; err != nil {
+			log.Println("Failed to update merchant balance:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
+			return
+		}
+
+		log.Println("Merchant balance successfully updated for:", transaction.ImpalaMerchantID)
+	}
+
+	// Call the SendCallback function to notify the merchant
+	if err := SendCallback(transaction.ID, callbackBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
+		return
+	}
+
+	// Respond with success
+	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
+}
+
+func CryptoCallbackHandler(c *gin.Context) {
+	var callbackBody struct {
+		TransactionStatus string `json:"transactionStatus"`
+		TransactionReport string `json:"transactionReport"`
+		Currency          string `json:"currency"`
+		Amount            string `json:"amount"`
+		NetAmount         string `json:"netAmount"`
+		SecureID          string `json:"secureId"`
+		ExternalID        string `json:"externalId"`
+		RedirectURL       string `json:"redirectUrl"`
+	}
+
+	// Parse the incoming JSON request
+	if err := c.ShouldBindJSON(&callbackBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
+		return
+	}
+	//testing
+	//Convert struct to JSON (map representation)
+	jsonData, _ := json.Marshal(callbackBody)
+
+	// Convert JSON to map[string]interface{}
+	var callbackMap map[string]interface{}
+	json.Unmarshal(jsonData, &callbackMap)
+
+	// Print key-value pairs
+	for key, value := range callbackMap {
+		fmt.Printf("%s: %v\n", key, value)
+	}
+
+	// Extract the MerchantRequestID from the RedirectURL
+	merchantRequestID := callbackBody.SecureID
+	// fmt.Println("callback data: ", callbackBody)
+	fmt.Print("merchantRequestID: ", callbackBody.SecureID)
+
+	db := database.GetConnection()
+
+	// Retrieve the transaction by RedirectURL (MerchantRequestID)
+	var transaction transactions.TransactionModel
+	if err := db.Where("secureId = ?", merchantRequestID).First(&transaction).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
 		return
 	}
@@ -1192,7 +1575,6 @@ func BankTransferHandler(c *gin.Context) {
 		transactionStatus = "FAILED"
 		fmt.Println("error ", err)
 		// c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
-		// return
 	} else {
 		transactionStatus = "SUCCESS"
 
@@ -1410,8 +1792,10 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("mobile/initiate", MobilePaymentHandler)
 	router.POST("mobile/transfer", MobileWithdrawalHandler)
 	router.POST("card/initiate", CardPaymentHandler)
+	router.POST("usdc/initiate", UsdcPaymentHandler)
 	router.POST("mobile/callback", MobileCallbackHandler)
 	router.POST("card/callback", CardCallbackHandler)
+	router.POST("usdc/callback", CryptoCallbackHandler)
 	router.POST("links/tags", TagsHandler)
 	router.GET("transaction", GetTransactionHandler)
 	// add a route for bank transfers
