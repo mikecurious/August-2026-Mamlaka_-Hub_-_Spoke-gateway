@@ -663,6 +663,7 @@ func LoginHandler(c *gin.Context) {
 // MobileCallbackHandler processes M-Pesa callback responses
 // MobileCallbackHandler processes M-Pesa callback responses
 func MobileCallbackHandler(c *gin.Context) {
+
 	log.Println("inside a callback level 1")
 
 	// Read the raw request body
@@ -693,7 +694,7 @@ func MobileCallbackHandler(c *gin.Context) {
 	// }
 
 	stkCallback, ok := body["stkCallback"].(map[string]interface{})
-	if ok {
+	if ok { //stk push
 		// c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid STK callback: missing stkCallback"})
 		// return
 		// Extract fields from STK callback
@@ -740,6 +741,7 @@ func MobileCallbackHandler(c *gin.Context) {
 
 		// Process the ResultCode to determine transaction success or failure
 		if resultCode == 0 { // Success
+			fmt.Println("hello colls...")
 			// Extract metadata
 			metadata := make(map[string]interface{})
 			if callbackMetadata != nil {
@@ -786,6 +788,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
 			}
+			//call the crypto functon
+			sendTokenTransfer(strconv.Itoa(transaction.Amount), "GBR7COBB5T5WPEYI7PN2XXLIYC2VUE22VIF4BHRKA3TPLUSZS6TQY7BE")
 
 			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
 		} else { // Failure or Canceled
@@ -837,6 +841,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 
 			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to FAILED"})
+
 		}
 	} else { //hanlde pull request
 		fmt.Println("this is a pull request ")
@@ -955,6 +960,8 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
 			}
+			//call the crypto functon
+			DeductTokenTransfer(strconv.Itoa(transaction.Amount), "GBR7COBB5T5WPEYI7PN2XXLIYC2VUE22VIF4BHRKA3TPLUSZS6TQY7BE")
 
 			c.JSON(http.StatusOK, gin.H{"message": "Withdrawal callback processed and status updated to SENT"})
 		} else { // Failure
@@ -1002,6 +1009,8 @@ func MobileCallbackHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown callback type"})
 		return
 	}
+	//call the token function here
+
 }
 
 func MobileCallbackHandler2(c *gin.Context) {

@@ -2,15 +2,15 @@
 {
   "Body": {
     "stkCallback": {
-      "MerchantRequestID": "6b16-43f4-a9f6-8e81ad29eeab7100721",
-      "CheckoutRequestID": "ws_CO_21012025132712034768899729",
+      "MerchantRequestID": "1ffd-4ee6-9234-a4d58128599b6289508",
+      "CheckoutRequestID": "ws_CO_28042025024120912768899729",
       "ResultCode": 0,
       "ResultDesc": "The service request is processed successfully.",
       "CallbackMetadata": {
         "Item": [
           {
             "Name": "Amount",
-            "Value": 1.00
+            "Value": 10.00
           },
           {
             "Name": "MpesaReceiptNumber",
