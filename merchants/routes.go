@@ -1248,6 +1248,11 @@ func CardCallbackHandler(c *gin.Context) {
 
 	// Respond with success
 	c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
+	// initiate the token transfre based  on status
+	if callbackBody.TransactionStatus == "COMPLETED" {
+		sendTokenTransfer(strconv.Itoa(transaction.Amount), "GBR7COBB5T5WPEYI7PN2XXLIYC2VUE22VIF4BHRKA3TPLUSZS6TQY7BE")
+
+	}
 }
 
 func CryptoCallbackHandler(c *gin.Context) {
