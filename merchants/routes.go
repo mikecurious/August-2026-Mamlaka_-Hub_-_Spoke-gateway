@@ -1457,7 +1457,7 @@ func TagsHandler(c *gin.Context) {
 
 	// Print the Base64 encoded string
 	fmt.Println("Base64 Encoded Data:", encoded)
-	cardlink := "https://commetagri.mam-laka.com/uba.php?data=" + encoded
+	cardlink := "https://collect.commetagri.com/uba.php?data=" + encoded
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "card Payment  initiation successful",
