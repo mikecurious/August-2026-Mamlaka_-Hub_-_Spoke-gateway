@@ -348,7 +348,9 @@ func CardPaymentHandler(c *gin.Context) {
 
 	// Print the Base64 encoded string
 	fmt.Println("Base64 Encoded Data:", encoded)
+	fmt.Println("merchant id ", req.ImpalaMerchantId)
 	var cardlink string
+
 	if req.ImpalaMerchantId == "Tallytours" { //kcb mid
 		cardlink = "https://v1.mam-laka.com/log.php?data=" + encoded
 
