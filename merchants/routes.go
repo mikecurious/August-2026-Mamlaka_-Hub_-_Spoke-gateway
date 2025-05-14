@@ -348,7 +348,13 @@ func CardPaymentHandler(c *gin.Context) {
 
 	// Print the Base64 encoded string
 	fmt.Println("Base64 Encoded Data:", encoded)
-	cardlink := "https://collect.commetagri.com/uba.php?data=" + encoded
+	var cardlink string
+	if req.ImpalaMerchantId == "Tallytours" { //kcb mid
+		cardlink = "https://v1.mam-laka.com/log.php?data=" + encoded
+
+	} else { //uba mid
+		cardlink = "https://collect.commetagri.com/uba.php?data=" + encoded
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "card Payment  initiation successful",
