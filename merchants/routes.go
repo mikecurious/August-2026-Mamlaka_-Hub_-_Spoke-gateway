@@ -751,6 +751,7 @@ func MobileCallbackHandler(c *gin.Context) {
 		// Process the ResultCode to determine transaction success or failure
 		if resultCode == 0 { // Success
 			// Extract metadata
+			fmt.Println("inside success")
 			metadata := make(map[string]interface{})
 			if callbackMetadata != nil {
 				items, ok := callbackMetadata["Item"].([]interface{})
