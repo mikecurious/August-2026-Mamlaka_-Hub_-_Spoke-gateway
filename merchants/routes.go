@@ -785,6 +785,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			// }
 
 			// 3. Update merchant collection balance
+			fmt.Println("Updating collection balance ...")
 			if err := db.Model(&balances.MerchantCollectionBalance{}).
 				Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
 				Update("kesBalance", gorm.Expr("kesBalance + ?", transaction.Amount)).Error; err != nil {
@@ -792,6 +793,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
 				return
 			}
+			fmt.Println("finished .. collection balance ...")
 
 			// Process the callback response to match your required format
 			callbackResponse := map[string]interface{}{
