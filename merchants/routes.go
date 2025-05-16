@@ -23,6 +23,7 @@ import (
 	"com.mam-laka/pesalink"
 	"com.mam-laka/transactions"
 	"com.mam-laka/users"
+	"gorm.io/gorm"
 
 	"github.com/gin-gonic/gin"
 )
@@ -749,7 +750,6 @@ func MobileCallbackHandler(c *gin.Context) {
 
 		// Process the ResultCode to determine transaction success or failure
 		if resultCode == 0 { // Success
-			fmt.Println("hello colls...")
 			// Extract metadata
 			metadata := make(map[string]interface{})
 			if callbackMetadata != nil {
@@ -766,8 +766,6 @@ func MobileCallbackHandler(c *gin.Context) {
 				}
 			}
 
-			log.Println("set up model")
-
 			// Update the transaction status to SUCCESS
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
@@ -776,6 +774,22 @@ func MobileCallbackHandler(c *gin.Context) {
 					"callbackStatus":    "SENT",
 				}).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+				return
+			}
+			//update them amounts
+			// // 2. Retrieve the updated transaction to get impalaMerchantId and amount
+			// var updatedTx transactions.TransactionModel
+			// if err := db.First(&updatedTx, transaction.ID).Error; err != nil {
+			// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch updated transaction", "details": err.Error()})
+			// 	return
+			// }
+
+			// 3. Update merchant collection balance
+			if err := db.Model(&balances.MerchantCollectionBalance{}).
+				Where("impala_merchant_id = ?", transaction.ImpalaMerchantID).
+				Update("kesBalance", gorm.Expr("kesBalance + ?", transaction.Amount)).Error; err != nil {
+				fmt.Println("error updating the balance")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
 				return
 			}
 
