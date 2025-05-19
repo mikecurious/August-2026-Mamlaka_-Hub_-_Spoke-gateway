@@ -354,7 +354,7 @@ func CardPaymentHandler(c *gin.Context) {
 	var cardlink string
 
 	if req.ImpalaMerchantId == "Tallytours" || req.ImpalaMerchantId == "plugin" { //kcb mid
-		cardlink = "https://v1.mam-laka.com/mpgs.php?data=" + encoded
+		cardlink = "https://process.mam-laka.com/mpgs.php?data=" + encoded
 
 	} else { //uba mid
 		cardlink = "https://collect.commetagri.com/uba.php?data=" + encoded
@@ -1870,6 +1870,7 @@ func GetTotalPayinBalanceHandler(c *gin.Context) {
 	// Extract merchant ID and base currency from query parameters
 	// baseCurrency, baseCurrencyExists := c.Get("baseCurrency")
 	merchantID, merchantExists := c.Get("merchantID")
+	fmt.Println("merchant id: ", merchantID)
 
 	if !merchantExists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
