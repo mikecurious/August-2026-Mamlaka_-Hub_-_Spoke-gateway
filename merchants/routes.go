@@ -24,6 +24,7 @@ import (
 	"com.mam-laka/transactions"
 	"com.mam-laka/users"
 	"gorm.io/gorm"
+	"mam-laka.com/merchant/drawings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -352,7 +353,7 @@ func CardPaymentHandler(c *gin.Context) {
 	fmt.Println("merchant id ", req.ImpalaMerchantId)
 	var cardlink string
 
-	if req.ImpalaMerchantId == "Tallytours" { //kcb mid
+	if req.ImpalaMerchantId == "Tallytours" || req.ImpalaMerchantId == "plugin" { //kcb mid
 		cardlink = "https://v1.mam-laka.com/mpgs.php?data=" + encoded
 
 	} else { //uba mid
@@ -656,6 +657,7 @@ func LoginHandler(c *gin.Context) {
 
 	// Generate a JWT token and get expiration date
 	token, expirationDate, err := auth.CreateToken(user.Name, merchantID)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -1482,7 +1484,7 @@ func TagsHandler(c *gin.Context) {
 
 	// Print the Base64 encoded string
 	var cardlink string
-	if Tag.Tag == "Tallytours" { //kcb mid
+	if Tag.Tag == "Tallytours" || Tag.Tag == "plugin" { //kcb mid
 		cardlink = "https://process.mam-laka.com/mpgs.php?data=" + encoded
 
 	} else { //uba mid
@@ -1678,7 +1680,7 @@ func GetMerchantBalanceHandler(c *gin.Context) {
 	if !merchantExists || !userExists {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"status":  "error",
-			"message": "Missing authentication details",
+			"message": "Missing authentication details 2",
 		})
 		return
 	}
@@ -1830,6 +1832,72 @@ func ConvertMerchantBalancesHandler(c *gin.Context) {
 	})
 }
 
+// balance routes
+// get balance from base currency
+func GetTotalBalanceHandler(c *gin.Context) {
+	// Extract merchant ID and base currency from query parameters
+	// baseCurrency, baseCurrencyExists := c.Get("baseCurrency")
+	merchantID, merchantExists := c.Get("merchantID")
+
+	if !merchantExists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+
+	// Validate input
+	// if merchantID == "" || baseCurrency == "" {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required parameters"})
+	// 	return
+	// }
+
+	// Retrieve the total balance
+	totalBalance, err := balances.GetTotalBalance(merchantID.(string), "KES")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve balance", "details": err.Error()})
+		return
+	}
+
+	// Return response
+	c.JSON(http.StatusOK, gin.H{
+		"merchantId":   merchantID,
+		"baseCurrency": "KES",
+		"Balances":     totalBalance,
+	})
+}
+
+// get payout balance
+func GetTotalPayinBalanceHandler(c *gin.Context) {
+	// Extract merchant ID and base currency from query parameters
+	// baseCurrency, baseCurrencyExists := c.Get("baseCurrency")
+	merchantID, merchantExists := c.Get("merchantID")
+
+	if !merchantExists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+
+	// Validate input
+	// if merchantID == "" || baseCurrency == "" {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required parameters"})
+	// 	return
+	// }
+	fmt.Println("merchantID", merchantID)
+
+	// Retrieve the total balance
+	totalBalance, err := balances.GetTotalCollectionBalance(merchantID.(string), "KES")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve balance", "details": err.Error()})
+		return
+	}
+
+	// Return response
+	c.JSON(http.StatusOK, gin.H{
+		"merchantId":   merchantID,
+		"baseCurrency": "KES",
+		"Balances":     totalBalance,
+	})
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
 	router.GET("/", LoginHandler)
@@ -1851,5 +1919,11 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.GET("wallet/balances", GetMerchantBalanceHandler)
 	// converts the merchant balance
 	protected.POST("wallet/convert", ConvertMerchantBalancesHandler)
+	//balances api
+	//
+	protected.GET("/read/payouts/balance", GetTotalBalanceHandler)
+	protected.GET("/read/payins/balance", GetTotalPayinBalanceHandler) // get payin balance
+	// drawings.V1(mercury.Group("/drawings"))
+	protected.POST("/wallet/transfer/toPayout", drawings.WalletTransferHandler)
 
 }

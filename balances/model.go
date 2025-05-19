@@ -40,6 +40,89 @@ func GetMerchantBalance(impalaMerchantID string) (MerchantBalance, error) {
 	return balance, nil
 }
 
+func (ForexRate) TableName() string {
+	return "forex_rates"
+}
+
+type ForexRate struct {
+	CurrencyCode   string  `gorm:"column:currencyCode" json:"currencyCode"`
+	ConversionRate float64 `gorm:"column:conversionRate" json:"conversionRate"`
+}
+
+func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interface{}, error) {
+	db := database.GetConnection()
+
+	// Retrieve merchant balances
+	fmt.Println("Merchant ID:", merchantId)
+	// var balance MerchantCollectionBalance
+	var balance MerchantBalance
+	if err := db.Where("impalaMerchantId = ?", merchantId).First(&balance).Error; err != nil {
+		return nil, err
+	}
+
+	// Fetch conversion rates from DB
+	var forexRates []ForexRate
+	if err := db.Find(&forexRates).Error; err != nil {
+		return nil, err
+	}
+
+	// Map conversion rates (assumed: currencyCode -> units per USD)
+	forexMap := make(map[string]float64)
+	for _, rate := range forexRates {
+		forexMap[rate.CurrencyCode] = rate.ConversionRate
+	}
+
+	// Ensure base currency conversion rate exists
+	baseRate, exists := forexMap[baseCurrency]
+	if !exists {
+		return nil, fmt.Errorf("missing conversion rate for base currency: %s", baseCurrency)
+	}
+
+	// Map of all currency balances
+	balances := map[string]float64{
+		"USD":  balance.USDBalance,
+		"USDC": balance.USDCBalance,
+		"IMPA": balance.ImpaBalance,
+		"XLM":  balance.LumenBalance,
+		"USDT": balance.USDTBalance,
+		"KES":  balance.KESBalance,
+		"EUR":  balance.EURBalance,
+		"GBP":  balance.GBPBalance,
+		"TZS":  balance.TZSBalance,
+		"UGX":  balance.UGXBalance,
+	}
+
+	// Calculate total balance converted to base currency
+	totalBalance := 0.0
+	for currency, amount := range balances {
+		rate, ok := forexMap[currency]
+		if !ok {
+			return nil, fmt.Errorf("missing conversion rate for currency: %s", currency)
+		}
+		converted := (amount / rate) * baseRate
+		totalBalance += converted
+	}
+
+	// Response structure
+	response := map[string]interface{}{
+		"usdBalance":   balance.USDBalance,
+		"usdcBalance":  balance.USDCBalance,
+		"impaBalance":  balance.ImpaBalance,
+		"lumenBalance": balance.LumenBalance,
+		"usdtBalance":  balance.USDTBalance,
+		"kesBalance":   balance.KESBalance,
+		"eurBalance":   balance.EURBalance,
+		"gbpBalance":   balance.GBPBalance,
+		"tzsBalance":   balance.TZSBalance,
+		"ugxBalance":   balance.UGXBalance,
+		"totalBalance": totalBalance,
+		"baseCurrency": baseCurrency,
+		"merchantId":   balance.ImpalaMerchantID,
+	}
+
+	return response, nil
+}
+
 // SaveBalance creates or updates the merchant's balance record.
 func SaveBalance(balance *MerchantBalance) error {
 	db := database.GetConnection()

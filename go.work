@@ -11,5 +11,6 @@ use (
     ./tags
     ./balances
     ./pesalink
+    ./drawings
     
 )
