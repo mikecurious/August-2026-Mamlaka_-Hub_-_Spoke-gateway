@@ -1483,7 +1483,7 @@ func TagsHandler(c *gin.Context) {
 	// Print the Base64 encoded string
 	var cardlink string
 	if Tag.Tag == "Tallytours" { //kcb mid
-		cardlink = "https://v1.mam-laka.com/mpgs.php?data=" + encoded
+		cardlink = "https://process.mam-laka.com/mpgs.php?data=" + encoded
 
 	} else { //uba mid
 		cardlink = "https://collect.commetagri.com/uba.php?data=" + encoded
