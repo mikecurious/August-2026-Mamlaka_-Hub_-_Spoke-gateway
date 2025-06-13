@@ -237,6 +237,13 @@ func UpdateVirtualCardFromCallback(callbackData map[string]string) (VirtualCardM
 		return card, fmt.Errorf("failed to send callback: %v", err)
 	}
 	defer resp.Body.Close()
+	// send it to the original callback as well
+	_, err2 := http.Post("https://kcb-buni.mam-laka.com/api/callback/card/", "application/json", bytes.NewBuffer(jsonData))
+	if err2 != nil {
+		return card, fmt.Errorf("failed to send callback: %v", err)
+	}
+	defer resp.Body.Close()
+	// the rest 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
