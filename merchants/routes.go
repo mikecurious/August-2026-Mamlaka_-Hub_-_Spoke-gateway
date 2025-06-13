@@ -2331,7 +2331,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/vc/create/holder", CreateCardHolderHandler)
 	protected.GET("/vc/list/holders", GetCardHoldersHandler)
 	protected.POST("/vc/create/virtual-card", CreateCardHandler)
-	protected.POST("/vc/callback/card-status", GetVirtualCardByIDCardCallbackHandler)
+	router.POST("/vc/callback/card-status", GetVirtualCardByIDCardCallbackHandler)
 	protected.GET("/vc/list/virtual-cards", ListVirtualCardsByMerchant) // List virtual cards by merchant
 	protected.POST("/vc/card/info", RetrieveCardInfoHandler)
 	protected.POST("/vc/card/balance", GetCardBalance)
