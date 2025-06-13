@@ -12,5 +12,6 @@ use (
     ./balances
     ./pesalink
     ./drawings
+    ./virtualcards
     
 )

@@ -85,3 +85,18 @@ type ConvertBalance struct {
 	Amount              float64 `json:"amount" binding:"required"`
 	ExchangeRate        float64 `json:"exchangeRate" binding:"required"`
 }
+
+// virtual card handler
+type CreateCardHolderRequest struct {
+	CardTypeID int    `json:"cardTypeId" binding:"required"`
+	AreaCode   string `json:"areaCode" binding:"required"`
+	Mobile     string `json:"mobile" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	FirstName  string `json:"firstName" binding:"required"`
+	LastName   string `json:"lastName" binding:"required"`
+	BirthDay   string `json:"birthDay" binding:"required"`
+	Country    string `json:"country" binding:"required"`
+	Town       string `json:"town" binding:"required"`
+	Address    string `json:"address" binding:"required"`
+	PostCode   string `json:"postCode" binding:"required"`
+}

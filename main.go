@@ -6,7 +6,6 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-
 	"gorm.io/gorm"
 )
 
@@ -18,7 +17,7 @@ func Migration(database *gorm.DB) {
 func main() {
 	// Initialize the database connection
 	// Set Gin to release mode for production
-	gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.DebugMode) // Change to gin.ReleaseMode for production
 	database := database.Init()
 	Migration(database)
 

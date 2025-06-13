@@ -23,6 +23,7 @@ import (
 	"com.mam-laka/pesalink"
 	"com.mam-laka/transactions"
 	"com.mam-laka/users"
+	virtualcards "com.mam-laka/virtulcards"
 	"gorm.io/gorm"
 	"mam-laka.com/merchant/drawings"
 
@@ -1899,8 +1900,405 @@ func GetTotalPayinBalanceHandler(c *gin.Context) {
 	})
 }
 
+// card routes
+
+// CreateCardHolder creates a new card holder
+func CreateCardHolderHandler(c *gin.Context) {
+	merchantID, merchantExists := c.Get("merchantID")
+	if !merchantExists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+
+	var req virtualcards.CreateHolderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	req.MerchantOrderNo = fmt.Sprintf("HOLDER-%s-%d", merchantID, time.Now().Unix())
+
+	// Call the simple request function
+	resp, err := virtualcards.SimpleCreateCardHolder("https://kcb-buni.mam-laka.com", req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "API request failed", "details": err.Error()})
+		return
+	}
+
+	// Check nested response for failure
+	if resp == nil || !resp.Data.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success":  false,
+			"message":  "Failed to create card holder",
+			"api_msg":  resp.Data.Msg,
+			"api_code": resp.Data.Code,
+		})
+		return
+	}
+
+	// Save to DB (example structure, adjust as needed)
+	holderData := resp.Data.Data
+	dbHolder := virtualcards.CardHolderModel{
+		MerchantOrderNo: holderData.MerchantOrderNo,
+		HolderID:        fmt.Sprintf("%d", holderData.HolderID),
+		CardTypeID:      strconv.Itoa(req.CardTypeID),
+		AreaCode:        req.AreaCode,
+		Mobile:          req.Mobile,
+		Email:           req.Email,
+		FirstName:       req.FirstName,
+		LastName:        req.LastName,
+		BirthDay:        req.BirthDay,
+		Country:         req.Country,
+		Town:            req.Town,
+		Address:         req.Address,
+		PostCode:        req.PostCode,
+		Status:          holderData.Status,
+		StatusStr:       holderData.StatusStr,
+		Message:         holderData.Message,
+		UserID:          404, // Placeholder
+		MerchantID:      merchantID.(string),
+	}
+
+	savedHolder, err := virtualcards.CreateCardHolderWithUser(404, dbHolder)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save holder"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    savedHolder,
+	})
+}
+
+// get all card holders
+// GetCardHoldersHandler handles fetching card holders for the authenticated merchant
+func GetCardHoldersHandler(c *gin.Context) {
+	// Retrieve merchant ID from context (set by authentication middleware)
+	merchantID, exists := c.Get("merchantID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: merchant ID not found in token"})
+		return
+	}
+
+	// Convert merchantID to uint if needed
+	// merchantIDUint, ok := merchantID.(uint)
+	// if !ok {
+	// 	// In case merchantID is a string and needs conversion
+	// 	if strID, ok := merchantID.(string); ok {
+	// 		parsedID, err := strconv.ParseUint(strID, 10, 64)
+	// 		if err != nil {
+	// 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchant ID format"})
+	// 			return
+	// 		}
+	// 		merchantIDUint = uint(parsedID)
+	// 	} else {
+	// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unable to interpret merchant ID"})
+	// 		return
+	// 	}
+	// }
+
+	// Fetch card holders for this merchant
+	merchantIDStr, ok := merchantID.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchant ID format"})
+		return
+	}
+	holders, err := virtualcards.GetCardHoldersByMerchantID(merchantIDStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve card holders", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": holders})
+}
+
+// create a virtual card
+// CreateCardHandler creates a new virtual card and stores it in the DB
+func CreateCardHandler(c *gin.Context) {
+	var req virtualcards.CreateCardRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	// userID := c.GetUint("user_id")
+	merchantID, _ := c.Get("merchantID")
+
+	// Optional: Validate card holder belongs to this merchant
+	holder, err := virtualcards.GetCardHolderByHolderID(req.HolderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Card holder not found"})
+		return
+	}
+	if holder.MerchantID != merchantID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied to holder"})
+		return
+	}
+
+	// Call external API to create card
+	baseURL := "https://kcb-buni.mam-laka.com"
+	apiResp, err := virtualcards.CallCreateCard(baseURL, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create card",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if !apiResp.Data.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": apiResp.Data.Msg,
+			"code":    apiResp.Data.Code,
+		})
+		return
+	}
+
+	// Take the first card response in the data array
+	if len(apiResp.Data.Data) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "API response missing card data"})
+		return
+	}
+	card := apiResp.Data.Data[0]
+
+	// Build DB record
+	dbCard := virtualcards.VirtualCardModel{
+		OrderNo:          card.OrderNo,
+		MerchantOrderNo:  card.MerchantOrderNo,
+		CardTypeID:       req.CardTypeID,
+		HolderID:         req.HolderID,
+		CardNo:           card.OrderNo, // Placeholder
+		Currency:         card.Currency,
+		Amount:           card.Amount,
+		Fee:              card.Fee,
+		ReceivedAmount:   card.ReceivedAmount,
+		ReceivedCurrency: card.ReceivedCurrency,
+		Type:             card.Type,
+		Status:           card.Status,
+		TransactionTime:  card.TransactionTime,
+		Balance:          10,
+		UserID:           404,
+		CardHolderID:     holder.ID,
+		MerchantID:       merchantID.(string),
+		CallbackURL:      req.CallbackUrl,
+		CallbackStatus:   "PENDING",
+	}
+
+	// Save card
+	savedCard, err := virtualcards.CreateVirtualCardWithTransaction(404, dbCard)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save card to database", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Virtual card created successfully",
+		"data":    savedCard,
+	})
+}
+
+// get virtual card by merchant id
+func ListVirtualCardsByMerchant(c *gin.Context) {
+	merchantID, exists := c.Get("merchantID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: merchant ID not found in token"})
+		return
+	}
+
+	// if err != nil {
+	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	// 	return
+	// }
+
+	merchantIDStr, ok := merchantID.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchant ID format"})
+		return
+	}
+	cards, err := virtualcards.GetVirtualCardsByMerchantID(merchantIDStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve cards", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    cards,
+	})
+}
+
+// card callback handler
+func GetVirtualCardByIDCardCallbackHandler(c *gin.Context) {
+	var callback map[string]string
+	if err := c.ShouldBindJSON(&callback); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "details": err.Error()})
+		return
+	}
+
+	card, err := virtualcards.UpdateVirtualCardFromCallback(callback)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update card", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Card updated successfully",
+		"data":    card,
+	})
+}
+
+// get the card details handler
+func RetrieveCardInfoHandler(c *gin.Context) {
+	var req virtualcards.CardInfoRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	// userID := c.GetUint("user_id")
+	merchantID, merchantExists := c.Get("merchantID")
+	if !merchantExists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+	fmt.Println("merchantID", merchantID)
+
+	// Optional: Validate card holder belongs to this merchant
+
+	// Call external API to create card
+	baseURL := "https://kcb-buni.mam-laka.com"
+	apiResp, err := virtualcards.CallGetCardInfo(baseURL, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create card",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if !apiResp.Data.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": apiResp.Data.Msg,
+			"code":    apiResp.Data.Code,
+		})
+		return
+	}
+
+	// Take the first card response in the data array
+	// if len(apiResp.Data.Data) == 0 {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "API response missing card data"})
+	// 	return
+	// }
+	// card := apiResp.Data.Data[0]
+
+	// // Build DB record
+	// dbCard := virtualcards.VirtualCardModel{
+	// 	OrderNo:          card.OrderNo,
+	// 	MerchantOrderNo:  card.MerchantOrderNo,
+	// 	CardTypeID:       req.CardTypeID,
+	// 	HolderID:         req.HolderID,
+	// 	CardNo:           card.OrderNo, // Placeholder
+	// 	Currency:         card.Currency,
+	// 	Amount:           card.Amount,
+	// 	Fee:              card.Fee,
+	// 	ReceivedAmount:   card.ReceivedAmount,
+	// 	ReceivedCurrency: card.ReceivedCurrency,
+	// 	Type:             card.Type,
+	// 	Status:           card.Status,
+	// 	TransactionTime:  card.TransactionTime,
+	// 	Balance:          10,
+	// 	UserID:           404,
+	// 	CardHolderID:     holder.ID,
+	// 	MerchantID:       merchantID.(string),
+	// 	CallbackURL:      req.CallbackUrl,
+	// 	CallbackStatus:   "PENDING",
+	// }
+
+	// // Save card
+	// savedCard, err := virtualcards.CreateVirtualCardWithTransaction(404, dbCard)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save card to database", "details": err.Error()})
+	// 	return
+	// }
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Virtual card Retrieved successfully",
+		"data":    apiResp.Data.Data,
+	})
+}
+
+// get card balance
+func GetCardBalance(c *gin.Context) {
+	var req virtualcards.CardBalanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.CardNo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cardNo is required"})
+		return
+	}
+
+	baseURL := "https://kcb-buni.mam-laka.com"
+	apiResp, err := virtualcards.CallCardBalanceAPI(baseURL, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve card balance", "details": err.Error()})
+		return
+	}
+
+	// check if nested "data.success" is false
+	if !apiResp.Data.Success {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": apiResp.Data.Msg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"balance": apiResp.Data.Data,
+	})
+}
+
+// recharge api
+func RechargeCardHandler(c *gin.Context) {
+	var req virtualcards.CardRechargeRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.CardNo == "" || req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cardNo and valid amount are required"})
+		return
+	}
+
+	baseURL := "https://kcb-buni.mam-laka.com"
+	apiResp, err := virtualcards.CallCardRechargeAPI(baseURL, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to recharge card", "details": err.Error()})
+		return
+	}
+
+	if !apiResp.Data.Success {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": apiResp.Data.Msg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    apiResp.Data.Data,
+	})
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
+
 	router.GET("/", LoginHandler)
 	router.POST("mobile/initiate", MobilePaymentHandler)
 	router.POST("mobile/transfer", MobileWithdrawalHandler)
@@ -1926,5 +2324,18 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.GET("/read/payins/balance", GetTotalPayinBalanceHandler) // get payin balance
 	// drawings.V1(mercury.Group("/drawings"))
 	protected.POST("/wallet/transfer/toPayout", drawings.WalletTransferHandler)
+	// virtualcard endpoins
+
+	// migrate the virtual careds
+	virtualcards.AutoMigrate()
+	protected.POST("/vc/create/holder", CreateCardHolderHandler)
+	protected.GET("/vc/list/holders", GetCardHoldersHandler)
+	protected.POST("/vc/create/virtual-card", CreateCardHandler)
+	protected.POST("/vc/callback/card-status", GetVirtualCardByIDCardCallbackHandler)
+	protected.GET("/vc/list/virtual-cards", ListVirtualCardsByMerchant) // List virtual cards by merchant
+	protected.POST("/vc/card/info", RetrieveCardInfoHandler)
+	protected.POST("/vc/card/balance", GetCardBalance)
+	// virtual card generation
+	protected.POST("/vc/card/recharge", RechargeCardHandler)
 
 }
