@@ -237,7 +237,7 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	token, _ := generateB2BAccessToken(consumer_key, consumer_secret)
 	fmt.Print(token)
 	// timestamp := time.Now().Format("20060102150405")
-	businessShortCode := "3039805****"
+	businessShortCode := "3039805"
 	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 	re := regexp.MustCompile(`\D`)
 	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
