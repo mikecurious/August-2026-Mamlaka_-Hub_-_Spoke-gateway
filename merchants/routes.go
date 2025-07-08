@@ -22,6 +22,7 @@ import (
 	"com.mam-laka/mpesa"
 	"com.mam-laka/pesalink"
 	"com.mam-laka/transactions"
+	"com.mam-laka/uganda"
 	"com.mam-laka/users"
 	virtualcards "com.mam-laka/virtulcards"
 	"gorm.io/gorm"
@@ -193,60 +194,181 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
 		return
 	}
+	// print
+	fmt.Println("currency", req.Currency)
 
-	// Insufficient balance check
-	if balance.KESBalance < float64(req.Amount) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient balance", "message": "Please top up your payout wallet"})
-		return
+	//check the currenvy from the request
+	if req.Currency == "KES" {
+
+		// Insufficient balance check
+		if balance.KESBalance < float64(req.Amount) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient balance", "message": "Please top up your payout wallet"})
+			return
+		}
+
+		// Deduct the balance
+		err = balances.DeductKESBalance(req.ImpalaMerchantId, float64(req.Amount))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deduct amount", "details": err.Error()})
+			return
+		}
+		fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
+
+		// Initiate payment via M-Pesa
+		b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
+			return
+		}
+
+		// Create transaction record
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   b2bResponse.OriginatorConversationID,
+			CheckoutRequestID:   b2bResponse.ConversationID,
+			ResponseDescription: b2bResponse.ResponseDescription,
+			ResponseCode:        b2bResponse.ResponseCode,
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            secureID,
+			SourceOfFunds:       req.MobileMoneySP,
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   "withdraw",
+			TransactionStatus:   "PENDING",
+		}
+
+		db := database.GetConnection()
+		if err := db.Create(newTransaction).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
+			return
+		}
+
+		// Success response
+		c.JSON(http.StatusOK, gin.H{
+			"message":       "Payment initiation successful",
+			"transactionId": req.ExternalID,
+			"secureId":      secureID,
+		})
+	} else if req.Currency == "UGX" {
+		ugxBalance := balance.UGXBalance
+
+		if ugxBalance < float64(req.Amount) {
+			c.JSON(http.StatusOK, gin.H{
+				"error":   "INSUFFICIENT_BALANCE",
+				"message": fmt.Sprintf("Insufficient balance. Available: %.2f UGX", ugxBalance),
+			})
+			return
+		}
+
+		// Deduct balance before attempting payment
+		err = balances.DeductUGXBalance(req.ImpalaMerchantId, float64(req.Amount))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "BALANCE_DEDUCTION_FAILED",
+				"message": "Failed to deduct amount from balance",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		fmt.Printf("UGX Balance deducted for Merchant %s: %.2f\n", req.ImpalaMerchantId, float64(req.Amount))
+
+		// Initiate payment via reize remit
+		status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
+		fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
+
+		// Determine transaction status and prepare response
+		var transactionStatus, responseStatus, responseMessage string
+		var responseCode int
+
+		if err == nil {
+			transactionStatus = "SUCCESS"
+			responseStatus = "SUCCESS"
+			responseMessage = "Payment completed successfully"
+			responseCode = http.StatusOK
+		} else {
+			transactionStatus = "FAILED"
+			responseStatus = "FAILED"
+			responseMessage = "Payment initiation failed"
+			responseCode = http.StatusOK
+
+			// Refund the balance since payment failed
+			if refundErr := balances.AddUGXBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
+				log.Printf("Failed to refund balance for merchant %s: %v", req.ImpalaMerchantId, refundErr)
+			}
+		}
+
+		// Create transaction record (for both success and failure)
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   secureID,
+			CheckoutRequestID:   secureID,
+			ResponseDescription: fmt.Sprintf("UGX withdrawal - %s", transactionStatus),
+			ResponseCode:        message,
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            secureID,
+			SourceOfFunds:       req.MobileMoneySP,
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   "withdraw",
+			TransactionStatus:   transactionStatus,
+		}
+
+		// Save transaction to database
+		db := database.GetConnection()
+		if dbErr := db.Create(newTransaction).Error; dbErr != nil {
+			log.Printf("Failed to save transaction: %v", dbErr)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "DATABASE_ERROR",
+				"message": "Failed to record transaction",
+				"details": dbErr.Error(),
+			})
+			return
+		}
+
+		// Get the transaction ID from the saved record
+		transactionID := newTransaction.ID
+
+		// Send API response
+		c.JSON(responseCode, gin.H{
+			"status":        responseStatus,
+			"message":       responseMessage,
+			"externalId":    req.ExternalID,
+			"secureId":      secureID,
+		})
+
+		// Prepare callback response
+		callbackStatus := "FAILED"
+		if transactionStatus == "SUCCESS" {
+			callbackStatus = "COMPLETE"
+		}
+
+		callbackResponse := map[string]interface{}{
+			"transactionStatus": callbackStatus,
+			"transactionReport": callbackStatus,
+			"currency":          req.Currency, // Use actual currency from request
+			"amount":            req.Amount,
+			"netAmount":         req.Amount,
+			"secureId":          secureID,
+			"externalId":        req.ExternalID,
+		}
+
+		log.Printf("Sending callback response: %+v", callbackResponse)
+
+		// Send callback to merchant
+		if callbackErr := SendCallback(transactionID, callbackResponse); callbackErr != nil {
+			log.Printf("Failed to send callback for transaction %d: %v", transactionID, callbackErr)
+			// Don't return error to client since the main transaction processing is complete
+		}
 	}
-
-	// Deduct the balance
-	err = balances.DeductKESBalance(req.ImpalaMerchantId, float64(req.Amount))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deduct amount", "details": err.Error()})
-		return
-	}
-	fmt.Printf("KES Balance for Merchant %s: %.2f\n", req.ImpalaMerchantId, balance.KESBalance)
-
-	// Initiate payment via M-Pesa
-	b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
-		return
-	}
-
-	// Create transaction record
-	newTransaction := &transactions.TransactionModel{
-		ImpalaMerchantID:    req.ImpalaMerchantId,
-		MerchantRequestID:   b2bResponse.OriginatorConversationID,
-		CheckoutRequestID:   b2bResponse.ConversationID,
-		ResponseDescription: b2bResponse.ResponseDescription,
-		ResponseCode:        b2bResponse.ResponseCode,
-		Currency:            req.Currency,
-		Amount:              int(req.Amount),
-		Msisdn:              req.RecipientPhone,
-		NetAmount:           float64(req.Amount),
-		SecureID:            secureID,
-		SourceOfFunds:       req.MobileMoneySP,
-		ExternalID:          req.ExternalID,
-		CallbackURL:         req.CallbackURL,
-		DateAdded:           dateAdded,
-		TransactionReport:   "withdraw",
-		TransactionStatus:   "PENDING",
-	}
-
-	db := database.GetConnection()
-	if err := db.Create(newTransaction).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
-		return
-	}
-
-	// Success response
-	c.JSON(http.StatusOK, gin.H{
-		"message":       "Payment initiation successful",
-		"transactionId": req.ExternalID,
-		"secureId":      secureID,
-	})
 }
 
 // card paymnet hander

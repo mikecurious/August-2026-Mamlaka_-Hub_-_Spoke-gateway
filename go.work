@@ -13,5 +13,6 @@ use (
     ./pesalink
     ./drawings
     ./virtualcards
+    ./uganda
     
 )

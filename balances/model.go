@@ -2,6 +2,7 @@ package balances
 
 import (
 	"fmt"
+	"time"
 
 	"com.mam-laka/database"
 )
@@ -29,6 +30,15 @@ func (MerchantBalance) TableName() string {
 	return "merchant_balances"
 }
 
+type ForexRate struct {
+	CurrencyCode   string  `gorm:"column:currencyCode" json:"currencyCode"`
+	ConversionRate float64 `gorm:"column:conversionRate" json:"conversionRate"`
+}
+
+func (ForexRate) TableName() string {
+	return "forex_rates"
+}
+
 // GetMerchantBalance retrieves a merchant's balance by their ImpalaMerchantID.
 func GetMerchantBalance(impalaMerchantID string) (MerchantBalance, error) {
 	db := database.GetConnection()
@@ -40,21 +50,11 @@ func GetMerchantBalance(impalaMerchantID string) (MerchantBalance, error) {
 	return balance, nil
 }
 
-func (ForexRate) TableName() string {
-	return "forex_rates"
-}
-
-type ForexRate struct {
-	CurrencyCode   string  `gorm:"column:currencyCode" json:"currencyCode"`
-	ConversionRate float64 `gorm:"column:conversionRate" json:"conversionRate"`
-}
-
 func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interface{}, error) {
 	db := database.GetConnection()
 
 	// Retrieve merchant balances
 	fmt.Println("Merchant ID:", merchantId)
-	// var balance MerchantCollectionBalance
 	var balance MerchantBalance
 	if err := db.Where("impalaMerchantId = ?", merchantId).First(&balance).Error; err != nil {
 		return nil, err
@@ -126,6 +126,9 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 // SaveBalance creates or updates the merchant's balance record.
 func SaveBalance(balance *MerchantBalance) error {
 	db := database.GetConnection()
+	// Update the last updated timestamp
+	balance.LastUpdated = time.Now().Unix()
+
 	// Checking if the balance already exists and updating or inserting accordingly
 	err := db.Save(balance).Error
 	if err != nil {
@@ -148,6 +151,9 @@ func GetAllMerchantBalances() ([]MerchantBalance, error) {
 // UpdateBalance updates a merchant's balance by their ID.
 func UpdateBalance(id uint, updatedData map[string]interface{}) error {
 	db := database.GetConnection()
+	// Add timestamp to the update data
+	updatedData["lastUpdated"] = time.Now().Unix()
+
 	err := db.Model(&MerchantBalance{}).Where("id = ?", id).Updates(updatedData).Error
 	if err != nil {
 		return fmt.Errorf("could not update merchant balance: %w", err)
@@ -178,11 +184,215 @@ func DeductKESBalance(impalaMerchantID string, amount float64) error {
 
 	// Check if the merchant has sufficient balance
 	if balance.KESBalance < amount {
-		return fmt.Errorf("insufficient KES balance")
+		return fmt.Errorf("insufficient KES balance: available %.2f, required %.2f", balance.KESBalance, amount)
 	}
 
 	// Deduct the amount
 	balance.KESBalance -= amount
+	balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// AddKESBalance adds the specified amount to the merchant's KES balance (refund function).
+func AddKESBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Add the amount
+	balance.KESBalance += amount
+	balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// DeductUGXBalance deducts the specified amount from the merchant's UGX balance.
+func DeductUGXBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Check if the merchant has sufficient balance
+	if balance.UGXBalance < amount {
+		return fmt.Errorf("insufficient UGX balance: available %.2f, required %.2f", balance.UGXBalance, amount)
+	}
+
+	// Deduct the amount
+	balance.UGXBalance -= amount
+	balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// AddUGXBalance adds the specified amount to the merchant's UGX balance (refund function).
+func AddUGXBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Add the amount
+	balance.UGXBalance += amount
+	balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// Generic function to add balance for any currency (refund function)
+func AddBalance(impalaMerchantID string, currency string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Add the amount to the appropriate currency balance
+	switch currency {
+	case "USD":
+		balance.USDBalance += amount
+	case "USDC":
+		balance.USDCBalance += amount
+	case "IMPA":
+		balance.ImpaBalance += amount
+	case "XLM", "LUMEN":
+		balance.LumenBalance += amount
+	case "USDT":
+		balance.USDTBalance += amount
+	case "KES":
+		balance.KESBalance += amount
+	case "EUR":
+		balance.EURBalance += amount
+	case "GBP":
+		balance.GBPBalance += amount
+	case "TZS":
+		balance.TZSBalance += amount
+	case "UGX":
+		balance.UGXBalance += amount
+	default:
+		return fmt.Errorf("unsupported currency: %s", currency)
+	}
+
+	balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// Generic function to deduct balance for any currency
+func DeductBalance(impalaMerchantID string, currency string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Check sufficient balance and deduct from the appropriate currency
+	switch currency {
+	case "USD":
+		if balance.USDBalance < amount {
+			return fmt.Errorf("insufficient USD balance: available %.2f, required %.2f", balance.USDBalance, amount)
+		}
+		balance.USDBalance -= amount
+	case "USDC":
+		if balance.USDCBalance < amount {
+			return fmt.Errorf("insufficient USDC balance: available %.7f, required %.7f", balance.USDCBalance, amount)
+		}
+		balance.USDCBalance -= amount
+	case "IMPA":
+		if balance.ImpaBalance < amount {
+			return fmt.Errorf("insufficient IMPA balance: available %.7f, required %.7f", balance.ImpaBalance, amount)
+		}
+		balance.ImpaBalance -= amount
+	case "XLM", "LUMEN":
+		if balance.LumenBalance < amount {
+			return fmt.Errorf("insufficient XLM balance: available %.7f, required %.7f", balance.LumenBalance, amount)
+		}
+		balance.LumenBalance -= amount
+	case "USDT":
+		if balance.USDTBalance < amount {
+			return fmt.Errorf("insufficient USDT balance: available %.2f, required %.2f", balance.USDTBalance, amount)
+		}
+		balance.USDTBalance -= amount
+	case "KES":
+		if balance.KESBalance < amount {
+			return fmt.Errorf("insufficient KES balance: available %.2f, required %.2f", balance.KESBalance, amount)
+		}
+		balance.KESBalance -= amount
+	case "EUR":
+		if balance.EURBalance < amount {
+			return fmt.Errorf("insufficient EUR balance: available %.2f, required %.2f", balance.EURBalance, amount)
+		}
+		balance.EURBalance -= amount
+	case "GBP":
+		if balance.GBPBalance < amount {
+			return fmt.Errorf("insufficient GBP balance: available %.2f, required %.2f", balance.GBPBalance, amount)
+		}
+		balance.GBPBalance -= amount
+	case "TZS":
+		if balance.TZSBalance < amount {
+			return fmt.Errorf("insufficient TZS balance: available %.2f, required %.2f", balance.TZSBalance, amount)
+		}
+		balance.TZSBalance -= amount
+	case "UGX":
+		if balance.UGXBalance < amount {
+			return fmt.Errorf("insufficient UGX balance: available %.2f, required %.2f", balance.UGXBalance, amount)
+		}
+		balance.UGXBalance -= amount
+	default:
+		return fmt.Errorf("unsupported currency: %s", currency)
+	}
+
+	balance.LastUpdated = time.Now().Unix()
 
 	// Update the balance in the database
 	err = db.Save(&balance).Error
@@ -215,7 +425,7 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		originBalance = &balance.USDCBalance
 	case "IMPA":
 		originBalance = &balance.ImpaBalance
-	case "LUMEN":
+	case "LUMEN", "XLM":
 		originBalance = &balance.LumenBalance
 	case "USDT":
 		originBalance = &balance.USDTBalance
@@ -241,7 +451,7 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		destinationBalance = &balance.USDCBalance
 	case "IMPA":
 		destinationBalance = &balance.ImpaBalance
-	case "LUMEN":
+	case "LUMEN", "XLM":
 		destinationBalance = &balance.LumenBalance
 	case "USDT":
 		destinationBalance = &balance.USDTBalance
@@ -261,13 +471,16 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 
 	// Check if there is enough balance to convert
 	if *originBalance < amount {
-		return fmt.Errorf("insufficient balance in %s", originCurrency)
+		return fmt.Errorf("insufficient balance in %s: available %.2f, required %.2f", originCurrency, *originBalance, amount)
 	}
 
 	// Perform conversion
 	convertedAmount := amount * exchangeRate
 	*originBalance -= amount
 	*destinationBalance += convertedAmount
+
+	// Update timestamp
+	balance.LastUpdated = time.Now().Unix()
 
 	// Save the updated balance
 	err = db.Save(&balance).Error
