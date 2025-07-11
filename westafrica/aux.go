@@ -61,7 +61,7 @@ func NewAirtimeClient() *AirtimeClient {
 	return &AirtimeClient{
 		BaseURL: "https://proxy-coreapi.pixelinnov.net",
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 10 * time.Second,
 		},
 	}
 }
