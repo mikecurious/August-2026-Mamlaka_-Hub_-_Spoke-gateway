@@ -25,11 +25,13 @@ type MerchantCollectionBalance struct {
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
-
-
 // TableName overrides the default table name.
 func (MerchantCollectionBalance) TableName() string {
 	return "merchant_collection_balance"
+}
+func AutoMigrate() {
+	db := database.GetConnection()
+	db.AutoMigrate(&MerchantCollectionBalance{})
 }
 
 func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[string]interface{}, error) {

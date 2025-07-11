@@ -56,3 +56,12 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 
 	return nil
 }
+
+func IsInList(value int, list []int) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}

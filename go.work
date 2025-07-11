@@ -14,5 +14,6 @@ use (
     ./drawings
     ./virtualcards
     ./uganda
+    ./westafrica
     
 )

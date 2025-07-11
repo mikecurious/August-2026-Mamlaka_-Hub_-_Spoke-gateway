@@ -1,6 +1,7 @@
 package merchants
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -25,11 +26,312 @@ import (
 	"com.mam-laka/uganda"
 	"com.mam-laka/users"
 	virtualcards "com.mam-laka/virtulcards"
+	"com.mam-laka/westafrica"
 	"gorm.io/gorm"
 	"mam-laka.com/merchant/drawings"
 
 	"github.com/gin-gonic/gin"
 )
+
+// west africa
+
+// AirtimeCallbackRequest represents the incoming callback payload
+type AirtimeCallbackRequest struct {
+	TransactionID           string  `json:"transaction_id"`
+	Amount                  int     `json:"amount"`
+	Benefice                int     `json:"benefice"`
+	Commission              int     `json:"comission"`
+	Destination             string  `json:"destination"`
+	Fee                     int     `json:"fee"`
+	Response                string  `json:"response"`
+	Error                   *string `json:"error"`
+	ServiceID               int     `json:"service_id"`
+	CustomerName            string  `json:"customer_name"`
+	State                   string  `json:"state"`
+	CustomData              string  `json:"custom_data"`
+	IPNUrl                  string  `json:"ipn_url"`
+	TransactionChannel      string  `json:"transaction_channel"`
+	ProviderID              string  `json:"provider_id"`
+	SMSLink                 int     `json:"sms_link"`
+	CreatedAt               string  `json:"created_at"`
+	UpdatedAt               string  `json:"updated_at"`
+	IPNState                int     `json:"ipn_state"`
+	WAmountAfterTransaction string  `json:"w_amount_after_transaction"`
+	PLastWalletAmount       int     `json:"p_last_wallet_amount"`
+	PNewWalletAmount        int     `json:"p_new_wallet_amount"`
+	PID                     int     `json:"p_id"`
+	Hash                    string  `json:"hash"`
+	Currency                string  `json:"currency"`
+}
+
+// CallbackResponse represents the response sent back to merchant
+type CallbackResponse struct {
+	TransactionStatus string      `json:"transactionStatus"`
+	TransactionReport string      `json:"transactionReport"`
+	Currency          string      `json:"currency"`
+	Amount            interface{} `json:"amount"`
+	NetAmount         interface{} `json:"netAmount"`
+	SecureID          string      `json:"secureId"`
+	ExternalID        string      `json:"externalId"`
+}
+
+// TransactionType represents the type of transaction
+type TransactionType string
+
+const (
+	TransactionTypePayin  TransactionType = "DEPOSIT"
+	TransactionTypePayout TransactionType = "WITHDRAW"
+)
+
+// WestAfricaCallbackHandler handles airtime transaction callbacks
+func WestAfricaCallbackHandler(c *gin.Context) {
+	log.Println("📞 Received West Africa callback")
+
+	// Parse the callback request
+	var callbackReq AirtimeCallbackRequest
+	if err := c.ShouldBindJSON(&callbackReq); err != nil {
+		log.Printf(" Failed to parse callback request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": err.Error()})
+		return
+	}
+
+	// Log the callback details
+	log.Printf("🔍 Processing callback for transaction: %s", callbackReq.TransactionID)
+	log.Printf("📊 State: %s, Amount: %d, Destination: %s", callbackReq.State, callbackReq.Amount, callbackReq.Destination)
+
+	// Get database connection
+	db := database.GetConnection()
+	if db == nil {
+		log.Println(" Failed to get database connection")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection failed"})
+		return
+	}
+
+	// Retrieve the transaction by external transaction ID
+	transaction, err := getTransactionByExternalID(db, callbackReq.TransactionID)
+	if err != nil {
+		log.Printf(" Transaction not found: %s, Error: %v", callbackReq.TransactionID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	log.Printf("🔍 Found transaction: ID=%d, Type=%s, Amount=%d", transaction.ID, transaction.TransactionReport, transaction.Amount)
+	fmt.Println("STATE", callbackReq.State)
+	// Process based on transaction state
+	switch strings.ToUpper(callbackReq.State) {
+	case "SUCCESSFUL":
+		if err := processSuccessfulTransaction(db, transaction, &callbackReq); err != nil {
+			log.Printf(" Failed to process successful transaction: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process successful transaction", "details": err.Error()})
+			return
+		}
+		log.Println(" Successfully processed SUCCESSFUL transaction")
+		c.JSON(http.StatusOK, gin.H{"message": "Callback processed successfully - SUCCESSFUL"})
+
+	case "FAILED":
+		if err := processFailedTransaction(db, transaction, &callbackReq); err != nil {
+			log.Printf(" Failed to process failed transaction: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process failed transaction", "details": err.Error()})
+			return
+		}
+		log.Println(" Successfully processed FAILED transaction")
+		c.JSON(http.StatusOK, gin.H{"message": "Callback processed successfully - FAILED"})
+
+	default:
+		log.Printf("⚠️  Unknown transaction state: %s", callbackReq.State)
+		c.JSON(http.StatusOK, gin.H{"message": "Callback received but state not processed", "state": callbackReq.State})
+	}
+}
+
+// processSuccessfulTransaction handles successful transactions
+func processSuccessfulTransaction(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest) error {
+	log.Printf(" Processing successful transaction: %s", callback.TransactionID)
+
+	// Update transaction status
+	updates := map[string]interface{}{
+		"transactionStatus": "SUCCESSFUL",
+		"callbackStatus":    "SENT",
+	}
+
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", transaction.ID).
+		Updates(updates).Error; err != nil {
+		return fmt.Errorf("failed to update transaction status: %w", err)
+	}
+
+	// Handle balance updates based on transaction type
+	if err := handleBalanceUpdates(db, transaction, callback, true); err != nil {
+		return fmt.Errorf("failed to handle balance updates: %w", err)
+	}
+
+	// Send callback to merchant
+	callbackResponse := buildCallbackResponse(transaction, callback, "COMPLETED")
+	if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+		log.Printf("⚠️  Failed to send callback to merchant: %v", err)
+		// Don't fail the transaction if callback fails
+	}
+
+	// Send token transfer for successful transactions
+	// if callback.Amount > 0 {
+	// 	go sendTokenTransfer(strconv.Itoa(callback.Amount), "GBR7COBB5T5WPEYI7PN2XXLIYC2VUE22VIF4BHRKA3TPLUSZS6TQY7BE")
+	// }
+
+	log.Printf(" Successfully processed successful transaction: %s", callback.TransactionID)
+	return nil
+}
+
+// processFailedTransaction handles failed transactions
+func processFailedTransaction(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest) error {
+	log.Printf(" Processing failed transaction: %s", callback.TransactionID)
+
+	// errorMsg := "FAILED"
+	// if callback.Error != nil && *callback.Error != "" {
+	// 	errorMsg = *callback.Error
+	// }
+
+	// Update transaction status
+	updates := map[string]interface{}{
+		"transactionStatus": "FAILED",
+		"callbackStatus":    "SENT",
+	}
+
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", transaction.ID).
+		Updates(updates).Error; err != nil {
+		return fmt.Errorf("failed to update transaction status: %w", err)
+	}
+
+	// Handle balance updates for failed transactions (usually reversals)
+	if err := handleBalanceUpdates(db, transaction, callback, false); err != nil {
+		return fmt.Errorf("failed to handle balance updates: %w", err)
+	}
+
+	// Send callback to merchant
+	callbackResponse := buildCallbackResponse(transaction, callback, "FAILED")
+	// callbackResponse.ErrorMessage = errorMsg
+	if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+		log.Printf("⚠️  Failed to send callback to merchant: %v", err)
+		// Don't fail the transaction if callback fails
+	}
+
+	log.Printf(" Successfully processed failed transaction: %s", callback.TransactionID)
+	return nil
+}
+
+// handleBalanceUpdates handles balance updates based on transaction type and success status
+func handleBalanceUpdates(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, isSuccessful bool) error {
+	transactionType := TransactionType(strings.ToUpper(transaction.TransactionReport))
+
+	log.Printf("Handling balance updates - Type: %s, Successful: %v, Amount: %d", transactionType, isSuccessful, callback.Amount)
+
+	fmt.Println("Transaction Type", transactionType)
+	switch transactionType {
+	case TransactionTypePayin:
+		return handlePayinBalanceUpdate(db, transaction, callback, isSuccessful)
+	case TransactionTypePayout:
+		return handlePayoutBalanceUpdate(db, transaction, callback, isSuccessful)
+	default:
+		log.Printf("⚠️  Unknown transaction type: %s", transaction.TransactionReport)
+		return nil
+	}
+}
+
+// handlePayinBalanceUpdate handles balance updates for payin transactions
+func handlePayinBalanceUpdate(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, isSuccessful bool) error {
+	// if !isSuccessful {
+	// 	log.Println("Skipping payin balance update for failed transaction")
+	// 	return nil
+	// }
+
+	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, Amount: %d",
+		transaction.ImpalaMerchantID, callback.Benefice)
+
+	// For successful payin, add the benefice (amount after fees/commission) to merchant balance
+
+	if err := balances.AddXOFBalance(transaction.ImpalaMerchantID, transaction.NetAmount); err != nil {
+		return fmt.Errorf("failed to update merchant collection balance: %w", err)
+	}
+
+	log.Printf(" Successfully updated merchant collection balance")
+	return nil
+}
+
+// handlePayoutBalanceUpdate handles balance updates for payout transactions
+func handlePayoutBalanceUpdate(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, isSuccessful bool) error {
+	fmt.Println("In payout____________")
+
+	if isSuccessful {
+		log.Println("Payout successful - balance already deducted during initiation")
+		return nil
+	}
+
+	log.Printf("Reversing payout balance for failed transaction - MerchantID: %s, Amount: %d",
+		transaction.ImpalaMerchantID, transaction.Amount)
+
+	// For failed payout, reverse the deduction by adding back the original amount
+	if err := db.Model(&balances.MerchantBalance{}).
+		Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+		Update("impaBalance", gorm.Expr("impaBalance + ?", transaction.Amount)).Error; err != nil {
+		return fmt.Errorf("failed to reverse payout balance: %w", err)
+	}
+
+	log.Printf(" Successfully reversed payout balance")
+	return nil
+}
+
+// buildCallbackResponse builds the callback response for the merchant
+func buildCallbackResponse(transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, status string) CallbackResponse {
+
+	response := CallbackResponse{
+		TransactionStatus: status,
+		TransactionReport: status,
+		Currency:          callback.Currency,
+		Amount:            callback.Amount,
+		NetAmount:         callback.Benefice,
+		SecureID:          transaction.SecureID,
+		ExternalID:        transaction.ExternalID,
+	}
+
+	// Set default currency if not provided
+	if response.Currency == "" {
+		response.Currency = "XOF" // Default West African currency
+	}
+
+	return response
+}
+
+// getTransactionByExternalID retrieves transaction by external ID
+func getTransactionByExternalID(db *gorm.DB, externalID string) (*transactions.TransactionModel, error) {
+	var transaction transactions.TransactionModel
+
+	// Try to find by external ID first
+	if err := db.Where("secureId = ?", externalID).First(&transaction).Error; err != nil {
+		// If not found by external ID, try by merchant request ID as fallback
+		if err := db.Where("secureId = ?", externalID).First(&transaction).Error; err != nil {
+			return nil, fmt.Errorf("transaction not found: %w", err)
+		}
+	}
+
+	return &transaction, nil
+}
+
+// Helper function to log callback details (can be used for debugging)
+func logCallbackDetails(callback *AirtimeCallbackRequest) {
+	log.Printf("🔍 Callback Details:")
+	log.Printf("  Transaction ID: %s", callback.TransactionID)
+	log.Printf("  State: %s", callback.State)
+	log.Printf("  Amount: %d", callback.Amount)
+	log.Printf("  Benefice: %d", callback.Benefice)
+	log.Printf("  Fee: %d", callback.Fee)
+	log.Printf("  Commission: %d", callback.Commission)
+	log.Printf("  Destination: %s", callback.Destination)
+	log.Printf("  Provider ID: %s", callback.ProviderID)
+	log.Printf("  Customer Name: %s", callback.CustomerName)
+	log.Printf("  Currency: %s", callback.Currency)
+	if callback.Error != nil {
+		log.Printf("  Error: %s", *callback.Error)
+	}
+}
 
 // remove prfix
 func RemovePlusPrefix(phone string) string {
@@ -339,10 +641,10 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// Send API response
 		c.JSON(responseCode, gin.H{
-			"status":        responseStatus,
-			"message":       responseMessage,
-			"externalId":    req.ExternalID,
-			"secureId":      secureID,
+			"status":     responseStatus,
+			"message":    responseMessage,
+			"externalId": req.ExternalID,
+			"secureId":   secureID,
 		})
 
 		// Prepare callback response
@@ -368,8 +670,174 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			log.Printf("Failed to send callback for transaction %d: %v", transactionID, callbackErr)
 			// Don't return error to client since the main transaction processing is complete
 		}
+	} else if req.Currency == "XOF" {
+		// ugxBalance := balance.UGXBalance
+		XOFBalance := balance.ImpaBalance
+
+		serviceId := func() int {
+			id, err := strconv.Atoi(req.MobileMoneySP)
+			if err != nil {
+				log.Printf("Failed to convert MobileMoneySP to int: %v", err)
+				return 0 // default value
+			}
+			return id
+		}()
+
+		// Ensure there’s enough balance before proceeding
+		if XOFBalance < float64(req.Amount) {
+			c.JSON(http.StatusOK, gin.H{
+				"error":   "INSUFFICIENT_BALANCE",
+				"message": fmt.Sprintf("Insufficient balance. Available: %.2f XOF", XOFBalance),
+			})
+			return
+		}
+
+		// Define known cash-in and cash-out service IDs
+		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164}
+		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 167, 169, 165}
+
+		var transactionReport string
+
+		if IsInList(serviceId, cashinIDs) {
+			transactionReport = "deposit"
+		} else if IsInList(serviceId, cashoutIDs) {
+			transactionReport = "withdraw"
+
+			fmt.Println("am here .....")
+			// Deduct balance only for withdrawals
+			err := balances.DeductXOFBalance(req.ImpalaMerchantId, float64(req.Amount))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "BALANCE_DEDUCTION_FAILED",
+					"message": "Failed to deduct amount from balance",
+					"details": err.Error(),
+				})
+				return
+			}
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNKNOWN_SERVICE_ID",
+				"message": "Unknown service ID. Please verify and try again.",
+			})
+			return
+		}
+
+		// initiatae west africa client
+		client := westafrica.NewAirtimeClient()
+
+		// Initiate payment via reize remit
+		westAfricaRequest := &westafrica.AirtimeRequest{
+			Amount:      int(req.Amount),
+			Destination: req.RecipientPhone,
+			APIKey:      "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28",
+			IPNUrl:      "https://payments.mam-laka.com/api/v1/west-africa/callback",
+			ServiceID: func() int {
+				id, err := strconv.Atoi(req.MobileMoneySP)
+				if err != nil {
+					log.Printf("Failed to convert MobileMoneySP to int: %v", err)
+					return 0 // Default value in case of error
+				}
+				return id
+			}(),
+			OMOTP:      strconv.Itoa(req.OMOTP),
+			CustomData: "your_custom_data",
+		}
+
+		// Send request with context and timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  500,
+				"error":   "1991",
+				"message": "Failed to initiate payment",
+				"details": "XOF channel down",
+			})
+			return
+		}
+		fmt.Printf("Transaction ID: %s\n", response.Data.TransactionID)
+		fmt.Printf("Amount: %d\n", response.Data.Amount)
+		fmt.Printf("State: %s\n", response.Data.State)
+		fmt.Printf("SMS Link: %s\n", response.Data.SMSLink)
+		fmt.Printf("Message: %s\n", response.Message)
+
+		// status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
+		// fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
+
+		// Determine transaction status and prepare response
+		var transactionStatus, responseStatus, responseMessage string
+		var responseCode int
+
+		if err == nil {
+			transactionStatus = "PENDING"
+			responseStatus = "SUCCESS"
+			responseMessage = "Payment initiated  successfully"
+			responseCode = http.StatusOK
+		} else {
+			transactionStatus = "FAILED"
+			responseStatus = "FAILED"
+			responseMessage = "Payment initiation failed"
+			responseCode = http.StatusOK
+
+			// Refund the balance since payment failed
+			if refundErr := balances.AddXOFBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
+				log.Printf("Failed to refund balance for merchant %s: %v", req.ImpalaMerchantId, refundErr)
+			}
+		}
+
+		// Create transaction record (for both success and failure)
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   response.Data.TransactionID,
+			CheckoutRequestID:   response.Data.TransactionID,
+			ResponseDescription: response.Message,
+			ResponseCode:        response.Data.State,
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            response.Data.TransactionID,
+			SourceOfFunds:       req.MobileMoneySP,
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   transactionReport,
+			TransactionStatus:   transactionStatus,
+		}
+
+		// Save transaction to database
+		db := database.GetConnection()
+		if dbErr := db.Create(newTransaction).Error; dbErr != nil {
+			log.Printf("Failed to save transaction: %v", dbErr)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  401,
+				"error":   "1994",
+				"message": "Failed to record transaction",
+				"details": dbErr.Error(),
+			})
+			return
+		}
+
+		// Get the transaction ID from the saved record
+		// transactionID := newTransaction.ID
+
+		// Send API response
+		c.JSON(responseCode, gin.H{
+			"status":     responseStatus,
+			"message":    responseMessage,
+			"error":      "1995",
+			"externalId": req.ExternalID,
+			"secureId":   response.Data.TransactionID,
+		})
+
+		// Prepare callback response
+
 	}
 }
+
+// west africa callback handler
 
 // card paymnet hander
 func CardPaymentHandler(c *gin.Context) {
@@ -2429,6 +2897,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("mobile/callback", MobileCallbackHandler)
 	router.POST("card/callback", CardCallbackHandler)
 	router.POST("usdc/callback", CryptoCallbackHandler)
+
 	router.POST("links/tags", TagsHandler)
 	router.GET("transaction", GetTransactionHandler)
 	// add a route for bank transfers
@@ -2459,5 +2928,8 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/vc/card/balance", GetCardBalance)
 	// virtual card generation
 	protected.POST("/vc/card/recharge", RechargeCardHandler)
+	// WEST AFRICA HANDLER
+	// WEST AFRICA HANDLER
+	router.POST("west-africa/callback", WestAfricaCallbackHandler)
 
 }

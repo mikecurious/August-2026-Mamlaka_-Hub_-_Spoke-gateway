@@ -30,6 +30,11 @@ func (MerchantBalance) TableName() string {
 	return "merchant_balances"
 }
 
+// func AutoMigrate() {
+// 	db := database.GetConnection()
+// 	db.AutoMigrate(&ListingModel{})
+// }
+
 type ForexRate struct {
 	CurrencyCode   string  `gorm:"column:currencyCode" json:"currencyCode"`
 	ConversionRate float64 `gorm:"column:conversionRate" json:"conversionRate"`
@@ -205,7 +210,7 @@ func AddKESBalance(impalaMerchantID string, amount float64) error {
 	db := database.GetConnection()
 
 	// Retrieve the merchant balance
-	var balance MerchantBalance
+	var balance MerchantCollectionBalance
 	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
 	if err != nil {
 		return fmt.Errorf("could not find merchant balance: %w", err)
@@ -213,7 +218,7 @@ func AddKESBalance(impalaMerchantID string, amount float64) error {
 
 	// Add the amount
 	balance.KESBalance += amount
-	balance.LastUpdated = time.Now().Unix()
+	// balance.LastUpdated = time.Now().Unix()
 
 	// Update the balance in the database
 	err = db.Save(&balance).Error
@@ -258,7 +263,7 @@ func AddUGXBalance(impalaMerchantID string, amount float64) error {
 	db := database.GetConnection()
 
 	// Retrieve the merchant balance
-	var balance MerchantBalance
+	var balance MerchantCollectionBalance
 	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
 	if err != nil {
 		return fmt.Errorf("could not find merchant balance: %w", err)
@@ -266,7 +271,7 @@ func AddUGXBalance(impalaMerchantID string, amount float64) error {
 
 	// Add the amount
 	balance.UGXBalance += amount
-	balance.LastUpdated = time.Now().Unix()
+	// balance.LastUpdated = time.Now().Unix()
 
 	// Update the balance in the database
 	err = db.Save(&balance).Error
@@ -483,6 +488,62 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 	balance.LastUpdated = time.Now().Unix()
 
 	// Save the updated balance
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// west africa functions
+func DeductXOFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+	// print the current balance
+	fmt.Printf("Current XOF Balance: %.2f\n", balance.ImpaBalance)
+	// Check if the merchant has sufficient balance
+	if balance.ImpaBalance < amount {
+		return fmt.Errorf("insufficient UGX balance: available %.2f, required %.2f", balance.ImpaBalance, amount)
+	}
+
+	// Deduct the amount
+	balance.ImpaBalance -= amount
+	// balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+	//pritn final balance
+	fmt.Printf("Final XOF Balance: %.2f\n", balance.ImpaBalance)
+
+	return nil
+}
+
+// AddUGXBalance adds the specified amount to the merchant's UGX balance (refund function).
+func AddXOFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantCollectionBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Add the amount
+	balance.ImpaBalance += amount
+	// balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
 	err = db.Save(&balance).Error
 	if err != nil {
 		return fmt.Errorf("could not update merchant balance: %w", err)

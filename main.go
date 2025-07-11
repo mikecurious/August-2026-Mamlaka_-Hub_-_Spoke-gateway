@@ -1,6 +1,7 @@
 package main
 
 import (
+	"com.mam-laka/balances"
 	"com.mam-laka/database"
 	"com.mam-laka/main/merchants"
 	"github.com/gin-contrib/cors"
@@ -11,6 +12,7 @@ import (
 
 // models migration
 func Migration(database *gorm.DB) {
+	balances.AutoMigrate()
 
 }
 

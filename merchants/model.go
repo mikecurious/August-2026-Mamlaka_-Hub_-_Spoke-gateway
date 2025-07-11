@@ -47,6 +47,7 @@ type MobileWithdrawalRequest struct {
 	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
 	ExternalID       string  `json:"externalId" binding:"required"`
 	CallbackURL      string  `json:"callbackUrl" binding:"required"`
+	OMOTP            int     `json:"om_otp"`
 }
 
 // bank-pesa link request struct containing the followign, amount, destinationAccount, destinationBankCode, customerName string)
@@ -99,4 +100,33 @@ type CreateCardHolderRequest struct {
 	Town       string `json:"town" binding:"required"`
 	Address    string `json:"address" binding:"required"`
 	PostCode   string `json:"postCode" binding:"required"`
+}
+
+// west africa model
+type WestAfricaCallbackResponse struct {
+	TransactionID           string  `json:"transaction_id"`
+	Amount                  int     `json:"amount"`
+	Benefice                int     `json:"benefice"`
+	Commission              int     `json:"comission"`
+	Destination             string  `json:"destination"`
+	Fee                     int     `json:"fee"`
+	Response                string  `json:"response"`
+	Error                   *string `json:"error"`
+	ServiceID               int     `json:"service_id"`
+	CustomerName            string  `json:"customer_name"`
+	State                   string  `json:"state"`
+	CustomData              string  `json:"custom_data"`
+	IPNUrl                  string  `json:"ipn_url"`
+	TransactionChannel      string  `json:"transaction_channel"`
+	ProviderID              string  `json:"provider_id"`
+	SMSLink                 int     `json:"sms_link"`
+	CreatedAt               string  `json:"created_at"`
+	UpdatedAt               string  `json:"updated_at"`
+	IPNState                int     `json:"ipn_state"`
+	WAmountAfterTransaction string  `json:"w_amount_after_transaction"`
+	PLastWalletAmount       int     `json:"p_last_wallet_amount"`
+	PNewWalletAmount        int     `json:"p_new_wallet_amount"`
+	PID                     int     `json:"p_id"`
+	Hash                    string  `json:"hash"`
+	Currency                string  `json:"currency"`
 }
