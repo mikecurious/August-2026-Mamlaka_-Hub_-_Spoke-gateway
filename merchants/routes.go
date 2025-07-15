@@ -684,13 +684,6 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}()
 
 		// Ensure there’s enough balance before proceeding
-		if XOFBalance < float64(req.Amount) {
-			c.JSON(http.StatusOK, gin.H{
-				"error":   "INSUFFICIENT_BALANCE",
-				"message": fmt.Sprintf("Insufficient balance. Available: %.2f XOF", XOFBalance),
-			})
-			return
-		}
 
 		// Define known cash-in and cash-out service IDs
 		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164}
@@ -702,6 +695,13 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			transactionReport = "deposit"
 		} else if IsInList(serviceId, cashoutIDs) {
 			transactionReport = "withdraw"
+			if XOFBalance < float64(req.Amount) {
+				c.JSON(http.StatusOK, gin.H{
+					"error":   "INSUFFICIENT_BALANCE",
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XOF", XOFBalance),
+				})
+				return
+			}
 
 			fmt.Println("am here .....")
 			// Deduct balance only for withdrawals
@@ -753,7 +753,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				"status":  500,
 				"error":   "1991",
 				"message": "Failed to initiate payment",
-				"details": "XOF channel down",
+				"resp:":   response,
+				"details": "XOF channel down" + err.Error(),
 			})
 			return
 		}
