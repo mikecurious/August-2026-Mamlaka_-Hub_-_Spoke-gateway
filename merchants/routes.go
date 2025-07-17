@@ -3060,15 +3060,28 @@ func CameroonXAFCallback(c *gin.Context) {
 			return
 		}
 
-		fmt.Println("Updating collection balance ... for mechant", transaction.ImpalaMerchantID)
+		fmt.Println("Updating collection balance ... for merchant", transaction.ImpalaMerchantID)
+
 		if err := db.Model(&balances.MerchantCollectionBalance{}).
 			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
 			Update("xafBalance", gorm.Expr("xafBalance + ?", transaction.Amount)).Error; err != nil {
-			fmt.Println("error updating the balance")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "3333Failed to update merchant balance", "details": err.Error()})
+			fmt.Println("❌ Error updating the balance")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
 			return
 		}
-		fmt.Println("finished .. collection balance ...")
+
+		fmt.Println("✔️ Finished updating collection balance")
+
+		// Now fetch the updated balance
+		var updatedBalance balances.MerchantCollectionBalance
+		if err := db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+			First(&updatedBalance).Error; err != nil {
+			fmt.Println("❌ Failed to fetch updated balance")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch updated balance", "details": err.Error()})
+			return
+		}
+
+		fmt.Printf("✅ Current XAF Balance for Merchant %s is: %.2f\n", transaction.ImpalaMerchantID, updatedBalance.XAFBalance)
 
 		// Process the callback response to match your required format
 		callbackResponse := map[string]interface{}{
