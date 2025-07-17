@@ -210,17 +210,14 @@ type TransferRequest struct {
 func WalletTransfer(transferRequest *TransferRequest) error {
 	db := database.GetConnection()
 
-	// Normalize currency to lowercase (e.g., "KES" → "kes")
 	currency := strings.ToLower(transferRequest.Currency)
 	balanceField := fmt.Sprintf("%sBalance", currency)
 
-	// Begin DB transaction
 	tx := db.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("failed to start transaction: %w", tx.Error)
 	}
 
-	// Get collection balance using sql.NullFloat64 to avoid NULL scan errors
 	var collectionBalance sql.NullFloat64
 	query := fmt.Sprintf("SELECT %s FROM merchant_collection_balance WHERE impalaMerchantId = ?", balanceField)
 	err := tx.Raw(query, transferRequest.ImpalaMerchantId).Scan(&collectionBalance).Error
@@ -271,7 +268,6 @@ func WalletTransfer(transferRequest *TransferRequest) error {
 	// Fetch updated balances
 	var updatedCollectionBalance, updatedMerchantBalance sql.NullFloat64
 
-	// Updated collection balance
 	queryCollection := fmt.Sprintf("SELECT %s FROM merchant_collection_balance WHERE impalaMerchantId = ?", balanceField)
 	if err := tx.Raw(queryCollection, transferRequest.ImpalaMerchantId).Scan(&updatedCollectionBalance).Error; err != nil {
 		tx.Rollback()
@@ -282,7 +278,6 @@ func WalletTransfer(transferRequest *TransferRequest) error {
 		return fmt.Errorf("collection balance is NULL after update")
 	}
 
-	// Updated merchant balance
 	queryMerchant := fmt.Sprintf("SELECT %s FROM merchant_balances WHERE impalaMerchantId = ?", balanceField)
 	if err := tx.Raw(queryMerchant, transferRequest.ImpalaMerchantId).Scan(&updatedMerchantBalance).Error; err != nil {
 		tx.Rollback()
@@ -296,7 +291,6 @@ func WalletTransfer(transferRequest *TransferRequest) error {
 	log.Printf("Collection balance after transfer: %.2f", updatedCollectionBalance.Float64)
 	log.Printf("Merchant balance after transfer: %.2f", updatedMerchantBalance.Float64)
 
-	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
