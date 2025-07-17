@@ -22,6 +22,7 @@ type MerchantCollectionBalance struct {
 	GBPBalance       float64   `gorm:"column:gbpBalance;type:float(100,2)" json:"gbpBalance"`
 	TZSBalance       float64   `gorm:"column:tzsBalance;type:float(100,2)" json:"tzsBalance"`
 	UGXBalance       float64   `gorm:"column:ugxBalance;type:float(100,2)" json:"ugxBalance"`
+	XAFBalance       float64   `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -74,6 +75,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"GBP":  balance.GBPBalance,
 		"TZS":  balance.TZSBalance,
 		"UGX":  balance.UGXBalance,
+		"XAF":  balance.XAFBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -101,6 +103,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"ugxBalance":   balance.UGXBalance,
 		"totalBalance": totalBalance,
 		"baseCurrency": baseCurrency,
+		"xafBalance":   balance.XAFBalance,
 		"merchantId":   balance.ImpalaMerchantID,
 	}
 

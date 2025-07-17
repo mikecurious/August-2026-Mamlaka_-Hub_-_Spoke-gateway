@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"com.mam-laka/transactions"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // SendCallback now accepts the callbackBody.Body type directly
@@ -64,4 +66,27 @@ func IsInList(value int, list []int) bool {
 		}
 	}
 	return false
+}
+
+func respondCallback(tx *transactions.TransactionModel, amount float64, status string, c *gin.Context) {
+	response := gin.H{
+		"transactionStatus": status,
+		"transactionReport": status,
+		"currency":          "XAF",
+		"amount":            amount,
+		"netAmount":         amount,
+		"secureId":          tx.SecureID,
+		"externalId":        tx.ExternalID,
+	}
+
+	log.Printf("Sending callback response: %+v", response)
+}
+
+func updateTransactionStatus(db *gorm.DB, transactionID uint, status, callbackStatus string) error {
+	return db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", transactionID).
+		Updates(map[string]interface{}{
+			"transactionStatus": status,
+			"callbackStatus":    callbackStatus,
+		}).Error
 }

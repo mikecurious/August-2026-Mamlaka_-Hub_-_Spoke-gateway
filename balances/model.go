@@ -22,6 +22,7 @@ type MerchantBalance struct {
 	GBPBalance       float64 `gorm:"column:gbpBalance;type:float(100,2)" json:"gbpBalance"`
 	TZSBalance       float64 `gorm:"column:tzsBalance;type:float(100,2)" json:"tzsBalance"`
 	UGXBalance       float64 `gorm:"column:ugxBalance;type:float(100,2)" json:"ugxBalance"`
+	XAFBalance       float64 `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -95,6 +96,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"GBP":  balance.GBPBalance,
 		"TZS":  balance.TZSBalance,
 		"UGX":  balance.UGXBalance,
+		"XAF":  balance.XAFBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -121,6 +123,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"tzsBalance":   balance.TZSBalance,
 		"ugxBalance":   balance.UGXBalance,
 		"totalBalance": totalBalance,
+		"xafBalance":   balance.XAFBalance,
 		"baseCurrency": baseCurrency,
 		"merchantId":   balance.ImpalaMerchantID,
 	}
@@ -544,6 +547,60 @@ func AddXOFBalance(impalaMerchantID string, amount float64) error {
 	// balance.LastUpdated = time.Now().Unix()
 
 	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// add XAF BALANCE
+func AddXAFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantCollectionBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Add the amount
+	balance.XAFBalance += amount
+	// balance.LastUpdated = time.Now().Unix()
+
+	// Update the balance in the database
+	err = db.Save(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// DEDUCT XAF BALACNE
+func DeductXAFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	// Retrieve the merchant balance
+	var balance MerchantCollectionBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	// Safety check: Prevent negative balance
+	if balance.XAFBalance < amount {
+		return fmt.Errorf("insufficient balance: current %.2f, required %.2f", balance.XAFBalance, amount)
+	}
+
+	// Deduct the amount
+	balance.XAFBalance -= amount
+	// Optionally update timestamp
+	// balance.LastUpdated = time.Now()
+
+	// Save updated balance
 	err = db.Save(&balance).Error
 	if err != nil {
 		return fmt.Errorf("could not update merchant balance: %w", err)

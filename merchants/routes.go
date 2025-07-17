@@ -19,6 +19,7 @@ import (
 
 	"com.mam-laka/auth"
 	"com.mam-laka/balances"
+	"com.mam-laka/cameroon"
 	"com.mam-laka/database"
 	"com.mam-laka/mpesa"
 	"com.mam-laka/pesalink"
@@ -500,7 +501,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	fmt.Println("currency", req.Currency)
 
 	//check the currenvy from the request
-	if req.Currency == "KES" {
+	switch req.Currency {
+	case "KES":
 
 		// Insufficient balance check
 		if balance.KESBalance < float64(req.Amount) {
@@ -555,7 +557,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			"transactionId": req.ExternalID,
 			"secureId":      secureID,
 		})
-	} else if req.Currency == "UGX" {
+	case "UGX":
 		ugxBalance := balance.UGXBalance
 
 		if ugxBalance < float64(req.Amount) {
@@ -670,7 +672,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			log.Printf("Failed to send callback for transaction %d: %v", transactionID, callbackErr)
 			// Don't return error to client since the main transaction processing is complete
 		}
-	} else if req.Currency == "XOF" {
+	case "XOF":
 		// ugxBalance := balance.UGXBalance
 		XOFBalance := balance.ImpaBalance
 
@@ -748,6 +750,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		defer cancel()
 
 		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status":  500,
@@ -832,8 +835,125 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			"externalId": req.ExternalID,
 			"secureId":   response.Data.TransactionID,
 		})
+	case "XAF":
+		// check the mobile service sp
+		switch req.MobileMoneySP {
+		case "200": //cameroon collect
+			token, err := cameroon.GetAccessToken()
+			if err != nil {
+				log.Fatalf("Error getting token: %v", err)
+			}
+			secureID := mpesa.GenerateSecureID()
 
-		// Prepare callback response
+			err = cameroon.SendCollectRequest(token, req.RecipientPhone, float64(req.Amount), secureID, "https://webhook.site/c24e095f-d9af-4b30-a2ad-3ae5dc048400")
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"details":       err,
+					"message":       "Payment initiation successful",
+					"code":          "1996",
+					"transactionId": req.ExternalID,
+					"secureId":      secureID,
+				})
+				return
+			}
+
+			// Create transaction record
+			newTransaction := &transactions.TransactionModel{
+				ImpalaMerchantID:    req.ImpalaMerchantId,
+				MerchantRequestID:   secureID,
+				CheckoutRequestID:   secureID,
+				ResponseDescription: "Payment initiated via Cameroon Collect",
+				ResponseCode:        "0",
+				Currency:            req.Currency,
+				Amount:              int(req.Amount),
+				Msisdn:              req.RecipientPhone,
+				NetAmount:           float64(req.Amount),
+				SecureID:            secureID,
+				SourceOfFunds:       req.MobileMoneySP,
+				ExternalID:          req.ExternalID,
+				CallbackURL:         req.CallbackURL,
+				DateAdded:           dateAdded,
+				TransactionReport:   "deposit",
+				TransactionStatus:   "PENDING",
+			}
+
+			db := database.GetConnection()
+			if err := db.Create(newTransaction).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
+				return
+			}
+
+			// Success response
+			c.JSON(http.StatusOK, gin.H{
+				"message":       "Payment initiation successful",
+				"code":          "1996",
+				"transactionId": req.ExternalID,
+				"secureId":      secureID,
+			})
+
+		case "201":
+			// cameroon collect
+			token, err := cameroon.GetAccessToken()
+			if err != nil {
+				log.Fatalf("Error getting token: %v", err)
+			}
+			secureID := mpesa.GenerateSecureID()
+			// check xaf balance
+			balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
+			if balance.XAFBalance < float64(req.Amount) {
+				c.JSON(http.StatusOK, gin.H{
+					"error":   "INSUFFICIENT_BALANCE",
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XAF", balance.XAFBalance),
+				})
+				return
+			}
+
+			err = cameroon.SendDisburseRequest(token, req.RecipientPhone, float64(req.Amount), secureID, "https://webhook.site/c24e095f-d9af-4b30-a2ad-3ae5dc048400")
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"details":       err,
+					"message":       "Payment initiation successful",
+					"code":          "1996",
+					"transactionId": req.ExternalID,
+					"secureId":      secureID,
+				})
+				return
+			}
+
+			// Create transaction record
+			newTransaction := &transactions.TransactionModel{
+				ImpalaMerchantID:    req.ImpalaMerchantId,
+				MerchantRequestID:   secureID,
+				CheckoutRequestID:   secureID,
+				ResponseDescription: "Payment initiated via Cameroon Collect",
+				ResponseCode:        "0",
+				Currency:            req.Currency,
+				Amount:              int(req.Amount),
+				Msisdn:              req.RecipientPhone,
+				NetAmount:           float64(req.Amount),
+				SecureID:            secureID,
+				SourceOfFunds:       req.MobileMoneySP,
+				ExternalID:          req.ExternalID,
+				CallbackURL:         req.CallbackURL,
+				DateAdded:           dateAdded,
+				TransactionReport:   "withdraw",
+				TransactionStatus:   "PENDING",
+			}
+
+			db := database.GetConnection()
+			if err := db.Create(newTransaction).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
+				return
+			}
+
+			// Success response
+			c.JSON(http.StatusOK, gin.H{
+				"message":       "Withdrawal initiation successful",
+				"code":          "1997",
+				"transactionId": req.ExternalID,
+				"secureId":      secureID,
+			})
+		}
 
 	}
 }
@@ -2887,6 +3007,235 @@ func RechargeCardHandler(c *gin.Context) {
 	})
 }
 
+//camerooncallback
+
+// CallbackPayload defines the structure of the callback data
+type CallbackPayload struct {
+	Message                     string  `json:"message"`
+	Status                      int     `json:"status"`
+	SenderCountry               string  `json:"senderCountry"`
+	SenderName                  string  `json:"senderName"`
+	CollectionStatus            string  `json:"collectionStatus"`
+	CollectionType              string  `json:"collectionType"`
+	PayoutType                  string  `json:"payoutType"`
+	BeneficiaryCountry          string  `json:"beneficiaryCountry"`
+	BeneficiaryCurrency         string  `json:"beneficiaryCurrency"`
+	Reference                   string  `json:"reference"`
+	TransactionDate             string  `json:"transactionDate"`
+	BeneficiaryName             string  `json:"beneficiaryName"`
+	PayoutAmount                float64 `json:"payoutAmount"`
+	FeeChargedToPartnerAmount   float64 `json:"feeChargedToPartnerAmount,omitempty"`
+	FeeChargedToPartnerCurrency string  `json:"feeChargedToPartnerCurrency,omitempty"`
+}
+
+// HandleCallback processes payment callbacks using gin.Context
+func CameroonXAFCallback(c *gin.Context) {
+	var payload CallbackPayload
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		log.Println("❌ Invalid JSON payload:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON payload"})
+		return
+	}
+	// get db connection
+	db := database.GetConnection()
+	log.Println("iGetting database connection")
+
+	switch payload.CollectionStatus {
+	case "COMPLETED":
+		//get that particular merchatn
+		transaction, err := transactions.GetTransactionByMerchantRequestID(payload.Reference)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+			return
+		}
+		// Update the transaction status to SUCCESS
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(map[string]interface{}{
+				"transactionStatus": "SUCCESS",
+				"callbackStatus":    "SENT",
+			}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		fmt.Println("Updating collection balance ... for mechant", transaction.ImpalaMerchantID)
+		if err := db.Model(&balances.MerchantCollectionBalance{}).
+			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+			Update("xafBalance", gorm.Expr("xafBalance + ?", transaction.Amount)).Error; err != nil {
+			fmt.Println("error updating the balance")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "3333Failed to update merchant balance", "details": err.Error()})
+			return
+		}
+		fmt.Println("finished .. collection balance ...")
+
+		// Process the callback response to match your required format
+		callbackResponse := map[string]interface{}{
+			"transactionStatus": "COMPLETE",
+			"transactionReport": "COMPLETE",
+			"currency":          "XAF",                // Assuming KES is the default currency
+			"amount":            payload.PayoutAmount, // Extract the correct amount from metadata
+			"netAmount":         payload.PayoutAmount, // Assuming the net amount is same as amount
+			"secureId":          transaction.SecureID,
+			"externalId":        transaction.ExternalID, // Get from DB, not callback
+		}
+		log.Println("callback response", callbackResponse)
+
+		// xafErr := balances.AddXAFBalance(transaction.ImpalaMerchantID, payload.PayoutAmount)
+		// if xafErr != nil {
+		// 	log.Printf("❌ Failed to update XAF balance for Reference: %s | Error: %s", payload.Reference, xafErr.Error())
+		// } else {
+		// 	log.Printf("✅ XAF Balance Updated Successfully for Reference: %s | Amount: %.2f %s", payload.Reference, payload.PayoutAmount, payload.BeneficiaryCurrency)
+		// }
+		log.Printf("✅ Payment Successful: Amount %.2f %s | Reference: %s",
+			payload.PayoutAmount, payload.BeneficiaryCurrency, payload.Reference)
+	case "FAILED":
+		//Do nothing ..
+
+		//get that particular merchatn
+		transaction, err := transactions.GetTransactionByMerchantRequestID(payload.Reference)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+			return
+		}
+		// Update the transaction status to SUCCESS
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(map[string]interface{}{
+				"transactionStatus": "SUCCESS",
+				"callbackStatus":    "SENT",
+			}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		// Process the callback response to match your required format
+		callbackResponse := map[string]interface{}{
+			"transactionStatus": "FAILED",
+			"transactionReport": "FAILED",
+			"currency":          "XAF",                // Assuming KES is the default currency
+			"amount":            payload.PayoutAmount, // Extract the correct amount from metadata
+			"netAmount":         payload.PayoutAmount, // Assuming the net amount is same as amount
+			"secureId":          transaction.SecureID,
+			"externalId":        transaction.ExternalID, // Get from DB, not callback
+		}
+		log.Println("callback response", callbackResponse)
+
+	default:
+		log.Printf("⚠️ Unknown Status '%s' for Reference: %s", payload.CollectionStatus, payload.Reference)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
+}
+
+// DisburseCallbackPayload defines the payload for a disbursement callback
+type DisburseCallbackPayload struct {
+	Message                     string  `json:"message"`
+	Status                      int     `json:"status"`
+	SenderCountry               string  `json:"senderCountry"`
+	SenderName                  string  `json:"senderName"`
+	PayoutType                  string  `json:"payoutType"`
+	PayoutStatus                string  `json:"payoutStatus"`
+	BeneficiaryCountry          string  `json:"beneficiaryCountry"`
+	BeneficiaryCurrency         string  `json:"beneficiaryCurrency"`
+	Reference                   string  `json:"reference"`
+	PayoutRef                   string  `json:"payoutRef"`
+	TransactionDate             string  `json:"transactionDate"`
+	BeneficiaryName             string  `json:"beneficiaryName"`
+	PayoutAmount                float64 `json:"payoutAmount"`
+	FeeChargedToPartnerAmount   float64 `json:"feeChargedToPartnerAmount"`
+	FeeChargedToPartnerCurrency string  `json:"feeChargedToPartnerCurrency"`
+}
+
+// HandleDisburseCallback processes the disbursement callback
+func CameroonXAFDisburseCallback(c *gin.Context) {
+	var payload DisburseCallbackPayload
+	db := database.GetConnection()
+	log.Println("iGetting database connection")
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		log.Println(" Invalid disbursement callback payload:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+		return
+	}
+
+	switch payload.PayoutStatus {
+	case "COMPLETED":
+		transaction, err := transactions.GetTransactionByMerchantRequestID(payload.Reference)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+			return
+		}
+		// Update the transaction status to SUCCESS
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(map[string]interface{}{
+				"transactionStatus": "SUCCESS",
+				"callbackStatus":    "SENT",
+			}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		fmt.Println("Updating disbursment balance ... for mechant", transaction.ImpalaMerchantID)
+		if err := db.Model(&balances.MerchantBalance{}).
+			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+			Update("xafBalance", gorm.Expr("xafBalance - ?", transaction.Amount)).Error; err != nil {
+			fmt.Println("error updating the balance")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "3333Failed to update merchant balance", "details": err.Error()})
+			return
+		}
+		fmt.Println("finished .. collection balance ...")
+
+		// Process the callback response to match your required format
+		callbackResponse := map[string]interface{}{
+			"transactionStatus": "COMPLETE",
+			"transactionReport": "COMPLETE",
+			"currency":          "XAF",                // Assuming KES is the default currency
+			"amount":            payload.PayoutAmount, // Extract the correct amount from metadata
+			"netAmount":         payload.PayoutAmount, // Assuming the net amount is same as amount
+			"secureId":          transaction.SecureID,
+			"externalId":        transaction.ExternalID, // Get from DB, not callback
+		}
+		log.Println("callback response", callbackResponse)
+	case "FAILED":
+		transaction, err := transactions.GetTransactionByMerchantRequestID(payload.Reference)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+			return
+		}
+		// Update the transaction status to SUCCESS
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(map[string]interface{}{
+				"transactionStatus": "SUCCESS",
+				"callbackStatus":    "SENT",
+			}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		// Process the callback response to match your required format
+		callbackResponse := map[string]interface{}{
+			"transactionStatus": "FAILED",
+			"transactionReport": "FAILED",
+			"currency":          "XAF",                // Assuming KES is the default currency
+			"amount":            payload.PayoutAmount, // Extract the correct amount from metadata
+			"netAmount":         payload.PayoutAmount, // Assuming the net amount is same as amount
+			"secureId":          transaction.SecureID,
+			"externalId":        transaction.ExternalID, // Get from DB, not callback
+		}
+		log.Println("callback response", callbackResponse)
+
+	default:
+		log.Printf("⚠️ Unknown Status '%s' for Reference: %s", payload.PayoutStatus, payload.Reference)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
+
+}
+
 // RegisterRoutes registers the USDC-related routes with the router.
 func RegisterRoutes(router *gin.RouterGroup) {
 
@@ -2932,5 +3281,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	// WEST AFRICA HANDLER
 	// WEST AFRICA HANDLER
 	router.POST("west-africa/callback", WestAfricaCallbackHandler)
+	router.POST("/cameroon/collect/callback", CameroonXAFCallback)
+	router.POST("/cameroon/disburse/callback", CameroonXAFDisburseCallback)
 
 }

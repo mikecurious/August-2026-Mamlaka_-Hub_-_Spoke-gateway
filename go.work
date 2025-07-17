@@ -15,5 +15,6 @@ use (
     ./virtualcards
     ./uganda
     ./westafrica
+    ./cameroon
     
 )
