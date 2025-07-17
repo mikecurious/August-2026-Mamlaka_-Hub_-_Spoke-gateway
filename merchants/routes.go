@@ -3043,6 +3043,7 @@ func CameroonXAFCallback(c *gin.Context) {
 
 	switch payload.CollectionStatus {
 	case "COMPLETED":
+		fmt.Println("am here .....")
 		//get that particular merchatn
 		transaction, err := transactions.GetTransactionByMerchantRequestID(payload.Reference)
 		if err != nil {
