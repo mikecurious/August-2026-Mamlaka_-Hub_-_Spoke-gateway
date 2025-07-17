@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"com.mam-laka/database"
@@ -208,14 +209,20 @@ type TransferRequest struct {
 func WalletTransfer(transferRequest *TransferRequest) error {
 	db := database.GetConnection()
 
+	// Normalize currency (e.g., "KES", "XAF") and use it to build field names
+	currency := strings.ToLower(transferRequest.Currency) // e.g., "kes"
+	balanceField := fmt.Sprintf("%sBalance", currency)
+
 	// Begin a database transaction
 	tx := db.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("failed to start transaction: %w", tx.Error)
 	}
 
+	// Fetch collection balance dynamically
 	var collectionBalance float64
-	err := tx.Raw("SELECT kesBalance FROM merchant_collection_balance WHERE impalaMerchantId = ?", transferRequest.ImpalaMerchantId).Scan(&collectionBalance).Error
+	query := fmt.Sprintf("SELECT %s FROM merchant_collection_balance WHERE impalaMerchantId = ?", balanceField)
+	err := tx.Raw(query, transferRequest.ImpalaMerchantId).Scan(&collectionBalance).Error
 	if err != nil {
 		tx.Rollback()
 		if err == gorm.ErrRecordNotFound {
@@ -227,62 +234,48 @@ func WalletTransfer(transferRequest *TransferRequest) error {
 	log.Printf("Collection balance before transfer: %.2f", collectionBalance)
 	log.Printf("Transfer amount: %.2f", transferRequest.Amount)
 
-	// Calculate transaction charges (1.5%)
 	transactionCharges := transferRequest.Amount * 0.015
-	log.Printf("Transaction charges: %.2f", transactionCharges)
-
-	// Total deduction from collection balance
 	totalDeduction := transferRequest.Amount + transactionCharges
-	log.Printf("Total deduction: %.2f", totalDeduction)
 
-	// Check if balance is sufficient
 	if collectionBalance < totalDeduction {
 		tx.Rollback()
-		return fmt.Errorf("insufficient balance in collection balance, total: %.2f", collectionBalance)
+		return fmt.Errorf("insufficient balance in collection balance: %.2f", collectionBalance)
 	}
 
-	// Deduct from merchant collection balance
-	if err := tx.Exec(
-		"UPDATE merchant_collection_balance SET kesBalance = kesBalance - ? WHERE impalaMerchantId = ?",
-		totalDeduction, transferRequest.ImpalaMerchantId,
-	).Error; err != nil {
+	// Deduct from collection balance
+	updateCollection := fmt.Sprintf("UPDATE merchant_collection_balance SET %s = %s - ? WHERE impalaMerchantId = ?", balanceField, balanceField)
+	if err := tx.Exec(updateCollection, totalDeduction, transferRequest.ImpalaMerchantId).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to deduct from collection balance: %w", err)
 	}
 
 	// Add to merchant wallet balance
-	if err := tx.Exec(
-		"UPDATE merchant_balances SET kesBalance = kesBalance + ? WHERE impalaMerchantId = ?",
-		transferRequest.Amount, transferRequest.ImpalaMerchantId,
-	).Error; err != nil {
+	updateWallet := fmt.Sprintf("UPDATE merchant_balances SET %s = %s + ? WHERE impalaMerchantId = ?", balanceField, balanceField)
+	if err := tx.Exec(updateWallet, transferRequest.Amount, transferRequest.ImpalaMerchantId).Error; err != nil {
 		tx.Rollback()
-		return fmt.Errorf("failed to add to merchant balance: %w", err)
+		return fmt.Errorf("failed to add to merchant wallet: %w", err)
 	}
 
 	// Record platform earnings
 	if err := tx.Exec(
-		"INSERT INTO platform_earning_models (impalaMerchantId, amountTransferred, transactionCharges) VALUES (?, ?, ?)",
-		transferRequest.ImpalaMerchantId, transferRequest.Amount, transactionCharges,
+		"INSERT INTO platform_earning_models (impalaMerchantId, amountTransferred, transactionCharges, currency) VALUES (?, ?, ?, ?)",
+		transferRequest.ImpalaMerchantId, transferRequest.Amount, transactionCharges, transferRequest.Currency,
 	).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to record platform earnings: %w", err)
 	}
 
-	// Fetch and log updated balances
+	// Fetch updated balances
 	var updatedCollectionBalance, updatedMerchantBalance float64
 
-	if err := tx.Raw(
-		"SELECT kesBalance FROM merchant_collection_balance WHERE impalaMerchantId = ?",
-		transferRequest.ImpalaMerchantId,
-	).Scan(&updatedCollectionBalance).Error; err != nil {
+	queryCollection := fmt.Sprintf("SELECT %s FROM merchant_collection_balance WHERE impalaMerchantId = ?", balanceField)
+	if err := tx.Raw(queryCollection, transferRequest.ImpalaMerchantId).Scan(&updatedCollectionBalance).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to fetch updated collection balance: %w", err)
 	}
 
-	if err := tx.Raw(
-		"SELECT kesBalance FROM merchant_balances WHERE impalaMerchantId = ?",
-		transferRequest.ImpalaMerchantId,
-	).Scan(&updatedMerchantBalance).Error; err != nil {
+	queryMerchant := fmt.Sprintf("SELECT %s FROM merchant_balances WHERE impalaMerchantId = ?", balanceField)
+	if err := tx.Raw(queryMerchant, transferRequest.ImpalaMerchantId).Scan(&updatedMerchantBalance).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to fetch updated merchant balance: %w", err)
 	}
@@ -290,7 +283,7 @@ func WalletTransfer(transferRequest *TransferRequest) error {
 	log.Printf("Collection balance after transfer: %.2f", updatedCollectionBalance)
 	log.Printf("Merchant balance after transfer: %.2f", updatedMerchantBalance)
 
-	// Commit the transaction
+	// Commit
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
