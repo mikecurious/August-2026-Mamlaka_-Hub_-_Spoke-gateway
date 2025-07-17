@@ -3063,11 +3063,18 @@ func CameroonXAFCallback(c *gin.Context) {
 
 		fmt.Println("Updating collection balance ... for merchant", transaction.ImpalaMerchantID)
 
-		if err := db.Model(&balances.MerchantCollectionBalance{}).
-			Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
-			Update("xafBalance", gorm.Expr("xafBalance + ?", transaction.Amount)).Error; err != nil {
-			fmt.Println("❌ Error updating the balance")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
+		// if err := db.Model(&balances.MerchantCollectionBalance{}).
+		// 	Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+		// 	Update("xafBalance", gorm.Expr("xafBalance + ?", transaction.Amount)).Error; err != nil {
+		// 	fmt.Println("❌ Error updating the balance")
+		// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
+		// 	return
+		// }
+		// Update the collection balance for the merchant
+		updateError := balances.AddXAFBalance(transaction.ImpalaMerchantID, payload.PayoutAmount)
+		if updateError != nil {
+			fmt.Println("❌ Error updating the balance:", updateError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": updateError.Error()})
 			return
 		}
 
