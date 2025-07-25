@@ -54,12 +54,12 @@ var insecureClient = &http.Client{
 
 // GetAccessToken fetches the OAuth token from the sandbox server
 func GetAccessToken() (string, error) {
-	url := "https://sandbox.g-payment.net/g-pay/api/enterprise/oauth/token"
+	url := "https://api.g-payment.net/switch/api/enterprise/oauth/token"
 
 	payload := map[string]string{
-		"client_id":     "mamlaka",
-		"client_secret": "mam@Test",
-		"grant_type":    "facilitator",
+		"client_id":     "Kenya Int",
+		"client_secret": "K3nya@1nt",
+		"grant_type":    "partner",
 		"scope":         "MH",
 	}
 	jsonPayload, _ := json.Marshal(payload)
@@ -86,7 +86,7 @@ func GetAccessToken() (string, error) {
 
 // SendCollectRequest triggers a collect payment request
 func SendCollectRequest(token, phone string, amount float64, reference, callbackURL string) error {
-	url := "https://sandbox.g-payment.net/g-pay/api/enterprise/collect"
+	url := "https://api.g-payment.net/switch/api/enterprise/collect"
 
 	requestData := CollectRequest{}
 	requestData.SenderAccount.CountryCode = "CMR"
@@ -152,12 +152,12 @@ type DisburseRequest struct {
 
 // SendDisburseRequest sends a disbursement to a mobile wallet
 func SendDisburseRequest(token, phone string, amount float64, reference, callbackURL string) error {
-	url := "https://sandbox.g-payment.net/g-pay/api/enterprise/disburse"
+	url := "https://api.g-payment.net/switch/api/enterprise/disburse"
 
 	reqData := DisburseRequest{}
 	reqData.SenderAccount.Service = "WPCMHQ"
 	reqData.SenderAccount.CountryCode = "CMR"
-	reqData.SenderAccount.Address = "Test"
+	reqData.SenderAccount.Address = "Live"
 	reqData.SenderAccount.CurrencyCode = "XAF"
 
 	reqData.BeneficiaryAccount.CountryCode = "CMR"
