@@ -693,9 +693,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		var transactionReport string
 
-		if IsInList(serviceId, cashinIDs) {
+		if IsInList(serviceId, cashoutIDs) {
 			transactionReport = "deposit"
-		} else if IsInList(serviceId, cashoutIDs) {
+		} else if IsInList(serviceId, cashinIDs) {
 			transactionReport = "withdraw"
 			if XOFBalance < float64(req.Amount) {
 				c.JSON(http.StatusOK, gin.H{
@@ -757,7 +757,6 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				"error":   "1991",
 				"message": "Failed to initiate payment",
 				"resp:":   response,
-				"details": "XOF channel down" + err.Error(),
 			})
 			return
 		}
