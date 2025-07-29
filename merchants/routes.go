@@ -1484,8 +1484,10 @@ func MobileCallbackHandler(c *gin.Context) {
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
 				Updates(map[string]interface{}{
-					"transactionStatus": "SUCCESS",
-					"callbackStatus":    "SENT",
+					"transactionStatus":   "SUCCESS",
+					"callbackStatus":      "SENT",
+					"responseDescription": resultDesc, // Include the success reason
+
 				}).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
@@ -1517,6 +1519,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"amount":            metadata["Amount"], // Extract the correct amount from metadata
 				"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
 				"secureId":          transaction.SecureID,
+				"report":            resultDesc,             // Include the success reason
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 			log.Println("callback response", callbackResponse)
@@ -1567,6 +1570,7 @@ func MobileCallbackHandler(c *gin.Context) {
 				"amount":            transaction.Amount,
 				"netAmount":         transaction.Amount,
 				"secureId":          transaction.SecureID,
+				"report":            resultDesc,             // Include the success reason
 				"externalId":        transaction.ExternalID, // Get from DB, not callback
 			}
 			fmt.Println(callbackResponse)
