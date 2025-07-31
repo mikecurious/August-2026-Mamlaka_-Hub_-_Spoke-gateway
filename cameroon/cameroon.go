@@ -100,8 +100,8 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 	requestData.BeneficiaryAccount.CountryCode = "CMR"
 	requestData.BeneficiaryAccount.CurrencyCode = "XAF"
 	requestData.Reference = reference
-	requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
-	// requestData.CallbackURL = "https://webhook.site/e43bc8c9-09c0-4e4a-b3b2-c1d0409102ab"
+	// requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
+	requestData.CallbackURL = "https://webhook.site/e43bc8c9-09c0-4e4a-b3b2-c1d0409102ab"
 
 	jsonData, _ := json.Marshal(requestData)
 
