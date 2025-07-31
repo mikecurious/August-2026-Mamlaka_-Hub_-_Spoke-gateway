@@ -129,7 +129,7 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 		return fmt.Errorf("failed to parse collect response: %v", err)
 	}
 
-	log.Printf("Collect Success: %s", response.Message)
+	log.Printf("Collect Success000: %s", response.Message)
 	return nil
 }
 
