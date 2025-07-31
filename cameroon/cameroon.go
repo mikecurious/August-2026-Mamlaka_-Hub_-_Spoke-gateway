@@ -99,6 +99,7 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 	requestData.BeneficiaryAccount.Service = "WPCMHQ"
 	requestData.BeneficiaryAccount.CurrencyCode = "XAF"
 	requestData.Reference = reference
+	// requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
 	requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
 
 	jsonData, _ := json.Marshal(requestData)
@@ -127,14 +128,13 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 		return fmt.Errorf("failed to parse collect response: %v", err)
 	}
 
-	log.Printf("✅ Collect Success: %s", response.Message)
+	log.Printf("Collect Success: %s", response.Message)
 	return nil
 }
 
 // DisburseRequest represents the payload for a disbursement
 type DisburseRequest struct {
 	SenderAccount struct {
-		Service      string `json:"service"`
 		CountryCode  string `json:"countryCode"`
 		Address      string `json:"address"`
 		CurrencyCode string `json:"currencyCode"`
@@ -155,7 +155,7 @@ func SendDisburseRequest(token, phone string, amount float64, reference, callbac
 	url := "https://api.g-payment.net/switch/api/enterprise/disburse"
 
 	reqData := DisburseRequest{}
-	reqData.SenderAccount.Service = "WPCMHQ"
+	// reqData.SenderAccount.Service = "WPCMHQ"
 	reqData.SenderAccount.CountryCode = "CMR"
 	reqData.SenderAccount.Address = "Live"
 	reqData.SenderAccount.CurrencyCode = "XAF"
@@ -168,6 +168,7 @@ func SendDisburseRequest(token, phone string, amount float64, reference, callbac
 
 	reqData.Reference = reference
 	reqData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/disburse/callback"
+	// reqData.CallbackURL = "https://webhook.site/fc077011-2d1e-466e-83eb-d3ce909e16a3"
 
 	jsonData, _ := json.Marshal(reqData)
 
