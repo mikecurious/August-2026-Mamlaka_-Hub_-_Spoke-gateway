@@ -33,6 +33,7 @@ type CollectRequest struct {
 	} `json:"senderAccount"`
 	BeneficiaryAccount struct {
 		// Service      string `json:"service"`
+		CountryCode  string `json:"countryCode"`
 		CurrencyCode string `json:"currencyCode"`
 	} `json:"beneficiaryAccount"`
 	Reference   string `json:"reference"`
@@ -92,15 +93,15 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 	requestData.SenderAccount.CountryCode = "CMR"
 	requestData.SenderAccount.Number = phone
 	requestData.SenderAccount.Type = "M"
-	requestData.SenderAccount.Name = "Test"
-	requestData.SenderAccount.Address = "Test"
+	requestData.SenderAccount.Name = "live"
+	requestData.SenderAccount.Address = "live"
 	requestData.SenderAccount.Amount = amount
 	requestData.SenderAccount.CurrencyCode = "XAF"
-	// requestData.BeneficiaryAccount.Service = "WPCMHQ"
+	requestData.BeneficiaryAccount.CountryCode = "CMR"
 	requestData.BeneficiaryAccount.CurrencyCode = "XAF"
 	requestData.Reference = reference
-	// requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
 	requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
+	// requestData.CallbackURL = "https://webhook.site/e43bc8c9-09c0-4e4a-b3b2-c1d0409102ab"
 
 	jsonData, _ := json.Marshal(requestData)
 
