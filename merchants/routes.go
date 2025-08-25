@@ -756,7 +756,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				"status":  500,
 				"error":   "1991",
 				"message": "Failed to initiate payment",
+				"details": response.Message,
 				"resp:":   response,
+				"err":     err.Error(),
 			})
 			return
 		}
