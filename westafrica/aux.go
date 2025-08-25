@@ -27,9 +27,9 @@ type AirtimeResponse struct {
 		TransactionID      string  `json:"transaction_id"`
 		Amount             int     `json:"amount"`
 		Benefice           int     `json:"benefice"`
-		Commission         string  `json:"comission"`
+		Commission         float32 `json:"comission"`
 		Destination        string  `json:"destination"`
-		Fee                string  `json:"fee"`
+		Fee                float32 `json:"fee"`
 		Response           string  `json:"response"`
 		Error              *string `json:"error"`
 		ServiceID          int     `json:"service_id"`
