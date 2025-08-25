@@ -751,22 +751,39 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
 
+		// log the raw response as JSON (if not nil)
+		if response != nil {
+			if respJSON, errMarshal := json.MarshalIndent(response, "", "  "); errMarshal == nil {
+				log.Printf("WestAfrica Response:\n%s", string(respJSON))
+			} else {
+				log.Printf("Failed to marshal WestAfrica response: %v", errMarshal)
+			}
+		}
+
 		if err != nil {
+			details := ""
+			if response != nil {
+				details = response.Message
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status":  500,
 				"error":   "1991",
 				"message": "Failed to initiate payment",
-				"details": response.Message,
-				"resp:":   response,
+				"details": details,
+				"resp":    response,
 				"err":     err.Error(),
 			})
 			return
 		}
-		fmt.Printf("Transaction ID: %s\n", response.Data.TransactionID)
-		fmt.Printf("Amount: %d\n", response.Data.Amount)
-		fmt.Printf("State: %s\n", response.Data.State)
-		fmt.Printf("SMS Link: %s\n", response.Data.SMSLink)
-		fmt.Printf("Message: %s\n", response.Message)
+
+		// ✅ Success
+		c.JSON(http.StatusOK, gin.H{
+			"status":  response.StatusCode,
+			"state":   response.Data.State,
+			"message": response.Message,
+			"resp":    response,
+		})
 
 		// status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
 		// fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
