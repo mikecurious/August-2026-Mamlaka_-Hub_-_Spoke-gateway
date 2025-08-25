@@ -782,7 +782,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			"status":  response.StatusCode,
 			"state":   response.Data.State,
 			"message": response.Message,
-			"resp":    response,
+			// "resp":    response,
 		})
 
 		// status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
