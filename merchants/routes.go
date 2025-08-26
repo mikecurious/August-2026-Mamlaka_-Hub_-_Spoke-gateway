@@ -778,12 +778,12 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		// ✅ Success
-		c.JSON(http.StatusOK, gin.H{
-			"status":  response.StatusCode,
-			"state":   response.Data.State,
-			"message": response.Message,
-			// "resp":    response,
-		})
+		// c.JSON(http.StatusOK, gin.H{
+		// 	"status":  response.StatusCode,
+		// 	"state":   response.Data.State,
+		// 	"message": response.Message,
+		// 	// "resp":    response,
+		// })
 
 		// status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
 		// fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
