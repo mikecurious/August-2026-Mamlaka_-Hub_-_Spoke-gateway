@@ -688,8 +688,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		// Ensure there’s enough balance before proceeding
 
 		// Define known cash-in and cash-out service IDs
-		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164}
-		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 167, 169, 165}
+		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164, 50, 148}
+		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 167, 169, 165, 49, 149}
 
 		var transactionReport string
 
