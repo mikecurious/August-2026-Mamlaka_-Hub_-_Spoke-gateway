@@ -1,0 +1,102 @@
+<html>
+
+<head>
+    <title>We are processing your transaction...</title>
+</head>
+<div class="loader">We are processing your transaction...</div>
+
+<style type="text/css">
+    body {
+        background: #eaecfa;
+    }
+
+    .loader {
+        width: 250px;
+        height: 50px;
+        line-height: 50px;
+        text-align: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -webkit-transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%);
+        font-family: helvetica, arial, sans-serif;
+        text-transform: uppercase;
+        font-weight: 900;
+        color: #8268ac;
+        letter-spacing: 0.2em;
+    }
+
+    .loader::before,
+    .loader::after {
+        content: "";
+        display: block;
+        width: 15px;
+        height: 15px;
+        background: #8268ac;
+        position: absolute;
+        -webkit-animation: load .7s infinite alternate ease-in-out;
+        animation: load .7s infinite alternate ease-in-out;
+    }
+
+    .loader::before {
+        top: 0;
+    }
+
+    .loader::after {
+        bottom: 0;
+    }
+
+    @-webkit-keyframes load {
+        0% {
+            left: 0;
+            height: 30px;
+            width: 15px;
+        }
+
+        50% {
+            height: 8px;
+            width: 40px;
+        }
+
+        100% {
+            left: 235px;
+            height: 30px;
+            width: 15px;
+        }
+    }
+
+    @keyframes load {
+        0% {
+            left: 0;
+            height: 30px;
+            width: 15px;
+        }
+
+        50% {
+            height: 8px;
+            width: 40px;
+        }
+
+        100% {
+            left: 235px;
+            height: 30px;
+            width: 15px;
+        }
+    }
+</style>
+
+<body onload="document.frmCheckout.submit();">
+    <form id="frmCheckout" name="frmCheckout" method="POST"
+        action="https://webhook.site/afc95c84-ec1c-453d-af0c-cfa9b00e3bbb">
+
+        <input type='hidden' name='message' value='The selected customer token is invalid.'>
+        <input type='hidden' name='errors' value='{&quot;customer_token&quot;:[&quot;The selected customer token is invalid.&quot;]}'>
+        <input type='hidden' name='hash' value='3c018df64e809dcb2992bc36d25dff4b8fd017839ee1fe03efa6e8ae8edbae23'>
+        <input type='hidden' name='order_id' value='OT202401010553339555ii4'>
+        <input type='hidden' name='return_url' value='https://webhook.site/afc95c84-ec1c-453d-af0c-cfa9b00e3bbb'>
+        <input type='hidden' name='code' value='422'>
+    </form>
+</body>
+
+</html>
