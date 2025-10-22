@@ -24,6 +24,8 @@ const (
 	amount            = 1
 )
 
+// revert amout  using the api
+
 type StkPushResponse struct {
 	MerchantRequestID   string `json:"MerchantRequestID"`
 	CheckoutRequestID   string `json:"CheckoutRequestID"`
@@ -230,20 +232,20 @@ func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) 
 }
 
 func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier string) (*B2BResponse, error) {
-	// Sanitize phone number
 	consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
 	consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
 
 	token, _ := generateB2BAccessToken(consumer_key, consumer_secret)
-	fmt.Print(token)
-	// timestamp := time.Now().Format("20060102150405")
+	fmt.Println("Access Token:", token)
+
 	businessShortCode := "3039805"
 	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
+
 	re := regexp.MustCompile(`\D`)
 	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
-	fmt.Println("identifier", identifier)
+	fmt.Println("Phone Number:", phoneNumberStr)
+	fmt.Println("Identifier:", identifier)
 
-	// B2C Request parameters
 	b2cRequest := B2CRequest{
 		OriginatorConversationID: identifier,
 		InitiatorName:            "b2cInit",
@@ -251,31 +253,29 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		CommandID:                "PromotionPayment",
 		Amount:                   amount,
 		PartyA:                   businessShortCode,
-		PartyB:                   phoneNumberStr,
+		PartyB:                   phoneNumber,
 		Remarks:                  "payments done",
 		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/callback",
-		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
-		Occassion:                "Ok",
+		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
+		ResultURL: "https://webhook.site/00f617b7-7815-4bd6-b233-1e115aa8671e",
+
+		Occassion: "Ok",
 	}
 
-	// Serialize request to JSON
 	requestBody, err := json.Marshal(b2cRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request body: %w", err)
 	}
 
-	// Prepare HTTP request
 	url := "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Add heades
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	// Perform HTTP request
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -283,26 +283,21 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	}
 	defer resp.Body.Close()
 
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Always print Safaricom's full JSON response
+	fmt.Println("Safaricom Response Body:", string(body))
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to initiate STK push: %s, %s", resp.Status, string(body))
+		return nil, fmt.Errorf("B2C request failed with status %s: %s", resp.Status, string(body))
 	}
 
-	// Parse the response body
 	var b2bResponse B2BResponse
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	err = json.Unmarshal(body, &b2bResponse)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse Safaricom JSON: %w. Raw body: %s", err, string(body))
 	}
 
-	// Log or print the response for debugging
-	fmt.Println("STK Push Response:", b2bResponse)
-
-	// Return the parsed response
+	fmt.Println("Parsed Response:", b2bResponse)
 	return &b2bResponse, nil
 }

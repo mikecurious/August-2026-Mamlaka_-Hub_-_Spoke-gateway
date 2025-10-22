@@ -130,3 +130,112 @@ type WestAfricaCallbackResponse struct {
 	Hash                    string  `json:"hash"`
 	Currency                string  `json:"currency"`
 }
+
+// eCitizen structures
+type ECitizenValidateRequest struct {
+	RefNo      string  `json:"ref_no" binding:"required"`
+	Currency   string  `json:"currency" binding:"required"`
+	Amount     float32 `json:"amount" binding:"required"`
+	CallbackURL string `json:"callback_url" binding:"required"`
+}
+
+type ECitizenValidateResponse struct {
+	Status string `json:"status"`
+	Desc   string `json:"desc"`
+	Data   struct {
+		Name     string `json:"name"`
+		Currency string `json:"currency"`
+		Amount   string `json:"amount"`
+	} `json:"data"`
+}
+
+type ECitizenConfirmRequest struct {
+	RefNo                     string `json:"ref_no" binding:"required"`
+	Amount                    int    `json:"amount" binding:"required"`
+	Currency                  string `json:"currency" binding:"required"`
+	GatewayTransactionID      string `json:"gateway_transaction_id" binding:"required"`
+	GatewayTransactionDate    string `json:"gateway_transaction_date" binding:"required"`
+	CustomerName              string `json:"customer_name" binding:"required"`
+	CustomerAccountNumber     string `json:"customer_account_number" binding:"required"`
+}
+
+type ECitizenConfirmResponse struct {
+	Status string `json:"status"`
+	Desc   string `json:"desc"`
+}
+
+// Korapay structures
+type KorapayPaymentRequest struct {
+	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
+	Currency         string  `json:"currency" binding:"required"`
+	Amount           int     `json:"amount" binding:"required"`
+	CustomerName     string  `json:"customerName" binding:"required"`
+	CustomerEmail    string  `json:"customerEmail" binding:"required,email"`
+	PayerPhone       string  `json:"payerPhone" binding:"required"`
+	Description      string  `json:"description" binding:"required"`
+	ExternalID       string  `json:"externalId" binding:"required"`
+	CallbackURL      string  `json:"callbackUrl" binding:"required"`
+	RedirectURL      string  `json:"redirectUrl" binding:"required"`
+}
+
+type KorapayCallbackRequest struct {
+	Event string                 `json:"event"`
+	Data  KorapayCallbackData    `json:"data"`
+}
+
+type KorapayCallbackData struct {
+	Reference       string  `json:"reference"`
+	PaymentReference string `json:"payment_reference"`
+	Currency        string  `json:"currency"`
+	Amount          int     `json:"amount"`
+	Fee             float64 `json:"fee"`
+	PaymentMethod   string  `json:"payment_method"`
+	Status          string  `json:"status"`
+}
+
+// Flutterwave structures
+type FlutterwavePaymentRequest struct {
+	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
+	Currency         string `json:"currency" binding:"required"`
+	Amount           int    `json:"amount" binding:"required"`
+	CustomerEmail    string `json:"customerEmail" binding:"required,email"`
+	PayerPhone       string `json:"payerPhone" binding:"required"`
+	ExternalID       string `json:"externalId" binding:"required"`
+	CallbackURL      string `json:"callbackUrl" binding:"required"`
+	RedirectURL      string `json:"redirectUrl" binding:"required"`
+}
+
+type FlutterwaveCallbackRequest struct {
+	Event     string                      `json:"event"`
+	Data      FlutterwaveCallbackData     `json:"data"`
+	EventType string                      `json:"event.type"`
+}
+
+type FlutterwaveCallbackData struct {
+	ID                int                    `json:"id"`
+	TxRef             string                 `json:"tx_ref"`
+	FlwRef            string                 `json:"flw_ref"`
+	DeviceFingerprint string                 `json:"device_fingerprint"`
+	Amount            int                    `json:"amount"`
+	Currency          string                 `json:"currency"`
+	ChargedAmount     int                    `json:"charged_amount"`
+	AppFee            float64                `json:"app_fee"`
+	MerchantFee       int                    `json:"merchant_fee"`
+	ProcessorResponse string                 `json:"processor_response"`
+	AuthModel         string                 `json:"auth_model"`
+	IP                string                 `json:"ip"`
+	Narration         string                 `json:"narration"`
+	Status            string                 `json:"status"`
+	PaymentType       string                 `json:"payment_type"`
+	CreatedAt         string                 `json:"created_at"`
+	AccountID         int                    `json:"account_id"`
+	Customer          FlutterwaveCustomer    `json:"customer"`
+}
+
+type FlutterwaveCustomer struct {
+	ID          int    `json:"id"`
+	PhoneNumber string `json:"phone_number"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	CreatedAt   string `json:"created_at"`
+}

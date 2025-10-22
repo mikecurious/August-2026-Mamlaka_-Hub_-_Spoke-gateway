@@ -1,0 +1,1 @@
+{"event":"charge.failed","data":{"reference":"idkMain43933","payment_reference":"idkMain43933","currency":"KES","amount":10,"fee":0.29,"payment_method":"mobile_money","status":"failed"}}

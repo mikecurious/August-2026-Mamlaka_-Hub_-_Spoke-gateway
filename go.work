@@ -16,5 +16,7 @@ use (
     ./uganda
     ./westafrica
     ./cameroon
+    ./korapay
+    ./flutterwave
     
 )
