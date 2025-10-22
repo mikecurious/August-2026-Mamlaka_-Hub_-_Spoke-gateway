@@ -4091,6 +4091,183 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Callback processed"})
 }
 
+// TransferHandler handles transfer from collection balance to merchant balance
+func TransferHandler(c *gin.Context) {
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader { // Token not prefixed with "Bearer "
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the transfer request
+	var req TransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	// Verify the merchant ID exists
+	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+
+	// Get user by ID
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
+
+	fmt.Printf("Transfer initiated for user: %s with amount: %.2f %s\n", user.Name, req.Amount, req.Currency)
+
+	// Get database connection
+	db := database.GetConnection()
+
+	// Start transaction
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Get collection balance
+	var collectionBalance balances.MerchantCollectionBalance
+	err = tx.Where("impalaMerchantId = ?", req.ImpalaMerchantId).First(&collectionBalance).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection balance not found"})
+		return
+	}
+
+	// Get merchant balance
+	var merchantBalance balances.MerchantBalance
+	err = tx.Where("impalaMerchantId = ?", req.ImpalaMerchantId).First(&merchantBalance).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Merchant balance not found"})
+		return
+	}
+
+	// Check sufficient collection balance
+	var availableBalance float64
+	var collectionField, merchantField string
+
+	switch req.Currency {
+	case "KES":
+		availableBalance = collectionBalance.KESBalance
+		collectionField = "kesBalance"
+		merchantField = "kesBalance"
+	case "UGX":
+		availableBalance = collectionBalance.UGXBalance
+		collectionField = "ugxBalance"
+		merchantField = "ugxBalance"
+	case "USD":
+		availableBalance = collectionBalance.USDBalance
+		collectionField = "usdBalance"
+		merchantField = "usdBalance"
+	case "EUR":
+		availableBalance = collectionBalance.EURBalance
+		collectionField = "eurBalance"
+		merchantField = "eurBalance"
+	case "GBP":
+		availableBalance = collectionBalance.GBPBalance
+		collectionField = "gbpBalance"
+		merchantField = "gbpBalance"
+	case "TZS":
+		availableBalance = collectionBalance.TZSBalance
+		collectionField = "tzsBalance"
+		merchantField = "tzsBalance"
+	case "XAF":
+		availableBalance = collectionBalance.XAFBalance
+		collectionField = "xafBalance"
+		merchantField = "xafBalance"
+	default:
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported currency"})
+		return
+	}
+
+	if availableBalance < req.Amount {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "INSUFFICIENT_BALANCE",
+			"message": fmt.Sprintf("Insufficient collection balance. Available: %.2f %s", availableBalance, req.Currency),
+		})
+		return
+	}
+
+	// Calculate fee (1.5%)
+	fee := req.Amount * 0.015
+	netAmount := req.Amount - fee
+
+	// Deduct from collection balance
+	err = tx.Model(&collectionBalance).Update(collectionField, gorm.Expr(collectionField+" - ?", req.Amount)).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to deduct from collection balance"})
+		return
+	}
+
+	// Add to merchant balance
+	err = tx.Model(&merchantBalance).Update(merchantField, gorm.Expr(merchantField+" + ?", netAmount)).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to merchant balance"})
+		return
+	}
+
+	// Record platform earnings
+	earning := drawings.PlatformEarningModel{
+		ImpalaMerchantID:   req.ImpalaMerchantId,
+		AmountTransferred:  req.Amount,
+		TransactionCharges: fee,
+		TransferDate:       time.Now(),
+	}
+
+	err = tx.Create(&earning).Error
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record platform earnings"})
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusOK, gin.H{
+		"status":        "success",
+		"message":       "Transfer completed successfully",
+		"amount":        req.Amount,
+		"currency":      req.Currency,
+		"fee":           fee,
+		"netAmount":     netAmount,
+		"transferDate":  time.Now().Format("2006-01-02 15:04:05"),
+		"merchantId":    req.ImpalaMerchantId,
+	})
+}
+
 func RegisterRoutes(router *gin.RouterGroup) {
 
 	router.GET("/", LoginHandler)
@@ -4105,6 +4282,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("korapay/callback", KorapayCallbackHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
+	router.POST("transfer", TransferHandler)
 
 	router.POST("links/tags", TagsHandler)
 	router.GET("transaction", GetTransactionHandler)

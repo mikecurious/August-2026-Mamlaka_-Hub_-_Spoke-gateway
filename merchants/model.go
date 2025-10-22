@@ -239,3 +239,10 @@ type FlutterwaveCustomer struct {
 	Email       string `json:"email"`
 	CreatedAt   string `json:"created_at"`
 }
+
+// Transfer structures
+type TransferRequest struct {
+	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
+	Currency         string  `json:"currency" binding:"required"`
+	Amount           float64 `json:"amount" binding:"required"`
+}
