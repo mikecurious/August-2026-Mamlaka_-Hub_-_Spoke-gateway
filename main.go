@@ -3,6 +3,7 @@ package main
 import (
 	"com.mam-laka/balances"
 	"com.mam-laka/database"
+	"com.mam-laka/forex"
 	"com.mam-laka/main/merchants"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -13,7 +14,7 @@ import (
 // models migration
 func Migration(database *gorm.DB) {
 	balances.AutoMigrate()
-
+	forex.AutoMigrate()
 }
 
 func main() {
@@ -33,6 +34,7 @@ func main() {
 	sun := router.Group("/api")
 	// users.Create(sun.Group("/users"))
 	merchants.RegisterRoutes(sun.Group("/v1"))
+	forex.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
 

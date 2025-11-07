@@ -1,10 +1,10 @@
 package balances
 
 import (
-	"fmt"
-	"time"
+    "fmt"
+    "time"
 
-	"com.mam-laka/database"
+    "com.mam-laka/database"
 )
 
 // MerchantCollectionBalance represents the merchant balance data.
@@ -33,6 +33,103 @@ func (MerchantCollectionBalance) TableName() string {
 func AutoMigrate() {
 	db := database.GetConnection()
 	db.AutoMigrate(&MerchantCollectionBalance{})
+}
+
+// GetMerchantCollectionBalance retrieves a merchant's collection balance by their ImpalaMerchantID.
+func GetMerchantCollectionBalance(impalaMerchantID string) (MerchantCollectionBalance, error) {
+    db := database.GetConnection()
+    var balance MerchantCollectionBalance
+    if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+        return MerchantCollectionBalance{}, fmt.Errorf("could not find merchant collection balance: %w", err)
+    }
+    return balance, nil
+}
+
+// ConvertCollectionBalance converts a given amount from one currency to another within the collection balance table.
+func ConvertCollectionBalance(impalaMerchantID, originCurrency, destinationCurrency string, amount, exchangeRate float64) error {
+    db := database.GetConnection()
+
+    var balance MerchantCollectionBalance
+    if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+        return fmt.Errorf("could not find merchant collection balance: %w", err)
+    }
+
+    var originBalance *float64
+    var destinationBalance *float64
+
+    switch originCurrency {
+    case "USD":
+        originBalance = &balance.USDBalance
+    case "USDC":
+        originBalance = &balance.USDCBalance
+    case "IMPA":
+        originBalance = &balance.ImpaBalance
+    case "LUMEN", "XLM":
+        originBalance = &balance.LumenBalance
+    case "USDT":
+        originBalance = &balance.USDTBalance
+    case "KES":
+        originBalance = &balance.KESBalance
+    case "EUR":
+        originBalance = &balance.EURBalance
+    case "GBP":
+        originBalance = &balance.GBPBalance
+    case "TZS":
+        originBalance = &balance.TZSBalance
+    case "UGX":
+        originBalance = &balance.UGXBalance
+    case "XAF":
+        originBalance = &balance.XAFBalance
+    default:
+        return fmt.Errorf("invalid origin currency: %s", originCurrency)
+    }
+
+    switch destinationCurrency {
+    case "USD":
+        destinationBalance = &balance.USDBalance
+    case "USDC":
+        destinationBalance = &balance.USDCBalance
+    case "IMPA":
+        destinationBalance = &balance.ImpaBalance
+    case "LUMEN", "XLM":
+        destinationBalance = &balance.LumenBalance
+    case "USDT":
+        destinationBalance = &balance.USDTBalance
+    case "KES":
+        destinationBalance = &balance.KESBalance
+    case "EUR":
+        destinationBalance = &balance.EURBalance
+    case "GBP":
+        destinationBalance = &balance.GBPBalance
+    case "TZS":
+        destinationBalance = &balance.TZSBalance
+    case "UGX":
+        destinationBalance = &balance.UGXBalance
+    case "XAF":
+        destinationBalance = &balance.XAFBalance
+    default:
+        return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
+    }
+
+    if originBalance == nil || destinationBalance == nil {
+        return fmt.Errorf("invalid currency conversion from %s to %s", originCurrency, destinationCurrency)
+    }
+
+    if *originBalance < amount {
+        return fmt.Errorf("insufficient balance in %s: available %.2f, required %.2f", originCurrency, *originBalance, amount)
+    }
+
+    convertedAmount := amount * exchangeRate
+    *originBalance -= amount
+    *destinationBalance += convertedAmount
+
+    balance.LastUpdated = time.Now()
+
+    if err := db.Save(&balance).Error; err != nil {
+        return fmt.Errorf("could not update merchant collection balance: %w", err)
+    }
+
+    return nil
 }
 
 func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[string]interface{}, error) {
