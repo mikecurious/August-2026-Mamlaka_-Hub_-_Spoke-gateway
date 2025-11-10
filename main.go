@@ -26,10 +26,11 @@ func main() {
 
 	router := gin.Default()
 
-	// CORS configuration :updated on august 28 17:16 pm
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
-	router.Use(cors.New(config))
+	router.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"*"},
+	}))
 
 	sun := router.Group("/api")
 	// users.Create(sun.Group("/users"))
