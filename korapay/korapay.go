@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -91,11 +90,11 @@ type KorapayCallbackData struct {
 func GenerateSecureID() string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 12) // Generate 12 characters
-	
+
 	// Use crypto/rand for better randomness
 	randomBytes := make([]byte, 12)
 	_, _ = rand.Read(randomBytes)
-	
+
 	for i := range b {
 		b[i] = charset[randomBytes[i]%byte(len(charset))]
 	}
@@ -108,11 +107,8 @@ func InitiateKorapayPayment(phoneNumber, customerName, customerEmail string, amo
 	reference := GenerateSecureID()
 	fmt.Printf("Generated Korapay reference: %s\n", reference)
 
-	// Format phone number with + if not already present
+	// Use phone number as-is (should already be in local format like 0771850050)
 	formattedPhone := phoneNumber
-	if !strings.HasPrefix(phoneNumber, "+") {
-		formattedPhone = "+" + phoneNumber
-	}
 
 	// Validate required fields
 	if amount <= 0 {
@@ -179,10 +175,6 @@ func InitiateKorapayPayment(phoneNumber, customerName, customerEmail string, amo
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Log the response for debugging
-	fmt.Printf("Korapay Response Status: %d\n", resp.StatusCode)
-	fmt.Printf("Korapay Response Body: %s\n", string(body))
-
 	// Parse response
 	var korapayResponse KorapayPaymentResponse
 	err = json.Unmarshal(body, &korapayResponse)
@@ -190,8 +182,10 @@ func InitiateKorapayPayment(phoneNumber, customerName, customerEmail string, amo
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Log response for debugging
+	// Log response for debugging (but don't return it in API response)
+	fmt.Printf("Korapay Response Status: %d\n", resp.StatusCode)
 	fmt.Printf("Korapay Payment Response: %+v\n", korapayResponse)
+	fmt.Printf("Korapay Raw Response Body: %s\n", string(body))
 
 	return &korapayResponse, nil
 }

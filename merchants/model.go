@@ -240,6 +240,21 @@ type FlutterwaveCustomer struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// Unified Payment Request - dynamically routes to Flutterwave or Korapay
+type UnifiedPaymentRequest struct {
+	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
+	Country          string `json:"country" binding:"required"` // Country code (e.g., "KE", "UG", "CI", "NG")
+	Currency         string `json:"currency" binding:"required"`
+	Amount           int    `json:"amount" binding:"required"`
+	CustomerName     string `json:"customerName"`              // Required for Korapay
+	CustomerEmail    string `json:"customerEmail" binding:"required,email"`
+	PayerPhone       string `json:"payerPhone" binding:"required"`
+	Description      string `json:"description"`                // Required for Korapay
+	ExternalID       string `json:"externalId" binding:"required"`
+	CallbackURL      string `json:"callbackUrl" binding:"required"`
+	RedirectURL      string `json:"redirectUrl"`               // Optional
+}
+
 // Transfer structures
 type TransferRequest struct {
 	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`

@@ -17,17 +17,17 @@ type TransactionModel struct {
 	Amount              int     `gorm:"column:amount" json:"amount"`
 	Msisdn              string  `gorm:"column:msisdn" json:"msisdn"`
 	NetAmount           float64 `gorm:"column:netAmount" json:"netAmount"`
-	SecureID            string `gorm:"column:secureId" json:"secureId"`
+	SecureID            string  `gorm:"column:secureId" json:"secureId"`
 	SourceOfFunds       string  `gorm:"column:sourceOfFunds" json:"sourceOfFunds"`
-	ExternalID          string `gorm:"column:externalId" json:"externalId"`
-	CallbackURL         string `gorm:"column:callbackUrl" json:"callbackUrl"`
-	RedirectURL         string `gorm:"column:redirectUrl" json:"redirectUrl"`
-	DateAdded           int64  `gorm:"column:dateAdded;type:string" json:"dateAdded"`
-	MerchantRequestID   string `gorm:"column:merchantRequestID" json:"merchantRequestID"`
-	CheckoutRequestID   string `gorm:"column:checkoutRequestID" json:"checkoutRequestID"`
-	ResponseCode        string `gorm:"column:responseCode" json:"responseCode"`
-	ResponseDescription string `gorm:"column:responseDescription" json:"responseDescription"`
-	CallbackStatus      string `gorm:"column:callbackStatus" json:"callbackStatus"`
+	ExternalID          string  `gorm:"column:externalId" json:"externalId"`
+	CallbackURL         string  `gorm:"column:callbackUrl" json:"callbackUrl"`
+	RedirectURL         string  `gorm:"column:redirectUrl" json:"redirectUrl"`
+	DateAdded           int64   `gorm:"column:dateAdded;type:string" json:"dateAdded"`
+	MerchantRequestID   string  `gorm:"column:merchantRequestID" json:"merchantRequestID"`
+	CheckoutRequestID   string  `gorm:"column:checkoutRequestID" json:"checkoutRequestID"`
+	ResponseCode        string  `gorm:"column:responseCode" json:"responseCode"`
+	ResponseDescription string  `gorm:"column:responseDescription" json:"responseDescription"`
+	CallbackStatus      string  `gorm:"column:callbackStatus" json:"callbackStatus"`
 }
 
 func (TransactionModel) TableName() string {
@@ -230,4 +230,38 @@ func GetTransactionByMerchantRequestID(merchantRequestID string) (TransactionMod
 	// printTransaction(transaction)
 
 	return transaction, nil
+}
+
+// GetTransactionsPaginated retrieves a paginated list of transactions for the given merchant.
+// If merchantID is empty, all transactions are returned.
+func GetTransactionsPaginated(merchantID string, page, pageSize int) ([]TransactionModel, int64, error) {
+	db := database.GetConnection()
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	var (
+		results []TransactionModel
+		total   int64
+		query   = db.Model(&TransactionModel{})
+	)
+
+	if merchantID != "" {
+		query = query.Where("impalaMerchantId = ?", merchantID)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := query.Order("dateAdded DESC").Offset(offset).Limit(pageSize).Find(&results).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return results, total, nil
 }

@@ -2255,6 +2255,61 @@ func GetTransactionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"transaction": response})
 }
 
+func ListTransactionsHandler(c *gin.Context) {
+	merchantID, exists := c.Get("merchantID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+
+	merchantIDStr, ok := merchantID.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchantID type"})
+		return
+	}
+
+	page := 1
+	if pageParam := c.DefaultQuery("page", "1"); pageParam != "" {
+		if parsedPage, err := strconv.Atoi(pageParam); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	pageSize := 20
+	if pageSizeParam := c.DefaultQuery("page_size", "20"); pageSizeParam != "" {
+		if parsedPageSize, err := strconv.Atoi(pageSizeParam); err == nil && parsedPageSize > 0 {
+			if parsedPageSize > 100 {
+				pageSize = 100
+			} else {
+				pageSize = parsedPageSize
+			}
+		}
+	}
+
+	transactionList, total, err := transactions.GetTransactionsPaginated(merchantIDStr, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve transactions", "details": err.Error()})
+		return
+	}
+
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+
+	serializer := transactions.NewTransactionSerializerList(c, transactionList)
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions": serializer.Response(),
+		"pagination": gin.H{
+			"current_page": page,
+			"per_page":     pageSize,
+			"total_pages":  totalPages,
+			"total_items":  total,
+		},
+	})
+}
+
 // handle using pasa pal ...
 func BankTransferHandler(c *gin.Context) {
 	fmt.Println(c)
@@ -3538,16 +3593,16 @@ func ECitizenConfirmHandler(c *gin.Context) {
 	// Send callback if callback URL is available
 	if transaction.CallbackURL != "" && transaction.CallbackURL != "NULL" {
 		callbackResponse := gin.H{
-			"transactionStatus": "SUCCESS",
-			"transactionReport": "collection",
-			"currency":          req.Currency,
-			"amount":            req.Amount,
-			"netAmount":         req.Amount,
-			"externalId":        req.RefNo,
-			"gatewayTransactionId": req.GatewayTransactionID,
-			"customerName":      req.CustomerName,
+			"transactionStatus":     "SUCCESS",
+			"transactionReport":     "collection",
+			"currency":              req.Currency,
+			"amount":                req.Amount,
+			"netAmount":             req.Amount,
+			"externalId":            req.RefNo,
+			"gatewayTransactionId":  req.GatewayTransactionID,
+			"customerName":          req.CustomerName,
 			"customerAccountNumber": req.CustomerAccountNumber,
-			"transactionDate":   req.GatewayTransactionDate,
+			"transactionDate":       req.GatewayTransactionDate,
 		}
 
 		log.Printf("Sending callback to URL: %s", transaction.CallbackURL)
@@ -3642,17 +3697,17 @@ func KorapayPaymentHandler(c *gin.Context) {
 
 	// Create transaction record
 	transaction := transactions.TransactionModel{
-		SecureID:     secureID,
-		ExternalID:   req.ExternalID,
-		ImpalaMerchantID: req.ImpalaMerchantId,
-		Amount:       req.Amount,
-		Currency:     req.Currency,
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		ImpalaMerchantID:  req.ImpalaMerchantId,
+		Amount:            req.Amount,
+		Currency:          req.Currency,
 		TransactionStatus: "processing",
 		TransactionReport: "collection",
-		SourceOfFunds: "korapay",
-		CallbackURL:  req.CallbackURL,
-		RedirectURL:  req.RedirectURL,
-		DateAdded:    time.Now().Unix(),
+		SourceOfFunds:     "korapay",
+		CallbackURL:       req.CallbackURL,
+		RedirectURL:       req.RedirectURL,
+		DateAdded:         time.Now().Unix(),
 		MerchantRequestID: korapayResponse.Data.TransactionReference, // Store Korapay transaction reference
 		CheckoutRequestID: korapayResponse.Data.PaymentReference,     // Store Korapay payment reference
 	}
@@ -3666,13 +3721,13 @@ func KorapayPaymentHandler(c *gin.Context) {
 
 	// Prepare response
 	response := gin.H{
-		"status":       korapayResponse.Status,
-		"message":      korapayResponse.Message,
-		"secureId":     secureID,
-		"externalId":   req.ExternalID,
-		"amount":       req.Amount,
-		"currency":     req.Currency,
-		"provider":     "korapay",
+		"status":            korapayResponse.Status,
+		"message":           korapayResponse.Message,
+		"secureId":          secureID,
+		"externalId":        req.ExternalID,
+		"amount":            req.Amount,
+		"currency":          req.Currency,
+		"provider":          "korapay",
 		"transactionStatus": "processing",
 	}
 
@@ -3724,10 +3779,10 @@ func KorapayCallbackHandler(c *gin.Context) {
 	// Find the transaction by Korapay payment reference
 	var transaction transactions.TransactionModel
 	db := database.GetConnection()
-	
+
 	// Log what we're searching for
 	log.Printf("Searching for transaction with Korapay payment reference: %s", callbackReq.Data.PaymentReference)
-	
+
 	// Try to find by Korapay payment reference (stored in CheckoutRequestID)
 	err = db.Where("checkoutRequestID = ?", callbackReq.Data.PaymentReference).First(&transaction).Error
 	if err != nil {
@@ -3739,7 +3794,7 @@ func KorapayCallbackHandler(c *gin.Context) {
 	// Update transaction status based on callback event
 	var newStatus string
 	var transactionStatus string
-	
+
 	switch callbackReq.Event {
 	case "charge.success":
 		newStatus = "success"
@@ -3890,17 +3945,17 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 
 	// Create transaction record
 	transaction := transactions.TransactionModel{
-		SecureID:     secureID,
-		ExternalID:   req.ExternalID,
-		ImpalaMerchantID: req.ImpalaMerchantId,
-		Amount:       req.Amount,
-		Currency:     req.Currency,
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		ImpalaMerchantID:  req.ImpalaMerchantId,
+		Amount:            req.Amount,
+		Currency:          req.Currency,
 		TransactionStatus: "processing",
 		TransactionReport: "collection",
-		SourceOfFunds: "flutterwave",
-		CallbackURL:  req.CallbackURL,
-		RedirectURL:  req.RedirectURL,
-		DateAdded:    time.Now().Unix(),
+		SourceOfFunds:     "flutterwave",
+		CallbackURL:       req.CallbackURL,
+		RedirectURL:       req.RedirectURL,
+		DateAdded:         time.Now().Unix(),
 	}
 
 	// Save transaction to database
@@ -3912,13 +3967,13 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 
 	// Prepare response
 	response := gin.H{
-		"status":       flutterwaveResponse.Status,
-		"message":      flutterwaveResponse.Message,
-		"secureId":     secureID,
-		"externalId":   req.ExternalID,
-		"amount":       req.Amount,
-		"currency":     req.Currency,
-		"provider":     "flutterwave",
+		"status":            flutterwaveResponse.Status,
+		"message":           flutterwaveResponse.Message,
+		"secureId":          secureID,
+		"externalId":        req.ExternalID,
+		"amount":            req.Amount,
+		"currency":          req.Currency,
+		"provider":          "flutterwave",
 		"transactionStatus": "processing",
 	}
 
@@ -3989,7 +4044,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	// Find the transaction by external ID or reference
 	var transaction transactions.TransactionModel
 	db := database.GetConnection()
-	
+
 	// Try to find by external ID first, then by reference
 	err = db.Where("externalId = ? OR secureId LIKE ?", callbackReq.Data.TxRef, "%"+callbackReq.Data.TxRef+"%").First(&transaction).Error
 	if err != nil {
@@ -4001,7 +4056,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	// Update transaction status based on callback event
 	var newStatus string
 	var transactionStatus string
-	
+
 	if callbackReq.Event == "charge.completed" {
 		if callbackReq.Data.Status == "successful" {
 			newStatus = "success"
@@ -4089,6 +4144,281 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 
 	log.Printf("✅ Flutterwave callback processed successfully for tx_ref: %s", callbackReq.Data.TxRef)
 	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Callback processed"})
+}
+
+// formatPhoneNumber converts international format (254XXXXXXXXX) to local format (0XXXXXXXXX)
+func formatPhoneNumber(phoneNumber string) string {
+	// Remove any + prefix if present
+	phone := strings.TrimPrefix(phoneNumber, "+")
+	
+	// Remove any spaces
+	phone = strings.ReplaceAll(phone, " ", "")
+	
+	// Convert 254XXXXXXXXX to 0XXXXXXXXX (Kenya)
+	if strings.HasPrefix(phone, "254") && len(phone) == 12 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 256XXXXXXXXX to 0XXXXXXXXX (Uganda)
+	if strings.HasPrefix(phone, "256") && len(phone) == 12 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 255XXXXXXXXX to 0XXXXXXXXX (Tanzania)
+	if strings.HasPrefix(phone, "255") && len(phone) == 12 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 233XXXXXXXXX to 0XXXXXXXXX (Ghana)
+	if strings.HasPrefix(phone, "233") && len(phone) == 12 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 234XXXXXXXXX to 0XXXXXXXXX (Nigeria)
+	if strings.HasPrefix(phone, "234") && len(phone) == 13 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 225XXXXXXXXX to 0XXXXXXXXX (Ivory Coast)
+	if strings.HasPrefix(phone, "225") && len(phone) == 11 {
+		return "0" + phone[3:]
+	}
+	
+	// Convert 237XXXXXXXXX to 0XXXXXXXXX (Cameroon)
+	if strings.HasPrefix(phone, "237") && len(phone) == 12 {
+		return "0" + phone[3:]
+	}
+	
+	// If already in local format (starts with 0), return as is
+	if strings.HasPrefix(phone, "0") {
+		return phone
+	}
+	
+	// If no conversion matched, return original (might already be in correct format)
+	return phone
+}
+
+// getPaymentProvider determines which payment provider to use based on country
+func getPaymentProvider(country string) string {
+	// Flutterwave countries
+	flutterwaveCountries := map[string]bool{
+		"BF": true, // Burkina Faso
+		"RW": true, // Rwanda
+		"SN": true, // Senegal
+		"UG": true, // Uganda
+		"ZM": true, // Zambia
+		"TZ": true, // Tanzania
+	}
+	
+	// Korapay countries
+	korapayCountries := map[string]bool{
+		"CI": true, // Ivory Coast
+		"KE": true, // Kenya
+		"CM": true, // Cameroon
+		"GH": true, // Ghana
+		"NG": true, // Nigeria
+	}
+	
+	countryUpper := strings.ToUpper(country)
+	
+	if flutterwaveCountries[countryUpper] {
+		return "flutterwave"
+	}
+	
+	if korapayCountries[countryUpper] {
+		return "korapay"
+	}
+	
+	// Default to Flutterwave if country not found
+	return "flutterwave"
+}
+
+// UnifiedPaymentHandler handles payment initiation and dynamically routes to Flutterwave or Korapay
+func UnifiedPaymentHandler(c *gin.Context) {
+	// Get the Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		return
+	}
+
+	// Extract the token from the Bearer scheme
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
+		return
+	}
+
+	// Verify the token
+	err := auth.VerifyToken(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
+		return
+	}
+
+	// Parse the unified payment request
+	var req UnifiedPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	// Verify the merchant ID exists
+	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+
+	// Get user by ID
+	user, err := users.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		return
+	}
+
+	// Determine which provider to use
+	provider := getPaymentProvider(req.Country)
+	log.Printf("Unified payment initiated for user: %s, country: %s, provider: %s, amount: %d", user.Name, req.Country, provider, req.Amount)
+
+	// Generate secure ID for transaction reference
+	secureID := flutterwave.GenerateSecureID()
+	
+	// Get transaction ID from database (will be set after transaction is created)
+	var transactionID uint
+
+	// Route to appropriate provider
+	if provider == "korapay" {
+		// Validate Korapay required fields
+		if req.CustomerName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "customerName is required for Korapay payments"})
+			return
+		}
+		if req.Description == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "description is required for Korapay payments"})
+			return
+		}
+		if req.RedirectURL == "" {
+			req.RedirectURL = req.CallbackURL // Use callback URL as fallback
+		}
+
+		// Korapay uses phone number with country code (254771850050)
+		// Remove + prefix if present, but keep country code
+		korapayPhone := strings.TrimPrefix(req.PayerPhone, "+")
+		korapayPhone = strings.ReplaceAll(korapayPhone, " ", "")
+		log.Printf("Korapay phone number (with country code): %s", korapayPhone)
+
+		// Initiate Korapay payment
+		korapayResponse, err := korapay.InitiateKorapayPayment(
+			korapayPhone,
+			req.CustomerName,
+			req.CustomerEmail,
+			req.Amount,
+			req.Currency,
+			req.Description,
+			req.CallbackURL,
+			req.RedirectURL,
+		)
+
+		if err != nil {
+			log.Printf("Failed to initiate Korapay payment: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment"})
+			return
+		}
+
+		// Create transaction record
+		transaction := transactions.TransactionModel{
+			SecureID:          secureID,
+			ExternalID:        req.ExternalID,
+			ImpalaMerchantID:  req.ImpalaMerchantId,
+			Amount:            req.Amount,
+			Currency:          req.Currency,
+			TransactionStatus: "processing",
+			TransactionReport: "collection",
+			SourceOfFunds:     "korapay",
+			CallbackURL:       req.CallbackURL,
+			RedirectURL:       req.RedirectURL,
+			DateAdded:         time.Now().Unix(),
+		}
+
+		if korapayResponse.Data != nil {
+			transaction.MerchantRequestID = korapayResponse.Data.TransactionReference
+			transaction.CheckoutRequestID = korapayResponse.Data.PaymentReference
+		}
+
+		// Save transaction to database
+		if err := database.GetConnection().Create(&transaction).Error; err != nil {
+			log.Printf("Failed to save transaction: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction"})
+			return
+		}
+
+		transactionID = transaction.ID
+
+		// Return standardized response
+		c.JSON(http.StatusOK, gin.H{
+			"message":       "Payment initiation successful",
+			"secureId":      secureID,
+			"transactionId": fmt.Sprintf("ImpadlTdest%d", transactionID),
+		})
+		return
+	}
+
+	// Flutterwave payment
+	// Format phone number to local format (254XXXXXXXXX -> 0XXXXXXXXX)
+	formattedPhone := formatPhoneNumber(req.PayerPhone)
+	log.Printf("Phone number formatted: %s -> %s", req.PayerPhone, formattedPhone)
+
+	// Initiate Flutterwave payment
+	flutterwaveResponse, err := flutterwave.InitiateFlutterwavePayment(
+		formattedPhone,
+		req.CustomerEmail,
+		req.Amount,
+		req.Currency,
+		secureID,
+	)
+
+	if err != nil {
+		log.Printf("Failed to initiate Flutterwave payment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment"})
+		return
+	}
+
+	// Create transaction record
+	transaction := transactions.TransactionModel{
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		ImpalaMerchantID:  req.ImpalaMerchantId,
+		Amount:            req.Amount,
+		Currency:          req.Currency,
+		TransactionStatus: "processing",
+		TransactionReport: "collection",
+		SourceOfFunds:     "flutterwave",
+		CallbackURL:       req.CallbackURL,
+		RedirectURL:       req.RedirectURL,
+		DateAdded:         time.Now().Unix(),
+	}
+
+	if flutterwaveResponse.Data != nil {
+		transaction.MerchantRequestID = flutterwaveResponse.Data.TxRef
+		transaction.CheckoutRequestID = flutterwaveResponse.Data.FlwRef
+	}
+
+	// Save transaction to database
+	if err := database.GetConnection().Create(&transaction).Error; err != nil {
+		log.Printf("Failed to save transaction: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction"})
+		return
+	}
+
+	transactionID = transaction.ID
+
+	// Return standardized response
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Payment initiation successful",
+		"secureId":      secureID,
+		"transactionId": fmt.Sprintf("ImpadlTdest%d", transactionID),
+	})
 }
 
 // TransferHandler handles transfer from collection balance to merchant balance
@@ -4257,14 +4587,14 @@ func TransferHandler(c *gin.Context) {
 
 	// Success response
 	c.JSON(http.StatusOK, gin.H{
-		"status":        "success",
-		"message":       "Transfer completed successfully",
-		"amount":        req.Amount,
-		"currency":      req.Currency,
-		"fee":           fee,
-		"netAmount":     netAmount,
-		"transferDate":  time.Now().Format("2006-01-02 15:04:05"),
-		"merchantId":    req.ImpalaMerchantId,
+		"status":       "success",
+		"message":      "Transfer completed successfully",
+		"amount":       req.Amount,
+		"currency":     req.Currency,
+		"fee":          fee,
+		"netAmount":    netAmount,
+		"transferDate": time.Now().Format("2006-01-02 15:04:05"),
+		"merchantId":   req.ImpalaMerchantId,
 	})
 }
 
@@ -4282,6 +4612,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("korapay/callback", KorapayCallbackHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
+	router.POST("pay", UnifiedPaymentHandler) // Unified payment endpoint
 	router.POST("transfer", TransferHandler)
 
 	router.POST("links/tags", TagsHandler)
@@ -4310,6 +4641,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/vc/create/virtual-card", CreateCardHandler)
 	router.POST("/vc/callback/card-status", GetVirtualCardByIDCardCallbackHandler)
 	protected.GET("/vc/list/virtual-cards", ListVirtualCardsByMerchant) // List virtual cards by merchant
+	protected.GET("/transactions", ListTransactionsHandler)
 	protected.POST("/vc/card/info", RetrieveCardInfoHandler)
 	protected.POST("/vc/card/balance", GetCardBalance)
 	// virtual card generation
