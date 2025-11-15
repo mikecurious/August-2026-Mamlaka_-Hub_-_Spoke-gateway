@@ -70,13 +70,14 @@ type AirtimeCallbackRequest struct {
 
 // CallbackResponse represents the response sent back to merchant
 type CallbackResponse struct {
-	TransactionStatus string      `json:"transactionStatus"`
-	TransactionReport string      `json:"transactionReport"`
-	Currency          string      `json:"currency"`
-	Amount            interface{} `json:"amount"`
-	NetAmount         interface{} `json:"netAmount"`
-	SecureID          string      `json:"secureId"`
-	ExternalID        string      `json:"externalId"`
+	Amount            int    `json:"amount"`
+	Currency          string `json:"currency"`
+	ExternalID        string `json:"externalId"`
+	NetAmount         int    `json:"netAmount"`
+	SecureID          string `json:"secureId"`
+	TransactionReport string `json:"transactionReport"`
+	TransactionStatus string `json:"transactionStatus"`
+	Reason            string `json:"reason,omitempty"` // Only included for failed transactions
 }
 
 // TransactionType represents the type of transaction
@@ -3794,14 +3795,23 @@ func KorapayCallbackHandler(c *gin.Context) {
 	// Update transaction status based on callback event
 	var newStatus string
 	var transactionStatus string
+	var transactionReport string
+	var failureReason string
 
 	switch callbackReq.Event {
 	case "charge.success":
 		newStatus = "success"
-		transactionStatus = "success"
+		transactionStatus = "COMPLETE"
+		transactionReport = "COMPLETE"
 	case "charge.failed":
 		newStatus = "failed"
-		transactionStatus = "failed"
+		transactionStatus = "FAILED"
+		transactionReport = "FAILED"
+		// Extract failure reason from status or use default message
+		failureReason = callbackReq.Data.Status
+		if failureReason == "" {
+			failureReason = "Payment failed"
+		}
 	default:
 		log.Printf("Unknown Korapay event: %s", callbackReq.Event)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown event type"})
@@ -3849,15 +3859,26 @@ func KorapayCallbackHandler(c *gin.Context) {
 		}
 	}
 
+	// Calculate net amount (amount minus fees)
+	netAmount := callbackReq.Data.Amount - int(callbackReq.Data.Fee)
+	if netAmount < 0 {
+		netAmount = callbackReq.Data.Amount // Fallback to original amount if calculation results in negative
+	}
+
 	// Prepare callback response for merchant
 	callbackResponse := CallbackResponse{
-		TransactionStatus: transactionStatus,
-		TransactionReport: callbackReq.Event,
-		Currency:          callbackReq.Data.Currency,
 		Amount:            callbackReq.Data.Amount,
-		NetAmount:         callbackReq.Data.Amount - int(callbackReq.Data.Fee),
-		SecureID:          transaction.SecureID,
+		Currency:          callbackReq.Data.Currency,
 		ExternalID:        transaction.ExternalID,
+		NetAmount:         netAmount,
+		SecureID:          transaction.SecureID,
+		TransactionReport: transactionReport,
+		TransactionStatus: transactionStatus,
+	}
+
+	// Add reason only for failed transactions
+	if transactionStatus == "FAILED" {
+		callbackResponse.Reason = failureReason
 	}
 
 	// Send callback to merchant if callback URL is provided
@@ -4056,14 +4077,23 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	// Update transaction status based on callback event
 	var newStatus string
 	var transactionStatus string
+	var transactionReport string
+	var failureReason string
 
 	if callbackReq.Event == "charge.completed" {
 		if callbackReq.Data.Status == "successful" {
 			newStatus = "success"
-			transactionStatus = "success"
+			transactionStatus = "COMPLETE"
+			transactionReport = "COMPLETE"
 		} else if callbackReq.Data.Status == "failed" {
 			newStatus = "failed"
-			transactionStatus = "failed"
+			transactionStatus = "FAILED"
+			transactionReport = "FAILED"
+			// Extract failure reason from processor response
+			failureReason = callbackReq.Data.ProcessorResponse
+			if failureReason == "" {
+				failureReason = "Payment failed"
+			}
 		} else {
 			log.Printf("Unknown Flutterwave status: %s", callbackReq.Data.Status)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown status"})
@@ -4116,15 +4146,26 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		}
 	}
 
+	// Calculate net amount (amount minus fees)
+	netAmount := callbackReq.Data.Amount - int(callbackReq.Data.AppFee)
+	if netAmount < 0 {
+		netAmount = callbackReq.Data.Amount // Fallback to original amount if calculation results in negative
+	}
+
 	// Prepare callback response for merchant
 	callbackResponse := CallbackResponse{
-		TransactionStatus: transactionStatus,
-		TransactionReport: callbackReq.Event,
-		Currency:          callbackReq.Data.Currency,
 		Amount:            callbackReq.Data.Amount,
-		NetAmount:         callbackReq.Data.Amount - int(callbackReq.Data.AppFee),
-		SecureID:          transaction.SecureID,
+		Currency:          callbackReq.Data.Currency,
 		ExternalID:        transaction.ExternalID,
+		NetAmount:         netAmount,
+		SecureID:          transaction.SecureID,
+		TransactionReport: transactionReport,
+		TransactionStatus: transactionStatus,
+	}
+
+	// Add reason only for failed transactions
+	if transactionStatus == "FAILED" {
+		callbackResponse.Reason = failureReason
 	}
 
 	// Send callback to merchant if callback URL is provided
