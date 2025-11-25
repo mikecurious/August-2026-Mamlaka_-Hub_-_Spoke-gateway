@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Test - Mam-laka</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-box {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .result-box.show {
+            display: block;
+        }
+
+        .result-box h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .result-value {
+            color: #333;
+            word-break: break-all;
+        }
+
+        .polling-status {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .polling-status.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .config-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .toggle-config {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .config-content {
+            display: none;
+        }
+
+        .config-content.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💳 Payment Test</h1>
+        <p class="subtitle">Test the unified payment API endpoint</p>
+
+        <div class="config-section">
+            <button class="toggle-config" onclick="toggleConfig()">⚙️ Configuration</button>
+            <div class="config-content" id="configContent">
+                <div class="form-group">
+                    <label>API Base URL</label>
+                    <input type="text" id="baseUrl" value="https://payments.mam-laka.com/api/v1" placeholder="https://payments.mam-laka.com/api/v1">
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="username" value="app" placeholder="app">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" value="cometappmain" placeholder="password">
+                </div>
+                <div class="form-group">
+                    <label>Webhook URL</label>
+                    <input type="text" id="webhookUrl" value="https://webhook.site/26e18488-fb4a-4da9-b5a4-ec5bf5976f9f" placeholder="https://webhook.site/...">
+                </div>
+            </div>
+        </div>
+
+        <form id="paymentForm">
+            <div class="form-group">
+                <label>Merchant ID <span class="required">*</span></label>
+                <input type="text" id="impalaMerchantId" value="app" required>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Country <span class="required">*</span></label>
+                    <select id="country" required>
+                        <option value="KE">Kenya (KE)</option>
+                        <option value="UG" selected>Uganda (UG)</option>
+                        <option value="TZ">Tanzania (TZ)</option>
+                        <option value="RW">Rwanda (RW)</option>
+                        <option value="ZM">Zambia (ZM)</option>
+                        <option value="BF">Burkina Faso (BF)</option>
+                        <option value="SN">Senegal (SN)</option>
+                        <option value="CI">Ivory Coast (CI)</option>
+                        <option value="CM">Cameroon (CM)</option>
+                        <option value="GH">Ghana (GH)</option>
+                        <option value="NG">Nigeria (NG)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Currency <span class="required">*</span></label>
+                    <select id="currency" required>
+                        <option value="KES">KES - Kenyan Shilling</option>
+                        <option value="UGX" selected>UGX - Ugandan Shilling</option>
+                        <option value="TZS">TZS - Tanzanian Shilling</option>
+                        <option value="RWF">RWF - Rwandan Franc</option>
+                        <option value="ZMW">ZMW - Zambian Kwacha</option>
+                        <option value="XAF">XAF - Central African Franc</option>
+                        <option value="NGN">NGN - Nigerian Naira</option>
+                        <option value="GHS">GHS - Ghanaian Cedi</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Amount <span class="required">*</span></label>
+                <input type="number" id="amount" value="100" min="1" required>
+            </div>
+
+            <div class="form-group">
+                <label>Customer Name</label>
+                <input type="text" id="customerName" value="John Doe" placeholder="John Doe">
+            </div>
+
+            <div class="form-group">
+                <label>Customer Email <span class="required">*</span></label>
+                <input type="email" id="customerEmail" value="john.doe@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label>Phone Number <span class="required">*</span></label>
+                <input type="text" id="payerPhone" value="256771850050" placeholder="256771850050" required>
+                <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                    Format: Country code + number (e.g., 254771850050 for Kenya, 256771850050 for Uganda)
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label>Description</label>
+                <input type="text" id="description" value="Payment for services" placeholder="Payment description">
+            </div>
+
+            <div class="form-group">
+                <label>External ID <span class="required">*</span></label>
+                <input type="text" id="externalId" required>
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn">
+                🚀 Initiate Payment
+            </button>
+        </form>
+
+        <div class="status" id="status"></div>
+        <div class="result-box" id="resultBox"></div>
+        <div class="polling-status" id="pollingStatus"></div>
+    </div>
+
+    <script>
+        // Generate unique external ID on page load
+        document.getElementById('externalId').value = 'ext_' + Date.now();
+
+        function toggleConfig() {
+            const config = document.getElementById('configContent');
+            config.classList.toggle('show');
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status show ' + type;
+        }
+
+        function hideStatus() {
+            document.getElementById('status').classList.remove('show');
+        }
+
+        function showResult(data) {
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `
+                <h3>📋 Payment Response</h3>
+                <div class="result-item">
+                    <span class="result-label">Message:</span>
+                    <span class="result-value">${data.message || 'N/A'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Secure ID:</span>
+                    <span class="result-value">${data.secureId || 'N/A'}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Transaction ID:</span>
+                    <span class="result-value">${data.transactionId || 'N/A'}</span>
+                </div>
+            `;
+            resultBox.classList.add('show');
+        }
+
+        function showPollingStatus(attempt, maxAttempts) {
+            const pollingStatus = document.getElementById('pollingStatus');
+            const percentage = Math.min((attempt / maxAttempts) * 100, 100);
+            pollingStatus.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>🔄 Polling transaction status... (Attempt ${attempt}/${maxAttempts})</span>
+                    <span style="font-weight: 600;">${Math.round(percentage)}%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percentage}%"></div>
+                </div>
+            `;
+            pollingStatus.classList.add('show');
+        }
+
+        function hidePollingStatus() {
+            document.getElementById('pollingStatus').classList.remove('show');
+        }
+
+        async function makeRequest(url, method = 'GET', data = null, headers = {}) {
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers
+                }
+            };
+
+            if (data && method !== 'GET') {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const responseData = await response.json();
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    data: responseData
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    status: 0,
+                    error: error.message
+                };
+            }
+        }
+
+        async function getToken(baseUrl, username, password) {
+            showStatus('🔐 Getting authentication token...', 'loading');
+            
+            const auth = btoa(username + ':' + password);
+            const url = baseUrl;
+            
+            // Try GET first
+            let response = await makeRequest(url, 'GET', null, {
+                'Authorization': 'Basic ' + auth
+            });
+
+            // If GET fails with 405, try POST
+            if (response.status === 405) {
+                response = await makeRequest(url, 'POST', null, {
+                    'Authorization': 'Basic ' + auth
+                });
+            }
+
+            if (response.ok && response.data.token) {
+                showStatus('✓ Token obtained successfully', 'success');
+                return response.data.token;
+            } else {
+                showStatus('✗ Failed to get token: ' + (response.data.error || response.error || 'Unknown error'), 'error');
+                return null;
+            }
+        }
+
+        async function initiatePayment(baseUrl, token, paymentData) {
+            showStatus('💳 Initiating payment...', 'loading');
+            
+            const url = baseUrl + '/pay';
+            const response = await makeRequest(url, 'POST', paymentData, {
+                'Authorization': 'Bearer ' + token
+            });
+
+            if (response.ok && response.data.secureId) {
+                showStatus('✓ Payment initiated successfully', 'success');
+                showResult(response.data);
+                return response.data;
+            } else {
+                showStatus('✗ Failed to initiate payment: ' + (response.data.error || response.error || 'Unknown error'), 'error');
+                return null;
+            }
+        }
+
+        async function pollTransactionStatus(baseUrl, merchantId, secureId, maxAttempts = 60) {
+            showPollingStatus(0, maxAttempts);
+            
+            const url = `${baseUrl}/transaction?merchant=${encodeURIComponent(merchantId)}&secureId=${encodeURIComponent(secureId)}`;
+            
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                showPollingStatus(attempt, maxAttempts);
+                
+                const response = await makeRequest(url, 'GET');
+                
+                if (response.ok && response.data) {
+                    const transaction = response.data;
+                    const status = transaction.transactionStatus;
+
+                    if (status === 'COMPLETE') {
+                        hidePollingStatus();
+                        showStatus('✅ Transaction completed successfully!', 'success');
+                        showFinalResult(transaction);
+                        return transaction;
+                    } else if (status === 'FAILED') {
+                        hidePollingStatus();
+                        showStatus('❌ Transaction failed!', 'error');
+                        showFinalResult(transaction);
+                        return transaction;
+                    }
+                }
+
+                // Wait 3 seconds before next attempt (except on last attempt)
+                if (attempt < maxAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+
+            hidePollingStatus();
+            showStatus('⚠ Maximum polling attempts reached. Transaction status unknown.', 'error');
+            return null;
+        }
+
+        function showFinalResult(transaction) {
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `
+                <h3>📊 Final Transaction Status</h3>
+                <div class="result-item">
+                    <span class="result-label">Status:</span>
+                    <span class="result-value" style="font-weight: 600; color: ${transaction.transactionStatus === 'COMPLETE' ? '#28a745' : '#dc3545'}">
+                        ${transaction.transactionStatus}
+                    </span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Report:</span>
+                    <span class="result-value">${transaction.transactionReport}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Amount:</span>
+                    <span class="result-value">${transaction.amount} ${transaction.currency}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Net Amount:</span>
+                    <span class="result-value">${transaction.netAmount} ${transaction.currency}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Secure ID:</span>
+                    <span class="result-value">${transaction.secureId}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">External ID:</span>
+                    <span class="result-value">${transaction.externalId}</span>
+                </div>
+                ${transaction.reason ? `
+                <div class="result-item">
+                    <span class="result-label">Reason:</span>
+                    <span class="result-value" style="color: #dc3545;">${transaction.reason}</span>
+                </div>
+                ` : ''}
+            `;
+            resultBox.classList.add('show');
+        }
+
+        document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Get configuration
+            const baseUrl = document.getElementById('baseUrl').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const webhookUrl = document.getElementById('webhookUrl').value;
+
+            // Get form data
+            const paymentData = {
+                impalaMerchantId: document.getElementById('impalaMerchantId').value,
+                country: document.getElementById('country').value,
+                currency: document.getElementById('currency').value,
+                amount: parseInt(document.getElementById('amount').value),
+                customerName: document.getElementById('customerName').value,
+                customerEmail: document.getElementById('customerEmail').value,
+                payerPhone: document.getElementById('payerPhone').value,
+                description: document.getElementById('description').value,
+                externalId: document.getElementById('externalId').value,
+                callbackUrl: webhookUrl,
+                redirectUrl: webhookUrl
+            };
+
+            // Disable submit button
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Processing...';
+
+            try {
+                // Step 1: Get token
+                const token = await getToken(baseUrl, username, password);
+                if (!token) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '🚀 Initiate Payment';
+                    return;
+                }
+
+                // Step 2: Initiate payment
+                const paymentResponse = await initiatePayment(baseUrl, token, paymentData);
+                if (!paymentResponse) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '🚀 Initiate Payment';
+                    return;
+                }
+
+                // Step 3: Poll transaction status
+                await pollTransactionStatus(baseUrl, paymentData.impalaMerchantId, paymentResponse.secureId);
+
+            } catch (error) {
+                showStatus('✗ Error: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🚀 Initiate Payment';
+            }
+        });
+    </script>
+</body>
+</html>
+

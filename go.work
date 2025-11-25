@@ -19,5 +19,6 @@ use (
     ./korapay
     ./flutterwave
     ./forex
+    ./payaza
     
 )

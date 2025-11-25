@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
+
 	"com.mam-laka/balances"
 	"com.mam-laka/database"
 	"com.mam-laka/forex"
 	"com.mam-laka/main/merchants"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	"gorm.io/gorm"
 )
@@ -18,6 +21,12 @@ func Migration(database *gorm.DB) {
 }
 
 func main() {
+	//load the env
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Warning: .env file not found, using system env...")
+	}
+
 	// Initialize the database connection
 	// Set Gin to release mode for production
 	gin.SetMode(gin.DebugMode) // Change to gin.ReleaseMode for production

@@ -25,6 +25,7 @@ import (
 	"com.mam-laka/flutterwave"
 	"com.mam-laka/korapay"
 	"com.mam-laka/mpesa"
+	"com.mam-laka/payaza"
 	"com.mam-laka/pesalink"
 	"com.mam-laka/transactions"
 	"com.mam-laka/uganda"
@@ -348,31 +349,12 @@ func RemovePlusPrefix(phone string) string {
 
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
-	// Get the Authorization header
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
-		return
-	}
-
-	// Extract the token from the Bearer scheme
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenString == authHeader { // Token not prefixed with "Bearer "
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization token format"})
-		return
-	}
-
-	// Verify the token
-	err := auth.VerifyToken(tokenString)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token", "details": err.Error()})
-		return
-	}
+	// Authrorization already dont on anothr page before this handler is called
 
 	// Parse the mobile payment request
 	var req MobilePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input3"})
 		return
 	}
 
@@ -391,20 +373,72 @@ func MobilePaymentHandler(c *gin.Context) {
 	}
 	fmt.Printf("Payment initiated for user: %s with amount: %d\n", user.Name, req.Amount)
 
-	// Here you would initiate the mobile payment logic, e.g., interacting with a payment API.
-	// This is just an example response.
-	//call the initiate payment method
-	//StkPush(phoneNumber string, amount int, callbackURL, accountReference string
-
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
 
 	dateAdded := time.Now().Unix()
-
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
+	// check which currency the payment is being made from
+	var stkResponse *mpesa.StkPushResponse
+	var errror_stk error
+	var merchantRequestID string
+	var checkoutRequestID string
+	var responseDescription string
+	var responseCode string
+
+	if req.Currency == "KES" {
+
+		stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name)
+		merchantRequestID = stkResponse.MerchantRequestID
+		checkoutRequestID = stkResponse.CheckoutRequestID
+		responseDescription = stkResponse.ResponseDescription
+		responseCode = stkResponse.ResponseCode
+
+	} else if req.Currency == "XOF" { // WE USING PAYAZA FOR THIS
+
+		// get country code from phone
+		countryCode := payaza.DetectCountryCode(req.PayerPhone)
+		CustomerBankCode := payaza.GetBankCode(countryCode, req.MobileMoneySP)
+
+		fmt.Println("Determined Bank Code:", CustomerBankCode)
+		// prepare payload
+		payload := payaza.PayazaPayload{
+			Amount:                 req.Amount,
+			CustomerNumber:         req.PayerPhone,
+			TransactionReference:   secureID,
+			TransactionDescription: "Test Payment",
+			CustomerBankCode:       CustomerBankCode,
+			CurrencyCode:           req.Currency,
+			CustomerEmail:          "bigmaitre@blondmail.com",
+			CustomerFirstName:      "Robert",
+			CustomerLastName:       "Stones",
+			CustomerPhoneNumber:    "2290196289492",
+			CountryCode:            countryCode,
+		}
+
+		stkResponse, errror_stk := payaza.SendPayazaRequest(payload)
+		if errror_stk != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Payment initiation failed", "details": stkResponse})
+			return
+		}
+
+		if stkResponse.IsSuccess() {
+			fmt.Println("SUCCESS (PENDING):")
+			fmt.Println("Transaction Ref:", stkResponse.TransactionReference)
+			fmt.Println("Payment Token:", stkResponse.PaymentToken)
+		} else {
+			fmt.Println("FAILED / DECLINED:")
+			fmt.Println("Code:", stkResponse.ResponseCode)
+			fmt.Println("Message:", stkResponse.ResponseMessage)
+		}
+		merchantRequestID = stkResponse.TransactionReference
+		checkoutRequestID = stkResponse.PaymentToken
+		responseDescription = "Merchant initiated XOF payment via Payaza"
+		responseCode = stkResponse.ResponseCode
+
+	}
 
 	// Replace with actual logic for initiating the M-Pesa request
-	stkResponse, errror_stk := mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name)
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_stk != nil {
@@ -414,10 +448,10 @@ func MobilePaymentHandler(c *gin.Context) {
 	// Create the transaction record in the database
 	newTransaction := &transactions.TransactionModel{
 		ImpalaMerchantID:    req.ImpalaMerchantId,
-		MerchantRequestID:   stkResponse.MerchantRequestID,
-		CheckoutRequestID:   stkResponse.CheckoutRequestID,
-		ResponseDescription: stkResponse.ResponseDescription,
-		ResponseCode:        stkResponse.ResponseCode,
+		MerchantRequestID:   merchantRequestID,
+		CheckoutRequestID:   checkoutRequestID,
+		ResponseDescription: responseDescription,
+		ResponseCode:        responseCode,
 		Currency:            req.Currency,
 		Amount:              req.Amount,
 		Msisdn:              req.PayerPhone,
@@ -439,7 +473,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "Payment initiation successful",
-		"transactionId": &stkResponse.MerchantRequestID,
+		"transactionId": merchantRequestID,
 		"secureId":      secureID,
 	})
 
@@ -4191,50 +4225,50 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 func formatPhoneNumber(phoneNumber string) string {
 	// Remove any + prefix if present
 	phone := strings.TrimPrefix(phoneNumber, "+")
-	
+
 	// Remove any spaces
 	phone = strings.ReplaceAll(phone, " ", "")
-	
+
 	// Convert 254XXXXXXXXX to 0XXXXXXXXX (Kenya)
 	if strings.HasPrefix(phone, "254") && len(phone) == 12 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 256XXXXXXXXX to 0XXXXXXXXX (Uganda)
 	if strings.HasPrefix(phone, "256") && len(phone) == 12 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 255XXXXXXXXX to 0XXXXXXXXX (Tanzania)
 	if strings.HasPrefix(phone, "255") && len(phone) == 12 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 233XXXXXXXXX to 0XXXXXXXXX (Ghana)
 	if strings.HasPrefix(phone, "233") && len(phone) == 12 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 234XXXXXXXXX to 0XXXXXXXXX (Nigeria)
 	if strings.HasPrefix(phone, "234") && len(phone) == 13 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 225XXXXXXXXX to 0XXXXXXXXX (Ivory Coast)
 	if strings.HasPrefix(phone, "225") && len(phone) == 11 {
 		return "0" + phone[3:]
 	}
-	
+
 	// Convert 237XXXXXXXXX to 0XXXXXXXXX (Cameroon)
 	if strings.HasPrefix(phone, "237") && len(phone) == 12 {
 		return "0" + phone[3:]
 	}
-	
+
 	// If already in local format (starts with 0), return as is
 	if strings.HasPrefix(phone, "0") {
 		return phone
 	}
-	
+
 	// If no conversion matched, return original (might already be in correct format)
 	return phone
 }
@@ -4250,7 +4284,7 @@ func getPaymentProvider(country string) string {
 		"ZM": true, // Zambia
 		"TZ": true, // Tanzania
 	}
-	
+
 	// Korapay countries
 	korapayCountries := map[string]bool{
 		"CI": true, // Ivory Coast
@@ -4259,17 +4293,17 @@ func getPaymentProvider(country string) string {
 		"GH": true, // Ghana
 		"NG": true, // Nigeria
 	}
-	
+
 	countryUpper := strings.ToUpper(country)
-	
+
 	if flutterwaveCountries[countryUpper] {
 		return "flutterwave"
 	}
-	
+
 	if korapayCountries[countryUpper] {
 		return "korapay"
 	}
-	
+
 	// Default to Flutterwave if country not found
 	return "flutterwave"
 }
@@ -4324,7 +4358,7 @@ func UnifiedPaymentHandler(c *gin.Context) {
 
 	// Generate secure ID for transaction reference
 	secureID := flutterwave.GenerateSecureID()
-	
+
 	// Get transaction ID from database (will be set after transaction is created)
 	var transactionID uint
 
@@ -4639,6 +4673,145 @@ func TransferHandler(c *gin.Context) {
 	})
 }
 
+// PayazaCallbackHandler handles Payaza payment callbacks
+func PayazaCallbackHandler(c *gin.Context) {
+	log.Println("📞 Received Payaza callback")
+
+	// Parse the callback request
+	var callbackReq struct {
+		TransactionReference string  `json:"transaction_reference"`
+		TransactionStatus    string  `json:"transaction_status"`
+		TransactionFee       float64 `json:"transaction_fee"`
+		AmountReceived       float64 `json:"amount_received"`
+		InitiatedDate        string  `json:"initiated_date"`
+		CurrentStatusDate    string  `json:"current_status_date,omitempty"`
+		ReceivedFrom         struct {
+			AccountName   string `json:"account_name"`
+			AccountNumber string `json:"account_number"`
+			BankName      string `json:"bank_name"`
+		} `json:"received_from"`
+		Status                string `json:"status"`
+		SessionID             string `json:"session_id"`
+		Channel               string `json:"channel"`
+		Branch                bool   `json:"branch"`
+		CurrencyCode          string `json:"currency_code"`
+		PayazaAccountReference string `json:"payaza_account_reference"`
+		Narration             string `json:"narration"`
+		BusinessFK            int    `json:"business_fk"`
+	}
+
+	if err := c.ShouldBindJSON(&callbackReq); err != nil {
+		log.Printf("❌ Failed to parse Payaza callback request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": err.Error()})
+		return
+	}
+
+	// Log the callback details
+	log.Printf("🔍 Processing Payaza callback for transaction_reference: %s, status: %s", callbackReq.TransactionReference, callbackReq.Status)
+
+	// Get database connection
+	db := database.GetConnection()
+	if db == nil {
+		log.Println("❌ Failed to get database connection")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection failed"})
+		return
+	}
+
+	// Find transaction by matching transaction_reference with secureId or merchantRequestID
+	var transaction transactions.TransactionModel
+	err := db.Where("secureId = ? OR merchantRequestID = ?", callbackReq.TransactionReference, callbackReq.TransactionReference).
+		First(&transaction).Error
+	if err != nil {
+		log.Printf("❌ Transaction not found for reference: %s, Error: %v", callbackReq.TransactionReference, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	log.Printf("✅ Found transaction: ID=%d, Type=%s, Amount=%d, Currency=%s", transaction.ID, transaction.TransactionReport, transaction.Amount, transaction.Currency)
+
+	// Determine transaction status based on Payaza status
+	var transactionStatus, transactionReport, callbackStatus string
+	var netAmount float64
+
+	if callbackReq.Status == "Completed" {
+		transactionStatus = "SUCCESS"
+		transactionReport = "COMPLETE"
+		callbackStatus = "SENT"
+		// Net amount is amount received minus transaction fee
+		netAmount = callbackReq.AmountReceived - callbackReq.TransactionFee
+		if netAmount < 0 {
+			netAmount = callbackReq.AmountReceived // Fallback to amount received if calculation results in negative
+		}
+
+		// Update transaction status
+		updates := map[string]interface{}{
+			"transactionStatus": transactionStatus,
+			"callbackStatus":    callbackStatus,
+			"netAmount":         netAmount,
+		}
+
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(updates).Error; err != nil {
+			log.Printf("❌ Failed to update transaction status: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction status", "details": err.Error()})
+			return
+		}
+
+		// Update merchant balance (XOF collection balance)
+		if err := balances.AddXOFBalance(transaction.ImpalaMerchantID, netAmount); err != nil {
+			log.Printf("❌ Failed to update merchant collection balance: %v", err)
+			// Don't fail the callback, but log the error
+		} else {
+			log.Printf("✅ Successfully updated merchant collection balance for %s: %.2f XOF", transaction.ImpalaMerchantID, netAmount)
+		}
+
+	} else if callbackReq.Status == "Failed" {
+		transactionStatus = "FAILED"
+		transactionReport = "FAILED"
+		callbackStatus = "SENT"
+		netAmount = callbackReq.AmountReceived
+
+		// Update transaction status
+		updates := map[string]interface{}{
+			"transactionStatus": transactionStatus,
+			"callbackStatus":    callbackStatus,
+		}
+
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(updates).Error; err != nil {
+			log.Printf("❌ Failed to update transaction status: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction status", "details": err.Error()})
+			return
+		}
+	} else {
+		log.Printf("⚠️ Unknown Payaza status: %s", callbackReq.Status)
+		c.JSON(http.StatusOK, gin.H{"message": "Callback received but status not processed", "status": callbackReq.Status})
+		return
+	}
+
+	// Prepare callback response for merchant
+	callbackResponse := map[string]interface{}{
+		"transactionStatus": transactionReport,
+		"transactionReport": transactionReport,
+		"currency":          transaction.Currency, // Use transaction currency
+		"amount":            int(callbackReq.AmountReceived),
+		"netAmount":         int(netAmount),
+		"secureId":          transaction.SecureID,
+		"externalId":        transaction.ExternalID,
+	}
+
+	// Send callback to merchant
+	if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+		log.Printf("⚠️ Failed to send callback to merchant: %v", err)
+		// Don't fail the transaction if callback fails
+	}
+
+	log.Printf("✅ Successfully processed Payaza callback for transaction: %s", callbackReq.TransactionReference)
+	c.JSON(http.StatusOK, gin.H{"message": "Callback processed successfully", "status": callbackReq.Status})
+}
+
 func RegisterRoutes(router *gin.RouterGroup) {
 
 	router.GET("/", LoginHandler)
@@ -4653,6 +4826,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("korapay/callback", KorapayCallbackHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
+	router.POST("payaza/callback", PayazaCallbackHandler)
 	router.POST("pay", UnifiedPaymentHandler) // Unified payment endpoint
 	router.POST("transfer", TransferHandler)
 

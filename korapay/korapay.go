@@ -46,11 +46,46 @@ type KorapayPaymentResponse struct {
 	Data    *KorapayPaymentData `json:"data"`
 }
 
+// KorapayCurrency is a custom type that can unmarshal currency as either a string or an object
+type KorapayCurrency string
+
+// UnmarshalJSON handles both string and object formats for currency
+func (kc *KorapayCurrency) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*kc = KorapayCurrency(str)
+		return nil
+	}
+
+	// If not a string, try to unmarshal as an object and extract the code
+	var obj map[string]interface{}
+	if err := json.Unmarshal(data, &obj); err == nil {
+		if code, ok := obj["code"].(string); ok {
+			*kc = KorapayCurrency(code)
+			return nil
+		}
+		if currency, ok := obj["currency"].(string); ok {
+			*kc = KorapayCurrency(currency)
+			return nil
+		}
+	}
+
+	// If all else fails, try to extract any string value from the object
+	*kc = KorapayCurrency("")
+	return nil
+}
+
+// String returns the currency as a string
+func (kc KorapayCurrency) String() string {
+	return string(kc)
+}
+
 // KorapayPaymentData represents the payment data in the response
 type KorapayPaymentData struct {
 	Amount               int                    `json:"amount"`
 	AmountExpected       int                    `json:"amount_expected"`
-	Currency             string                 `json:"currency"`
+	Currency             KorapayCurrency        `json:"currency"`
 	Fee                  float64                `json:"fee"`
 	AuthModel            string                 `json:"auth_model"`
 	TransactionReference string                 `json:"transaction_reference"`
@@ -117,6 +152,11 @@ func InitiateKorapayPayment(phoneNumber, customerName, customerEmail string, amo
 	if currency == "" {
 		return nil, fmt.Errorf("currency is required")
 	}
+	// Fix common currency typos (X0F -> XOF, etc.)
+	if currency == "X0F" {
+		currency = "XOF"
+		fmt.Printf("Fixed currency typo: X0F -> XOF\n")
+	}
 	if formattedPhone == "" {
 		return nil, fmt.Errorf("phone number is required")
 	}
@@ -175,17 +215,19 @@ func InitiateKorapayPayment(phoneNumber, customerName, customerEmail string, amo
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Log raw response for debugging
+	fmt.Printf("Korapay Raw Response Body: %s\n", string(body))
+	fmt.Printf("Korapay Response Status: %d\n", resp.StatusCode)
+
 	// Parse response
 	var korapayResponse KorapayPaymentResponse
 	err = json.Unmarshal(body, &korapayResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse response: %w\nRaw response: %s", err, string(body))
 	}
 
 	// Log response for debugging (but don't return it in API response)
-	fmt.Printf("Korapay Response Status: %d\n", resp.StatusCode)
 	fmt.Printf("Korapay Payment Response: %+v\n", korapayResponse)
-	fmt.Printf("Korapay Raw Response Body: %s\n", string(body))
 
 	return &korapayResponse, nil
 }
