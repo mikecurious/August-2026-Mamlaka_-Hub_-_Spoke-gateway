@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-
 	// "github.com/joho/godotenv"
 )
 
@@ -197,7 +196,7 @@ func GetBankCode(countryCode, network string) string {
 	bankCodeMap := map[string]map[string]string{
 		"BJ": { // Benin
 			"MTN":  "MTNBEN",
-			"MOOV": "MOOVBEN",
+			"MOOV": "MOOBEN",
 		},
 		"NG": { // Nigeria (example)
 			"MTN":     "MTNNGN",
