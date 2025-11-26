@@ -197,7 +197,7 @@ func GetBankCode(countryCode, network string) string {
 	bankCodeMap := map[string]map[string]string{
 		"BJ": { // Benin
 			"MTN":  "MTNBEN",
-			"MOOV": "MOOVBJ",
+			"MOOV": "MOOVBEN",
 		},
 		"NG": { // Nigeria (example)
 			"MTN":     "MTNNGN",
