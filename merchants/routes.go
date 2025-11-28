@@ -394,7 +394,7 @@ func MobilePaymentHandler(c *gin.Context) {
 		responseDescription = stkResponse.ResponseDescription
 		responseCode = stkResponse.ResponseCode
 
-	} else if req.Currency == "XOF" { // WE USING PAYAZA FOR THIS
+	} else if req.Currency == "XOF" || req.Currency == "UGX" { // WE USING PAYAZA FOR THIS
 
 		// get country code from phone
 		countryCode := payaza.DetectCountryCode(req.PayerPhone)
@@ -4690,14 +4690,14 @@ func PayazaCallbackHandler(c *gin.Context) {
 			AccountNumber string `json:"account_number"`
 			BankName      string `json:"bank_name"`
 		} `json:"received_from"`
-		Status                string `json:"status"`
-		SessionID             string `json:"session_id"`
-		Channel               string `json:"channel"`
-		Branch                bool   `json:"branch"`
-		CurrencyCode          string `json:"currency_code"`
+		Status                 string `json:"status"`
+		SessionID              string `json:"session_id"`
+		Channel                string `json:"channel"`
+		Branch                 bool   `json:"branch"`
+		CurrencyCode           string `json:"currency_code"`
 		PayazaAccountReference string `json:"payaza_account_reference"`
-		Narration             string `json:"narration"`
-		BusinessFK            int    `json:"business_fk"`
+		Narration              string `json:"narration"`
+		BusinessFK             int    `json:"business_fk"`
 	}
 
 	if err := c.ShouldBindJSON(&callbackReq); err != nil {
