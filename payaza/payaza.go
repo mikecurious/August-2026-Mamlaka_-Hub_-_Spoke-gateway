@@ -198,6 +198,12 @@ func GetBankCode(countryCode, network string) string {
 			"MTN":  "MTNBEN",
 			"MOOV": "MOOBEN",
 		},
+
+		"UG": { // Benin
+			"MTN":    "MTNUGA",
+			"AIRTEL": "AIRUGA",
+		},
+
 		"NG": { // Nigeria (example)
 			"MTN":     "MTNNGN",
 			"GLO":     "GLOMGN",
