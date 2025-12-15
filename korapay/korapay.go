@@ -12,7 +12,9 @@ import (
 
 const (
 	korapayAPIKey = "sk_live_xiax7gn8X3iQQHtHp1orupbZqdberoNnrVvJs6Mf"
-	korapayURL    = "https://api.korapay.com/merchant/api/v1/charges/mobile-money"
+	// korapayAPIKey = "sk_live_xiax7gn8X3iQQHtHp1orupbZqdberoNnrVvJs6Mf"
+
+	korapayURL = "https://api.korapay.com/merchant/api/v1/charges/mobile-money"
 )
 
 // KorapayPaymentRequest represents the request structure for Korapay mobile money payment

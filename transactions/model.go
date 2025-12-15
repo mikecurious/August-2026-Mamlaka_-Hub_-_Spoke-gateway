@@ -265,3 +265,112 @@ func GetTransactionsPaginated(merchantID string, page, pageSize int) ([]Transact
 
 	return results, total, nil
 }
+
+// ExternalIDExists checks if a transaction with the given merchantID and externalId already exists.
+func ExternalIDExists(merchantID, externalID string) (bool, error) {
+	db := database.GetConnection()
+
+	var count int64
+	if err := db.Model(&TransactionModel{}).
+		Where("impalaMerchantId = ? AND externalId = ?", merchantID, externalID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// SearchTransactionsParams holds search parameters for transaction search
+type SearchTransactionsParams struct {
+	MerchantID        string
+	Phone             string
+	Amount            *int
+	Currency          string
+	TransactionStatus string
+	TransactionReport string
+	ExternalID        string
+	SecureID          string
+	SourceOfFunds     string
+	StartDate         *int64
+	EndDate           *int64
+	Page              int
+	PageSize          int
+}
+
+// SearchTransactions searches for transactions based on multiple criteria
+func SearchTransactions(params SearchTransactionsParams) ([]TransactionModel, int64, error) {
+	db := database.GetConnection()
+
+	// Set defaults
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.PageSize < 1 {
+		params.PageSize = 20
+	}
+	if params.PageSize > 100 {
+		params.PageSize = 100 // Limit max page size
+	}
+
+	query := db.Model(&TransactionModel{})
+
+	// Apply filters
+	if params.MerchantID != "" {
+		query = query.Where("impalaMerchantId = ?", params.MerchantID)
+	}
+
+	if params.Phone != "" {
+		query = query.Where("msisdn LIKE ?", "%"+params.Phone+"%")
+	}
+
+	if params.Amount != nil {
+		query = query.Where("amount = ?", *params.Amount)
+	}
+
+	if params.Currency != "" {
+		query = query.Where("currency = ?", params.Currency)
+	}
+
+	if params.TransactionStatus != "" {
+		query = query.Where("transactionStatus = ?", params.TransactionStatus)
+	}
+
+	if params.TransactionReport != "" {
+		query = query.Where("transactionReport = ?", params.TransactionReport)
+	}
+
+	if params.ExternalID != "" {
+		query = query.Where("externalId = ?", params.ExternalID)
+	}
+
+	if params.SecureID != "" {
+		query = query.Where("secureId = ?", params.SecureID)
+	}
+
+	if params.SourceOfFunds != "" {
+		query = query.Where("sourceOfFunds = ?", params.SourceOfFunds)
+	}
+
+	if params.StartDate != nil {
+		query = query.Where("dateAdded >= ?", *params.StartDate)
+	}
+
+	if params.EndDate != nil {
+		query = query.Where("dateAdded <= ?", *params.EndDate)
+	}
+
+	// Get total count
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Apply pagination
+	var results []TransactionModel
+	offset := (params.Page - 1) * params.PageSize
+	if err := query.Order("dateAdded DESC").Offset(offset).Limit(params.PageSize).Find(&results).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return results, total, nil
+}

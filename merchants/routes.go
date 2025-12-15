@@ -358,6 +358,20 @@ func MobilePaymentHandler(c *gin.Context) {
 		return
 	}
 
+	// Prevent duplicate externalId for this merchant
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
+	}
+
 	// Verify the merchant ID exists (or perform any business logic)
 	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
 	if err != nil {
@@ -507,6 +521,20 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
 		return
+	}
+
+	// Prevent duplicate externalId for this merchant (if provided)
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
 	}
 
 	// Check if the merchant ID exists
@@ -1034,6 +1062,20 @@ func CardPaymentHandler(c *gin.Context) {
 		return
 	}
 
+	// Prevent duplicate externalId for this merchant (if provided)
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
+	}
+
 	// Verify the merchant ID exists (or perform any business logic)
 	fmt.Println(req.ImpalaMerchantId)
 	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
@@ -1152,6 +1194,20 @@ func UsdcPaymentHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
+	}
+
+	// Prevent duplicate externalId for this merchant (if provided)
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
 	}
 
 	// Verify the merchant ID exists (or perform any business logic)
@@ -1273,6 +1329,20 @@ func UsdtPaymentHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
+	}
+
+	// Prevent duplicate externalId for this merchant (if provided)
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
 	}
 
 	// Verify the merchant ID exists (or perform any business logic)
@@ -2288,6 +2358,121 @@ func GetTransactionHandler(c *gin.Context) {
 
 	// Send response
 	c.JSON(http.StatusOK, gin.H{"transaction": response})
+}
+
+// SearchTransactionsHandler handles transaction search with multiple filters
+func SearchTransactionsHandler(c *gin.Context) {
+	// Get merchant ID from context (if authenticated) or from query
+	merchantID, merchantExists := c.Get("merchantID")
+	merchantIDStr := ""
+	if merchantExists {
+		if str, ok := merchantID.(string); ok {
+			merchantIDStr = str
+		}
+	}
+	// Also allow merchant ID from query parameter
+	if merchantIDStr == "" {
+		merchantIDStr = c.Query("merchantId")
+	}
+
+	// Build search parameters
+	params := transactions.SearchTransactionsParams{
+		MerchantID: merchantIDStr,
+	}
+
+	// Extract optional search parameters
+	if phone := c.Query("phone"); phone != "" {
+		params.Phone = phone
+	}
+
+	if amountStr := c.Query("amount"); amountStr != "" {
+		if amount, err := strconv.Atoi(amountStr); err == nil {
+			params.Amount = &amount
+		}
+	}
+
+	if currency := c.Query("currency"); currency != "" {
+		params.Currency = currency
+	}
+
+	if status := c.Query("status"); status != "" {
+		params.TransactionStatus = status
+	}
+
+	if report := c.Query("report"); report != "" {
+		params.TransactionReport = report
+	}
+
+	if externalID := c.Query("externalId"); externalID != "" {
+		params.ExternalID = externalID
+	}
+
+	if secureID := c.Query("secureId"); secureID != "" {
+		params.SecureID = secureID
+	}
+
+	if sourceOfFunds := c.Query("sourceOfFunds"); sourceOfFunds != "" {
+		params.SourceOfFunds = sourceOfFunds
+	}
+
+	// Date range filters
+	if startDateStr := c.Query("startDate"); startDateStr != "" {
+		if startDate, err := strconv.ParseInt(startDateStr, 10, 64); err == nil {
+			params.StartDate = &startDate
+		}
+	}
+
+	if endDateStr := c.Query("endDate"); endDateStr != "" {
+		if endDate, err := strconv.ParseInt(endDateStr, 10, 64); err == nil {
+			params.EndDate = &endDate
+		}
+	}
+
+	// Pagination
+	page := 1
+	if pageParam := c.DefaultQuery("page", "1"); pageParam != "" {
+		if parsedPage, err := strconv.Atoi(pageParam); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+	params.Page = page
+
+	pageSize := 20
+	if pageSizeParam := c.DefaultQuery("page_size", "20"); pageSizeParam != "" {
+		if parsedPageSize, err := strconv.Atoi(pageSizeParam); err == nil && parsedPageSize > 0 {
+			if parsedPageSize > 100 {
+				pageSize = 100
+			} else {
+				pageSize = parsedPageSize
+			}
+		}
+	}
+	params.PageSize = pageSize
+
+	// Perform search
+	results, total, err := transactions.SearchTransactions(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search transactions", "details": err.Error()})
+		return
+	}
+
+	// Serialize results
+	serializer := transactions.NewTransactionSerializerList(c, results)
+
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions": serializer.Response(),
+		"pagination": gin.H{
+			"current_page": page,
+			"per_page":     pageSize,
+			"total_pages":  totalPages,
+			"total_items":  total,
+		},
+	})
 }
 
 func ListTransactionsHandler(c *gin.Context) {
@@ -3693,6 +3878,20 @@ func KorapayPaymentHandler(c *gin.Context) {
 		return
 	}
 
+	// Prevent duplicate externalId for this merchant
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
+	}
+
 	// Verify the merchant ID exists
 	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
 	if err != nil {
@@ -3962,6 +4161,20 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
+	}
+
+	// Prevent duplicate externalId for this merchant
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
 	}
 
 	// Verify the merchant ID exists
@@ -4336,6 +4549,20 @@ func UnifiedPaymentHandler(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
 		return
+	}
+
+	// Prevent duplicate externalId for this merchant
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantId, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
 	}
 
 	// Verify the merchant ID exists
@@ -4857,6 +5084,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/vc/callback/card-status", GetVirtualCardByIDCardCallbackHandler)
 	protected.GET("/vc/list/virtual-cards", ListVirtualCardsByMerchant) // List virtual cards by merchant
 	protected.GET("/transactions", ListTransactionsHandler)
+	protected.GET("/transactions/search", SearchTransactionsHandler) // Search transactions with filters
 	protected.POST("/vc/card/info", RetrieveCardInfoHandler)
 	protected.POST("/vc/card/balance", GetCardBalance)
 	// virtual card generation
