@@ -28,7 +28,7 @@ All parameters are optional. You can combine multiple filters to narrow down you
 | `phone` | string | Search by phone number (partial match supported). Searches in the `msisdn` field. | `254712345678` |
 | `amount` | integer | Filter by exact transaction amount. | `1000` |
 | `currency` | string | Filter by currency code (KES, USD, XOF, UGX, etc.). | `KES` |
-| `status` | string | Filter by transaction status (PENDING, SUCCESS, FAILED, COMPLETE, etc.). | `SUCCESS` |
+| `status` | string | Filter by transaction status (PENDING, COMPLETE, FAILED, processing, etc.). | `COMPLETE` |
 | `report` | string | Filter by transaction report type (collection, withdraw, deposit). | `collection` |
 | `externalId` | string | Search by exact external ID. | `ImpadlTdest25` |
 | `secureId` | string | Search by exact secure ID. | `6S4mi15UgO2xYkjjyqH4gA==` |
@@ -43,7 +43,7 @@ All parameters are optional. You can combine multiple filters to narrow down you
 ### Example 1: Search by Merchant and Status
 
 ```bash
-curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merchant123&status=SUCCESS&page=1&page_size=20" \
+curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merchant123&status=COMPLETE&page=1&page_size=20" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -64,14 +64,14 @@ curl -X GET "https://api.example.com/api/v1/transactions/search?amount=1000&curr
 ### Example 4: Search by Date Range
 
 ```bash
-curl -X GET "https://api.example.com/api/v1/transactions/search?startDate=1704067200&endDate=1704153600&status=SUCCESS" \
+curl -X GET "https://api.example.com/api/v1/transactions/search?startDate=1704067200&endDate=1704153600&status=COMPLETE" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ### Example 5: Complex Search with Multiple Filters
 
 ```bash
-curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merchant123&phone=254712345678&amount=1000&currency=KES&status=SUCCESS&report=collection&sourceOfFunds=MPESA&page=1&page_size=50" \
+curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merchant123&phone=254712345678&amount=1000&currency=KES&status=COMPLETE&report=collection&sourceOfFunds=MPESA&page=1&page_size=50" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -85,7 +85,7 @@ curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merch
     {
       "id": 1234,
       "impalaMerchantId": "merchant123",
-      "transactionStatus": "SUCCESS",
+      "transactionStatus": "COMPLETE",
       "transactionReport": "collection",
       "currency": "KES",
       "amount": 1000,
@@ -148,7 +148,7 @@ curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merch
 |-------|------|-------------|
 | `id` | integer | Unique transaction ID |
 | `impalaMerchantId` | string | Merchant identifier |
-| `transactionStatus` | string | Current transaction status (PENDING, SUCCESS, FAILED, COMPLETE, etc.) |
+| `transactionStatus` | string | Current transaction status (PENDING, COMPLETE, FAILED, processing, etc.) |
 | `transactionReport` | string | Transaction type (collection, withdraw, deposit) |
 | `currency` | string | Currency code (KES, USD, XOF, UGX, etc.) |
 | `amount` | integer | Transaction amount |
@@ -179,9 +179,8 @@ curl -X GET "https://api.example.com/api/v1/transactions/search?merchantId=merch
 | Status | Description |
 |--------|------------|
 | `PENDING` | Transaction is pending processing |
-| `SUCCESS` | Transaction completed successfully |
+| `COMPLETE` | Transaction completed successfully |
 | `FAILED` | Transaction failed |
-| `COMPLETE` | Transaction completed (synonym for SUCCESS) |
 | `processing` | Transaction is being processed |
 
 ## Transaction Report Types

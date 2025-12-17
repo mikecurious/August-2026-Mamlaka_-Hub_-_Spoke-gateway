@@ -644,7 +644,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		var responseCode int
 
 		if err == nil {
-			transactionStatus = "SUCCESS"
+			transactionStatus = "COMPLETE"
 			responseStatus = "SUCCESS"
 			responseMessage = "Payment completed successfully"
 			responseCode = http.StatusOK
@@ -1595,11 +1595,11 @@ func MobileCallbackHandler(c *gin.Context) {
 				}
 			}
 
-			// Update the transaction status to SUCCESS
+			// Update the transaction status to COMPLETE
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
 				Updates(map[string]interface{}{
-					"transactionStatus":   "SUCCESS",
+					"transactionStatus":   "COMPLETE",
 					"callbackStatus":      "SENT",
 					"responseDescription": resultDesc, // Include the success reason
 
@@ -1791,11 +1791,11 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 
-			// Update the transaction status to SUCCESS
+			// Update the transaction status to COMPLETE
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
 				Updates(map[string]interface{}{
-					"transactionStatus": "SUCCESS",
+					"transactionStatus": "COMPLETE",
 					"callbackStatus":    "SENT",
 				}).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
@@ -2634,7 +2634,7 @@ func BankTransferHandler(c *gin.Context) {
 		fmt.Println("error ", err)
 		// c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
 	} else {
-		transactionStatus = "SUCCESS"
+		transactionStatus = "COMPLETE"
 
 	}
 	// Check if the transaction was successful
@@ -3619,7 +3619,7 @@ func GlobpayCardCallbackHandler(c *gin.Context) {
 	// Determine transaction status
 	transactionStatus := "FAILED"
 	if callbackBody.Status == "SUCCESS" {
-		transactionStatus = "SUCCESS"
+		transactionStatus = "COMPLETE"
 	}
 
 	// Update the transaction
@@ -4961,7 +4961,7 @@ func PayazaCallbackHandler(c *gin.Context) {
 	var netAmount float64
 
 	if callbackReq.Status == "Completed" {
-		transactionStatus = "SUCCESS"
+		transactionStatus = "COMPLETE"
 		transactionReport = "COMPLETE"
 		callbackStatus = "SENT"
 		// Net amount is amount received minus transaction fee
