@@ -1882,6 +1882,202 @@ func MobileCallbackHandler(c *gin.Context) {
 
 }
 
+// B2CCallbackHandler handles M-Pesa B2C (withdrawal) callback responses
+func B2CCallbackHandler(c *gin.Context) {
+	log.Println("📞 Received M-Pesa B2C callback")
+
+	// Read the raw request body
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body", "details": err.Error()})
+		return
+	}
+
+	// Log the raw request body
+	log.Println("Raw B2C callback body:", string(rawBody))
+
+	// Parse the incoming JSON request
+	var response map[string]interface{}
+	if err := json.Unmarshal(rawBody, &response); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback body", "details": err.Error()})
+		return
+	}
+
+	// Check if this is a B2C Result response
+	result, ok := response["Result"].(map[string]interface{})
+	if !ok {
+		log.Println("⚠️ Invalid B2C callback format: missing Result")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback format: missing Result"})
+		return
+	}
+
+	log.Println("✅ Processing B2C withdrawal response")
+
+	// Extract fields from the withdrawal response
+	resultType, _ := result["ResultType"].(float64)
+	resultCode, _ := result["ResultCode"].(float64)
+	resultDesc, _ := result["ResultDesc"].(string)
+	originatorConversationID, _ := result["OriginatorConversationID"].(string)
+	conversationID, _ := result["ConversationID"].(string)
+	transactionID, _ := result["TransactionID"].(string)
+
+	// Debug the extracted fields
+	log.Printf("B2C Callback Details:")
+	log.Printf("  ResultType: %.0f", resultType)
+	log.Printf("  ResultCode: %.0f", resultCode)
+	log.Printf("  ResultDesc: %s", resultDesc)
+	log.Printf("  OriginatorConversationID: %s", originatorConversationID)
+	log.Printf("  ConversationID: %s", conversationID)
+	log.Printf("  TransactionID: %s", transactionID)
+
+	// Get database connection
+	db := database.GetConnection()
+	if db == nil {
+		log.Println("❌ Failed to get database connection")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection failed"})
+		return
+	}
+
+	// Find transaction by OriginatorConversationID (MerchantRequestID)
+	transaction, err := transactions.GetTransactionByMerchantRequestID(originatorConversationID)
+	if err != nil {
+		log.Printf("❌ Transaction not found for OriginatorConversationID: %s, Error: %v", originatorConversationID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	log.Printf("✅ Found transaction: ID=%d, MerchantID=%s, Amount=%d, Currency=%s", 
+		transaction.ID, transaction.ImpalaMerchantID, transaction.Amount, transaction.Currency)
+
+	// Extract metadata from ResultParameters
+	metadata := make(map[string]interface{})
+	resultParameters, ok := result["ResultParameters"].(map[string]interface{})
+	if ok {
+		resultParameter, ok := resultParameters["ResultParameter"].([]interface{})
+		if ok {
+			for _, item := range resultParameter {
+				itemMap, ok := item.(map[string]interface{})
+				if ok {
+					key, _ := itemMap["Key"].(string)
+					value := itemMap["Value"]
+					metadata[key] = value
+					log.Printf("  ResultParameter - Key: %s, Value: %v", key, value)
+				}
+			}
+		}
+	}
+
+	// Process based on ResultCode
+	if resultCode == 0 { // Success
+		log.Println("✅ B2C withdrawal successful")
+
+		// Deduct merchant balance only if transaction is still PENDING (avoid double deduction)
+		if transaction.TransactionStatus == "PENDING" {
+			if err := balances.DeductKESBalance(transaction.ImpalaMerchantID, float64(transaction.Amount)); err != nil {
+				log.Printf("❌ Balance deduction failed for merchant %s: %v", transaction.ImpalaMerchantID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "INTERNAL_ERROR",
+					"message": "Insufficient balance, please try again",
+					"code":    101,
+				})
+				return
+			}
+			log.Printf("✅ Successfully deducted balance for merchant %s: %.2f KES", transaction.ImpalaMerchantID, float64(transaction.Amount))
+		} else {
+			log.Printf("⚠️ Transaction already processed (status: %s), skipping balance deduction", transaction.TransactionStatus)
+		}
+
+		// Update transaction status to COMPLETE
+		updates := map[string]interface{}{
+			"transactionStatus":   "COMPLETE",
+			"callbackStatus":      "SENT",
+			"responseDescription": resultDesc,
+		}
+
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(updates).Error; err != nil {
+			log.Printf("❌ Failed to update transaction status: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		// Get transaction amount from metadata or use transaction amount
+		amount := transaction.Amount
+		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
+			amount = int(transactionAmount)
+		}
+
+		// Prepare callback response in the specified format
+		callbackResponse := map[string]interface{}{
+			"amount":            amount,
+			"currency":          transaction.Currency,
+			"externalId":        transaction.ExternalID,
+			"netAmount":         amount,
+			"secureId":          transaction.SecureID,
+			"transactionReport": resultDesc, // Use ResultDesc as transactionReport
+			"transactionStatus": "COMPLETE",
+		}
+
+		log.Printf("📤 Sending callback to merchant: %+v", callbackResponse)
+
+		// Send callback to merchant
+		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+			log.Printf("⚠️ Failed to send callback to merchant: %v", err)
+			// Don't fail the transaction if callback fails
+		}
+
+		log.Printf("✅ Successfully processed B2C callback for transaction: %s", originatorConversationID)
+		c.JSON(http.StatusOK, gin.H{"message": "B2C callback processed successfully"})
+
+	} else { // Failure
+		log.Printf("❌ B2C withdrawal failed - ResultCode: %.0f, ResultDesc: %s", resultCode, resultDesc)
+
+		// Update transaction status to FAILED
+		updates := map[string]interface{}{
+			"transactionStatus":   "FAILED",
+			"callbackStatus":      "SENT",
+			"responseDescription": resultDesc,
+		}
+
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", transaction.ID).
+			Updates(updates).Error; err != nil {
+			log.Printf("❌ Failed to update transaction status: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+			return
+		}
+
+		// Get transaction amount
+		amount := transaction.Amount
+		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
+			amount = int(transactionAmount)
+		}
+
+		// Prepare callback response for failed transaction
+		callbackResponse := map[string]interface{}{
+			"amount":            amount,
+			"currency":          transaction.Currency,
+			"externalId":        transaction.ExternalID,
+			"netAmount":         amount,
+			"secureId":          transaction.SecureID,
+			"transactionReport": resultDesc, // Use ResultDesc as transactionReport
+			"transactionStatus": "FAILED",
+		}
+
+		log.Printf("📤 Sending failed callback to merchant: %+v", callbackResponse)
+
+		// Send callback to merchant
+		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
+			log.Printf("⚠️ Failed to send callback to merchant: %v", err)
+			// Don't fail the transaction if callback fails
+		}
+
+		log.Printf("✅ Successfully processed failed B2C callback for transaction: %s", originatorConversationID)
+		c.JSON(http.StatusOK, gin.H{"message": "B2C callback processed successfully"})
+	}
+}
+
 func MobileCallbackHandler2(c *gin.Context) {
 	var callbackBody struct {
 		Body struct {
@@ -5047,6 +5243,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("card/initiate", CardPaymentHandler)
 	router.POST("usdc/initiate", UsdcPaymentHandler)
 	router.POST("mobile/callback", MobileCallbackHandler)
+	router.POST("mobile/b2c/callback", B2CCallbackHandler) // Dedicated B2C withdrawal callback endpoint
 	router.POST("card/callback", CardCallbackHandler)
 	router.POST("usdc/callback", CryptoCallbackHandler)
 	router.POST("korapay/initiate", KorapayPaymentHandler)
