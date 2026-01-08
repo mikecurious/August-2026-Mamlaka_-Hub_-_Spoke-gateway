@@ -254,15 +254,16 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		CommandID:                "PromotionPayment",
 		Amount:                   amount,
 		PartyA:                   businessShortCode,
-		PartyB:                   phoneNumber,
+		PartyB:                   phoneNumberStr,
 		Remarks:                  "payments done",
 		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/callback",
-		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
-		ResultURL: "https://webhook.site/00f617b7-7815-4bd6-b233-1e115aa8671e",
+		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
+		// ResultURL: "https://webhook.site/00f617b7-7815-4bd6-b233-1e115aa8671e",
 
 		Occassion: "Ok",
 	}
-
+	// print the b2c request payload
+	fmt.Println("B2C Request Payload:", b2cRequest)
 	requestBody, err := json.Marshal(b2cRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request body: %w", err)

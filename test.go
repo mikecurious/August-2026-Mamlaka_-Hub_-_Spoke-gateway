@@ -2,265 +2,320 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"strings"
-
-	"github.com/joho/godotenv"
+	"regexp"
+	"time"
 )
 
-// -------------------------------
-// Response Struct
-// -------------------------------
-type PayazaResponse struct {
-	ResponseCode                    string `json:"response_code"`
-	ResponseMessage                 string `json:"response_message"`
-	RequiresOTP                     bool   `json:"requires_otp"`
-	OTPLength                       int    `json:"otp_length"`
-	BeforePaymentInstruction        string `json:"before_payment_instruction"`
-	AfterPaymentInstruction         string `json:"after_payment_instruction"`
-	PaymentToken                    string `json:"payment_token"`
-	Payee                           string `json:"payee"`
-	PaymentMethod                   string `json:"payment_method"`
-	TransactionChannel              string `json:"transaction_channel"`
-	TransactionReference            string `json:"transaction_reference"`
-	RedirectCustomerToURLProcessing bool   `json:"redirect_customer_to_url_processing"`
+const (
+	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
+	// 4904594
+	consumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
+	consumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
+	businessShortCode = "4130455"
+	passKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
+	phoneNumber       = "254768899729" // Replace with a valid phone number
+	callbackURL       = "https://example.com/callback"
+	accountReference  = "Account123"
+	amount            = 1
+)
+
+// revert amout  using the api
+
+type StkPushResponse struct {
+	MerchantRequestID   string `json:"MerchantRequestID"`
+	CheckoutRequestID   string `json:"CheckoutRequestID"`
+	ResponseCode        string `json:"ResponseCode"`
+	ResponseDescription string `json:"ResponseDescription"`
+	CustomerMessage     string `json:"CustomerMessage"`
 }
 
-// success = response_code == "09"
-func (r PayazaResponse) IsSuccess() bool {
-	return r.ResponseCode == "09"
+type B2BResponse struct {
+	ConversationID           string `json:"ConversationID"`
+	OriginatorConversationID string `json:"OriginatorConversationID"`
+	ResponseCode             string `json:"ResponseCode"`
+	ResponseDescription      string `json:"ResponseDescription"`
 }
 
-// -------------------------------
-// Payload Struct
-// -------------------------------
-type PayazaPayload struct {
-	Amount                 int    `json:"amount"`
-	CustomerNumber         string `json:"customer_number"`
-	TransactionReference   string `json:"transaction_reference"`
-	TransactionDescription string `json:"transaction_description"`
-	CustomerBankCode       string `json:"customer_bank_code"`
-	CurrencyCode           string `json:"currency_code"`
-	CustomerEmail          string `json:"customer_email"`
-	CustomerFirstName      string `json:"customer_first_name"`
-	CustomerLastName       string `json:"customer_last_name"`
-	CustomerPhoneNumber    string `json:"customer_phone_number"`
-	CountryCode            string `json:"country_code"`
+// Structs for the JSON payload and responses
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   string `json:"expires_in"`
 }
 
-// -------------------------------------
-// Send Payaza API Request
-// -------------------------------------
-func SendPayazaRequest(payload PayazaPayload) (PayazaResponse, error) {
+type StkPushRequest struct {
+	BusinessShortCode string `json:"BusinessShortCode"`
+	Password          string `json:"Password"`
+	Timestamp         string `json:"Timestamp"`
+	TransactionType   string `json:"TransactionType"`
+	Amount            int    `json:"Amount"`
+	PartyA            string `json:"PartyA"`
+	PartyB            string `json:"PartyB"`
+	PhoneNumber       string `json:"PhoneNumber"`
+	CallBackURL       string `json:"CallBackURL"`
+	AccountReference  string `json:"AccountReference"`
+	TransactionDesc   string `json:"TransactionDesc"`
+}
 
-	url := "https://api.payaza.africa/live/subsidiary/collections/v1/process-collection"
+func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
+	url := "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 
-	jsonBody, err := json.Marshal(payload)
+	// Create the basic auth header
+	credentials := base64.StdEncoding.EncodeToString([]byte(consumerKey + ":" + consumerSecret))
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return PayazaResponse{}, err
+		return "", err
 	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return PayazaResponse{}, err
-	}
-
-	// Load values from ENV
-	tenant := os.Getenv("PAYAZA_TENANT_ID")
-	productID := os.Getenv("PAYAZA_PRODUCT_ID")
-	auth := os.Getenv("PAYAZA_AUTH")
-
-	req.Header.Set("X-TenantID", tenant)
-	req.Header.Set("X-ProductID", productID)
-	req.Header.Set("Authorization", auth)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+credentials)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return PayazaResponse{}, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get access token: %s", resp.Status)
+	}
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return PayazaResponse{}, err
+		return "", err
 	}
 
-	var payResp PayazaResponse
-	err = json.Unmarshal(body, &payResp)
+	var tokenResponse TokenResponse
+	err = json.Unmarshal(body, &tokenResponse)
 	if err != nil {
-		return PayazaResponse{}, err
+		return "", err
 	}
-	fmt.Println("Raw Payaza Response:", string(body))
 
-	return payResp, nil
+	return tokenResponse.AccessToken, nil
 }
 
-// -------------------------------
-// Get country code from phone number
-// -------------------------------
-
-// DetectCountryCode returns ISO country code for all African phone prefixes
-func DetectCountryCode(phone string) string {
-	if len(phone) < 2 {
-		return ""
+// alias payins
+func StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+	url := "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+	timestamp := time.Now().Format("20060102150405")
+	token, err := GenerateAccessToken(consumerKey, consumerSecret)
+	if err != nil {
+		return nil, err
 	}
 
-	// Most African prefixes are 2–3 digits (E.164)
-	prefix2 := phone[:2]
-	prefix3 := ""
-	if len(phone) >= 3 {
-		prefix3 = phone[:3]
+	password := base64.StdEncoding.EncodeToString([]byte(businessShortCode + passKey + timestamp))
+
+	requestBody := StkPushRequest{
+		BusinessShortCode: businessShortCode,
+		Password:          password,
+		Timestamp:         timestamp,
+		TransactionType:   "CustomerPayBillOnline",
+		Amount:            amount,
+		PartyA:            phoneNumber,
+		PartyB:            businessShortCode,
+		PhoneNumber:       phoneNumber,
+		CallBackURL:       "https://payments.mam-laka.com/api/v1/mobile/callback",
+		AccountReference:  accountReference,
+		TransactionDesc:   "Payment",
 	}
 
-	countryMap := map[string]string{
-		"213": "DZ", // Algeria
-		"244": "AO", // Angola
-		"229": "BJ", // Benin
-		"267": "BW", // Botswana
-		"226": "BF", // Burkina Faso
-		"257": "BI", // Burundi
-		"238": "CV", // Cape Verde
-		"237": "CM", // Cameroon
-		"236": "CF", // Central African Republic
-		"235": "TD", // Chad
-		"269": "KM", // Comoros
-		"242": "CG", // Congo
-		"243": "CD", // DRC
-		"225": "CI", // Côte d'Ivoire
-		"253": "DJ", // Djibouti
-		"20":  "EG", // Egypt
-		"240": "GQ", // Equatorial Guinea
-		"291": "ER", // Eritrea
-		"251": "ET", // Ethiopia
-		"241": "GA", // Gabon
-		"220": "GM", // Gambia
-		"233": "GH", // Ghana
-		"224": "GN", // Guinea
-		"245": "GW", // Guinea-Bissau
-		"254": "KE", // Kenya
-		"266": "LS", // Lesotho
-		"231": "LR", // Liberia
-		"218": "LY", // Libya
-		"261": "MG", // Madagascar
-		"265": "MW", // Malawi
-		"223": "ML", // Mali
-		"222": "MR", // Mauritania
-		"230": "MU", // Mauritius
-		"212": "MA", // Morocco
-		"258": "MZ", // Mozambique
-		"264": "NA", // Namibia
-		"227": "NE", // Niger
-		"234": "NG", // Nigeria
-		"250": "RW", // Rwanda
-		"239": "ST", // Sao Tome and Principe
-		"221": "SN", // Senegal
-		"248": "SC", // Seychelles
-		"232": "SL", // Sierra Leone
-		"27":  "ZA", // South Africa
-		"211": "SS", // South Sudan
-		"249": "SD", // Sudan
-		"268": "SZ", // Eswatini (Swaziland)
-		"255": "TZ", // Tanzania
-		"228": "TG", // Togo
-		"216": "TN", // Tunisia
-		"256": "UG", // Uganda
-		"260": "ZM", // Zambia
-		"263": "ZW", // Zimbabwe
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
 	}
 
-	// Try 3-digit match first
-	if country, ok := countryMap[prefix3]; ok {
-		return country
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
 	}
 
-	// Try 2-digit match
-	if country, ok := countryMap[prefix2]; ok {
-		return country
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to initiate STK push: %s, %s", resp.Status, string(body))
 	}
 
-	return ""
+	// Parse the response body
+	var stkResponse StkPushResponse
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(body, &stkResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log or print the response for debugging
+	fmt.Println("STK Push Response:", stkResponse)
+
+	// Return the parsed response
+	return &stkResponse, nil
 }
 
-// -------------------------------
-// get bank code
-// -------------------------------
-func GetBankCode(countryCode, network string) string {
-	// Normalize network input
-	network = strings.ToUpper(strings.TrimSpace(network))
-
-	bankCodeMap := map[string]map[string]string{
-		"BJ": { // Benin
-			"MTN":  "MTNBEN",
-			"MOOV": "MOOVBJ",
-		},
-		"NG": { // Nigeria (example)
-			"MTN":     "MTNNGN",
-			"GLO":     "GLOMGN",
-			"AIRTEL":  "AIRTGN",
-			"9MOBILE": "9MOBNG",
-		},
-	}
-
-	if networks, ok := bankCodeMap[countryCode]; ok {
-		if bankCode, ok := networks[network]; ok {
-			return bankCode
-		}
-	}
-
-	return ""
+func GenerateSecureID() string {
+	b := make([]byte, 16) // Generate 16 random bytes
+	_, _ = rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
 }
 
-// -------------------------------
-// Main Function
-// -------------------------------
+type B2CRequest struct {
+	OriginatorConversationID string  `json:"OriginatorConversationID"`
+	InitiatorName            string  `json:"InitiatorName"`
+	SecurityCredential       string  `json:"SecurityCredential"`
+	CommandID                string  `json:"CommandID"`
+	Amount                   float64 `json:"Amount"`
+	PartyA                   string  `json:"PartyA"`
+	PartyB                   string  `json:"PartyB"`
+	Remarks                  string  `json:"Remarks"`
+	QueueTimeOutURL          string  `json:"QueueTimeOutURL"`
+	ResultURL                string  `json:"ResultURL"`
+	Occassion                string  `json:"Occassion"`
+}
+
+func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) {
+	// Endpoint for generating the access token
+	url := "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+
+	// Encode credentials in Base64
+	credentials := base64.StdEncoding.EncodeToString([]byte(consumerKey + ":" + consumerSecret))
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add headers
+	req.Header.Add("Authorization", "Basic "+credentials)
+
+	// Create HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Parse JSON response to extract the access token
+	var response map[string]interface{}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	// Extract and return the access token
+	token, ok := response["access_token"].(string)
+	if !ok {
+		return "", fmt.Errorf("access token not found in response")
+	}
+
+	return token, nil
+}
+
+func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier string) (*B2BResponse, error) {
+	consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
+	consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
+
+	token, _ := generateB2BAccessToken(consumer_key, consumer_secret)
+	fmt.Println("Access Token:", token)
+
+	businessShortCode := "3039805"
+	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
+
+	re := regexp.MustCompile(`\D`)
+	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
+	fmt.Println("Phone Number:", phoneNumberStr)
+	fmt.Println("Identifier:", identifier)
+
+	b2cRequest := B2CRequest{
+		OriginatorConversationID: identifier,
+		InitiatorName:            "b2cInit",
+		SecurityCredential:       password,
+		CommandID:                "PromotionPayment",
+		Amount:                   amount,
+		PartyA:                   businessShortCode,
+		PartyB:                   phoneNumber,
+		Remarks:                  "payments done",
+		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/callback",
+		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
+		ResultURL: "https://webhook.site/00f617b7-7815-4bd6-b233-1e115aa8671e",
+
+		Occassion: "Ok",
+	}
+
+	requestBody, err := json.Marshal(b2cRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize request body: %w", err)
+	}
+
+	url := "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Always print Safaricom's full JSON response
+	fmt.Println("Safaricom Response Body:", string(body))
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("B2C request failed with status %s: %s", resp.Status, string(body))
+	}
+
+	var b2bResponse B2BResponse
+	err = json.Unmarshal(body, &b2bResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Safaricom JSON: %w. Raw body: %s", err, string(body))
+	}
+
+	fmt.Println("Parsed Response:", b2bResponse)
+	return &b2bResponse, nil
+}
+
+// a main test function to test b2c
 func main2() {
+	phoneNumber := "254768899729"
+	amount := 10.0
+	callbackURL := "https://webhook.site/c7edfd71-ae2e-4a15-9d7a-c4132c05e746"
+	externalID := "External1239000"
+	identifier := GenerateSecureID()
 
-	err := godotenv.Load()
+	response, err := GenerateB2CRequest(phoneNumber, amount, callbackURL, externalID, identifier)
 	if err != nil {
-		fmt.Println("Warning: .env file not found, using system env...")
-	}
-
-	payload := PayazaPayload{
-		Amount:                 500,
-		CustomerNumber:         "2290196289492",
-		TransactionReference:   "TOO490001E7",
-		TransactionDescription: "Test Payment",
-		CustomerBankCode:       "MTNBEN",
-		CurrencyCode:           "XOF",
-		CustomerEmail:          "bigmaitre@blondmail.com",
-		CustomerFirstName:      "Robert",
-		CustomerLastName:       "Stones",
-		CustomerPhoneNumber:    "2290196289492",
-		CountryCode:            "BJ",
-	}
-
-	// get country code from phone
-	payload.CountryCode = DetectCountryCode(payload.CustomerPhoneNumber)
-	country := payload.CountryCode
-	fmt.Println("Detected Country Code:", country)
-	//get bank code from country and network
-	payload.CustomerBankCode = GetBankCode(country, "MTN")
-	fmt.Println("Determined Bank Code:", payload.CustomerBankCode)
-
-	response, err := SendPayazaRequest(payload)
-	if err != nil {
-		fmt.Println("Request Error:", err)
+		fmt.Println("Error:", err)
 		return
 	}
 
-	if response.IsSuccess() {
-		fmt.Println("SUCCESS (PENDING):")
-		fmt.Println("Transaction Ref:", response.TransactionReference)
-		fmt.Println("Payment Token:", response.PaymentToken)
-	} else {
-		fmt.Println("FAILED / DECLINED:")
-		fmt.Println("Code:", response.ResponseCode)
-		fmt.Println("Message:", response.ResponseMessage)
-	}
+	fmt.Println("B2C Response:", response)
 }
