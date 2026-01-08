@@ -572,7 +572,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	case "KES":
 		// Check if merchant has sufficient KES balance BEFORE initiating payout
 		if balance.KESBalance < float64(req.Amount) {
-			c.JSON(http.StatusBadRequest, gin.H{
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "FAILED",
 				"error":   "INSUFFICIENT_BALANCE",
 				"message": fmt.Sprintf("Insufficient KES balance. Available: %.2f KES, Required: %.2f KES", balance.KESBalance, float64(req.Amount)),
 			})
@@ -628,8 +629,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		if ugxBalance < float64(req.Amount) {
 			c.JSON(http.StatusOK, gin.H{
+				"status":  "FAILED",
 				"error":   "INSUFFICIENT_BALANCE",
-				"message": fmt.Sprintf("Insufficient balance. Available: %.2f UGX", ugxBalance),
+				"message": fmt.Sprintf("Insufficient balance. Available: %.2f UGX, Required: %.2f UGX", ugxBalance, float64(req.Amount)),
 			})
 			return
 		}
@@ -765,8 +767,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			transactionReport = "withdraw"
 			if XOFBalance < float64(req.Amount) {
 				c.JSON(http.StatusOK, gin.H{
+					"status":  "FAILED",
 					"error":   "INSUFFICIENT_BALANCE",
-					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XOF", XOFBalance),
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XOF, Required: %.2f XOF", XOFBalance, float64(req.Amount)),
 				})
 				return
 			}
@@ -986,8 +989,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
 			if balance.XAFBalance < float64(req.Amount) {
 				c.JSON(http.StatusOK, gin.H{
+					"status":  "FAILED",
 					"error":   "INSUFFICIENT_BALANCE",
-					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XAF", balance.XAFBalance),
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XAF, Required: %.2f XAF", balance.XAFBalance, float64(req.Amount)),
 				})
 				return
 			}
@@ -5092,7 +5096,8 @@ func TransferHandler(c *gin.Context) {
 
 	if availableBalance < req.Amount {
 		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "FAILED",
 			"error":   "INSUFFICIENT_BALANCE",
 			"message": fmt.Sprintf("Insufficient collection balance. Available: %.2f %s", availableBalance, req.Currency),
 		})
