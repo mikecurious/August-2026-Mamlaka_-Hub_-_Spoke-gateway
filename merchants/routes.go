@@ -557,20 +557,32 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	secureID := mpesa.GenerateSecureID()
 	dateAdded := time.Now().Unix()
 
-	// Check merchant's balance
+	// Check merchant's balance FIRST before initiating any payout
 	balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
 		return
 	}
+
 	// print
 	fmt.Println("currency", req.Currency)
 
 	//check the currenvy from the request
 	switch req.Currency {
 	case "KES":
+		// Check if merchant has sufficient KES balance BEFORE initiating payout
+		if balance.KESBalance < float64(req.Amount) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "INSUFFICIENT_BALANCE",
+				"message": fmt.Sprintf("Insufficient KES balance. Available: %.2f KES, Required: %.2f KES", balance.KESBalance, float64(req.Amount)),
+			})
+			return
+		}
+
+		log.Printf("✅ Balance check passed - Available: %.2f KES, Required: %.2f KES", balance.KESBalance, float64(req.Amount))
 
 		// Do NOT deduct at initiation. We only initiate the B2C payout here.
+		// Balance will be deducted in the callback handler after Safaricom confirms success.
 
 		// Initiate payment via M-Pesa
 		b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
@@ -1946,8 +1958,16 @@ func B2CCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	log.Printf("✅ Found transaction: ID=%d, MerchantID=%s, Amount=%d, Currency=%s", 
-		transaction.ID, transaction.ImpalaMerchantID, transaction.Amount, transaction.Currency)
+	log.Printf("✅ Found transaction: ID=%d, MerchantID=%s, Amount=%d, Currency=%s, Status=%s, CallbackStatus=%s", 
+		transaction.ID, transaction.ImpalaMerchantID, transaction.Amount, transaction.Currency, 
+		transaction.TransactionStatus, transaction.CallbackStatus)
+
+	// Check if callback was already sent (prevent duplicate processing)
+	if transaction.CallbackStatus == "SENT" {
+		log.Printf("⚠️ Callback already sent for transaction ID=%d, skipping duplicate processing", transaction.ID)
+		c.JSON(http.StatusOK, gin.H{"message": "Callback already processed"})
+		return
+	}
 
 	// Extract metadata from ResultParameters
 	metadata := make(map[string]interface{})
@@ -1971,27 +1991,24 @@ func B2CCallbackHandler(c *gin.Context) {
 	if resultCode == 0 { // Success
 		log.Println("✅ B2C withdrawal successful")
 
-		// Deduct merchant balance only if transaction is still PENDING (avoid double deduction)
-		if transaction.TransactionStatus == "PENDING" {
-			if err := balances.DeductKESBalance(transaction.ImpalaMerchantID, float64(transaction.Amount)); err != nil {
-				log.Printf("❌ Balance deduction failed for merchant %s: %v", transaction.ImpalaMerchantID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "INTERNAL_ERROR",
-					"message": "Insufficient balance, please try again",
-					"code":    101,
-				})
-				return
-			}
-			log.Printf("✅ Successfully deducted balance for merchant %s: %.2f KES", transaction.ImpalaMerchantID, float64(transaction.Amount))
-		} else {
-			log.Printf("⚠️ Transaction already processed (status: %s), skipping balance deduction", transaction.TransactionStatus)
+		// Step 1: Check available KES balance in merchant balance table
+		merchantBalance, err := balances.GetMerchantBalance(transaction.ImpalaMerchantID)
+		if err != nil {
+			log.Printf("❌ Failed to retrieve merchant balance: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+			return
 		}
 
-		// Update transaction status to COMPLETE
+		log.Printf("💰 Merchant KES Balance: %.2f, Required: %.2f", merchantBalance.KESBalance, float64(transaction.Amount))
+
+		// Store original transaction status for balance deduction check
+		originalStatus := transaction.TransactionStatus
+
+		// Step 2: Update transaction status to COMPLETE (before sending callback)
 		updates := map[string]interface{}{
 			"transactionStatus":   "COMPLETE",
-			"callbackStatus":      "SENT",
 			"responseDescription": resultDesc,
+			// Don't set callbackStatus to SENT yet - we'll do that after callback is sent
 		}
 
 		if err := db.Model(&transactions.TransactionModel{}).
@@ -2002,13 +2019,13 @@ func B2CCallbackHandler(c *gin.Context) {
 			return
 		}
 
-		// Get transaction amount from metadata or use transaction amount
+		// Step 3: Get transaction amount from metadata or use transaction amount
 		amount := transaction.Amount
 		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
 			amount = int(transactionAmount)
 		}
 
-		// Prepare callback response in the specified format
+		// Step 4: Prepare and send callback to merchant
 		callbackResponse := map[string]interface{}{
 			"amount":            amount,
 			"currency":          transaction.Currency,
@@ -2022,9 +2039,37 @@ func B2CCallbackHandler(c *gin.Context) {
 		log.Printf("📤 Sending callback to merchant: %+v", callbackResponse)
 
 		// Send callback to merchant
-		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-			log.Printf("⚠️ Failed to send callback to merchant: %v", err)
-			// Don't fail the transaction if callback fails
+		callbackErr := SendCallback(transaction.ID, callbackResponse)
+		if callbackErr != nil {
+			log.Printf("⚠️ Failed to send callback to merchant: %v", callbackErr)
+			// Update callback status to FAILED if callback fails
+			db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Update("callbackStatus", "FAILED")
+		} else {
+			// Step 5: Mark callback as SENT after successful callback
+			db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Update("callbackStatus", "SENT")
+			log.Printf("✅ Callback sent successfully to merchant")
+		}
+
+		// Step 6: Deduct balance AFTER callback is sent (only if transaction was PENDING)
+		if originalStatus == "PENDING" || originalStatus == "" {
+			if merchantBalance.KESBalance >= float64(transaction.Amount) {
+				if err := balances.DeductKESBalance(transaction.ImpalaMerchantID, float64(transaction.Amount)); err != nil {
+					log.Printf("❌ Balance deduction failed for merchant %s: %v", transaction.ImpalaMerchantID, err)
+					// Log error but don't fail - Safaricom already processed the payment
+				} else {
+					log.Printf("✅ Successfully deducted balance for merchant %s: %.2f KES", transaction.ImpalaMerchantID, float64(transaction.Amount))
+				}
+			} else {
+				log.Printf("⚠️ Insufficient balance for merchant %s: available %.2f, required %.2f (Safaricom already processed payment)", 
+					transaction.ImpalaMerchantID, merchantBalance.KESBalance, float64(transaction.Amount))
+				// Still process the callback since Safaricom already processed it
+			}
+		} else {
+			log.Printf("⚠️ Transaction already processed (status: %s), skipping balance deduction", originalStatus)
 		}
 
 		log.Printf("✅ Successfully processed B2C callback for transaction: %s", originatorConversationID)
@@ -2033,11 +2078,11 @@ func B2CCallbackHandler(c *gin.Context) {
 	} else { // Failure
 		log.Printf("❌ B2C withdrawal failed - ResultCode: %.0f, ResultDesc: %s", resultCode, resultDesc)
 
-		// Update transaction status to FAILED
+		// Step 1: Update transaction status to FAILED (before sending callback)
 		updates := map[string]interface{}{
 			"transactionStatus":   "FAILED",
-			"callbackStatus":      "SENT",
 			"responseDescription": resultDesc,
+			// Don't set callbackStatus to SENT yet - we'll do that after callback is sent
 		}
 
 		if err := db.Model(&transactions.TransactionModel{}).
@@ -2048,13 +2093,13 @@ func B2CCallbackHandler(c *gin.Context) {
 			return
 		}
 
-		// Get transaction amount
+		// Step 2: Get transaction amount
 		amount := transaction.Amount
 		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
 			amount = int(transactionAmount)
 		}
 
-		// Prepare callback response for failed transaction
+		// Step 3: Prepare and send callback to merchant
 		callbackResponse := map[string]interface{}{
 			"amount":            amount,
 			"currency":          transaction.Currency,
@@ -2068,10 +2113,22 @@ func B2CCallbackHandler(c *gin.Context) {
 		log.Printf("📤 Sending failed callback to merchant: %+v", callbackResponse)
 
 		// Send callback to merchant
-		if err := SendCallback(transaction.ID, callbackResponse); err != nil {
-			log.Printf("⚠️ Failed to send callback to merchant: %v", err)
-			// Don't fail the transaction if callback fails
+		callbackErr := SendCallback(transaction.ID, callbackResponse)
+		if callbackErr != nil {
+			log.Printf("⚠️ Failed to send callback to merchant: %v", callbackErr)
+			// Update callback status to FAILED if callback fails
+			db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Update("callbackStatus", "FAILED")
+		} else {
+			// Mark callback as SENT after successful callback
+			db.Model(&transactions.TransactionModel{}).
+				Where("id = ?", transaction.ID).
+				Update("callbackStatus", "SENT")
+			log.Printf("✅ Callback sent successfully to merchant")
 		}
+
+		// For failed transactions, no balance deduction needed (payment wasn't processed)
 
 		log.Printf("✅ Successfully processed failed B2C callback for transaction: %s", originatorConversationID)
 		c.JSON(http.StatusOK, gin.H{"message": "B2C callback processed successfully"})
