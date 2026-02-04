@@ -279,8 +279,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		PartyB:                   phoneNumberStr,
 		Remarks:                  "payments done",
 		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		ResultURL: "https://webhook.site/b67e9e96-b44c-4880-95ee-6ea2519a65ee",
+		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		// ResultURL: "https://webhook.site/b67e9e96-b44c-4880-95ee-6ea2519a65ee",
 		// ResultURL: "https://webhook.site/c7edfd71-ae2e-4a15-9d7a-c4132c05e746",
 
 		Occassion: "Ok",
