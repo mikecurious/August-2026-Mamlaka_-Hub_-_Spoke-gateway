@@ -402,7 +402,13 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	if req.Currency == "KES" {
 
-		stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name)
+		if req.ImpalaMerchantId == "vukaPay_production" || req.ImpalaMerchantId == "ncgames_sandbox" {
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+		} else {
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
+
+		}
+
 		merchantRequestID = stkResponse.MerchantRequestID
 		checkoutRequestID = stkResponse.CheckoutRequestID
 		responseDescription = stkResponse.ResponseDescription
@@ -580,13 +586,24 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			return
 		}
 
-		log.Printf("✅ Balance check passed - Available: %.2f KES, Required: %.2f KES", balance.KESBalance, float64(req.Amount))
+		log.Printf(" Balance check passed - Available: %.2f KES, Required: %.2f KES", balance.KESBalance, float64(req.Amount))
 
 		// Do NOT deduct at initiation. We only initiate the B2C payout here.
 		// Balance will be deducted in the callback handler after Safaricom confirms success.
 
 		// Initiate payment via M-Pesa
-		b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name)
+		// GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName string) (*B2BResponse, error) {
+		// b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
+		var b2bResponse *mpesa.B2BResponse
+
+		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
+		if req.ImpalaMerchantId == "VukaPay" || req.ImpalaMerchantId == "ncgames_sandbox" {
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
+		} else {
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
+
+		}
+
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": err.Error()})
 			return
@@ -1962,8 +1979,8 @@ func B2CCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	log.Printf("✅ Found transaction: ID=%d, MerchantID=%s, Amount=%d, Currency=%s, Status=%s, CallbackStatus=%s", 
-		transaction.ID, transaction.ImpalaMerchantID, transaction.Amount, transaction.Currency, 
+	log.Printf("✅ Found transaction: ID=%d, MerchantID=%s, Amount=%d, Currency=%s, Status=%s, CallbackStatus=%s",
+		transaction.ID, transaction.ImpalaMerchantID, transaction.Amount, transaction.Currency,
 		transaction.TransactionStatus, transaction.CallbackStatus)
 
 	// Check if callback was already sent (prevent duplicate processing)
@@ -2068,7 +2085,7 @@ func B2CCallbackHandler(c *gin.Context) {
 					log.Printf("✅ Successfully deducted balance for merchant %s: %.2f KES", transaction.ImpalaMerchantID, float64(transaction.Amount))
 				}
 			} else {
-				log.Printf("⚠️ Insufficient balance for merchant %s: available %.2f, required %.2f (Safaricom already processed payment)", 
+				log.Printf("⚠️ Insufficient balance for merchant %s: available %.2f, required %.2f (Safaricom already processed payment)",
 					transaction.ImpalaMerchantID, merchantBalance.KESBalance, float64(transaction.Amount))
 				// Still process the callback since Safaricom already processed it
 			}

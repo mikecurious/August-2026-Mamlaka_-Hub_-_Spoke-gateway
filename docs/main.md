@@ -16,6 +16,7 @@
 4. [Balance APIs](#balance-apis)
    - [Payins Balance](#payins-balance)
    - [Payouts Balance](#payouts-balance)
+   - [Withdrawals to Payout Wallet](#withdrawals-to-payout-wallet-two-step-approval)
 5. [Transaction Status](#transaction-status)
 6. [Transaction Search API](#transaction-search-api-documentation)
 
@@ -311,6 +312,120 @@ curl --location 'https://payments.mam-laka.com/api/v1/read/payouts/balance' \
   "merchantId": "app"
 }
 ```
+
+---
+
+### Withdrawals to Payout Wallet (Two-Step Approval)
+
+Move funds from your **collection balance** to your **payout wallet** with a two-step admin approval process.
+
+#### Step 1 – Create Withdrawal Transfer Request (Merchant)
+
+- **URL:** `https://payments.mam-laka.com/api/v1/wallet/transfer/toPayout`
+- **Method:** `POST`
+- **Headers:** `Authorization: Bearer <token>`
+
+**Request Body**
+
+```json
+{
+  "amount": 1000,
+  "currency": "KES"
+}
+```
+
+**Response**
+
+```json
+{
+  "message": "Transfer request created successfully and is pending approval",
+  "requestId": 123,
+  "status": "PENDING"
+}
+```
+
+- `status` here is the **withdrawal request status**, not the transaction status in `merchant_transactions`.
+- No funds move at this stage; a record is created in `withdrawal_requests` with:
+  - `transferType = "transfer"`
+  - `status = "PENDING"`
+
+#### Step 2 – Admin 1 Confirms Request
+
+- **URL:** `https://payments.mam-laka.com/api/v1/drawings/update/{id}`
+- **Method:** `PUT`
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+**Request Body**
+
+```json
+{
+  "approvedBy": 1001,
+  "status": "CONFIRMED",
+  "comment": "Checked and confirmed"
+}
+```
+
+**Behavior**
+
+- Allowed only when current request status is `PENDING`.
+- Updates the withdrawal request to:
+  - `status = "CONFIRMED"`
+  - sets `approvedBy` and `comment`.
+- **No balance movement** happens yet.
+
+If the status transition is invalid (e.g. trying to CONFIRM an already APPROVED request), the API returns:
+
+```json
+{
+  "error": "INVALID_STATUS_TRANSITION",
+  "message": "Cannot CONFIRM a request in status APPROVED"
+}
+```
+
+#### Step 3 – Admin 2 Approves and Moves Funds
+
+- **URL:** `https://payments.mam-laka.com/api/v1/drawings/update/{id}`
+- **Method:** `PUT`
+- **Headers:** `Authorization: Bearer <admin_token>`
+
+**Request Body**
+
+```json
+{
+  "approvedBy": 1002,
+  "status": "APPROVED",
+  "comment": "Final approval"
+}
+```
+
+**Behavior**
+
+- Allowed only when current request status is `CONFIRMED`.
+- When set to `APPROVED`:
+  - System checks the merchant's **collection balance** in `merchant_collection_balance` for the requested currency (currently KES).
+  - If sufficient:
+    - Deducts `amount + fee` from collection balance.
+    - Credits `amount` to the merchant's **payout wallet** in `merchant_balances`.
+    - Records platform earnings (the fee) in `platform_earning_models`.
+  - If insufficient:
+
+    ```json
+    {
+      "status": "FAILED",
+      "error": "INSUFFICIENT_BALANCE",
+      "message": "Insufficient balance. Available: 0.00 KES, Required: 1000.00 KES"
+    }
+    ```
+
+- On success, the withdrawal request status is updated to `APPROVED` and the funds are moved.
+
+#### Withdrawal Request Status Values
+
+- `PENDING` – Request created by merchant; waiting for admin action.
+- `CONFIRMED` – First admin has reviewed and confirmed; still waiting for second admin.
+- `APPROVED` – Second admin approved; funds have been moved to payout wallet.
+- `CANCELED` – Request was canceled.
+- `DISBURSED` – (Optional) Can be used to mark that funds have been fully disbursed out of the system.
 
 ---
 

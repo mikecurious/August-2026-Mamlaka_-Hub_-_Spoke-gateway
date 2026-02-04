@@ -15,14 +15,28 @@ import (
 const (
 	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
 	// 4904594
-	consumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
-	consumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
-	businessShortCode = "4130455"
-	passKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
-	phoneNumber       = "254768899729" // Replace with a valid phone number
-	callbackURL       = "https://example.com/callback"
-	accountReference  = "Account123"
-	amount            = 1
+	ConsumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
+	ConsumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
+	BusinessShortCode = "4130455"
+	PassKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
+	Password          = "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
+	InitiatorName     = "b2cInit"
+)
+
+// vuka creds
+const (
+	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
+	// 4904594
+	VukaC2BConsumerKey       = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
+	VukaC2BConsumerSecret    = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
+	VukaC2BBusinessShortCode = "4041587"
+	VukaC2BPassKey           = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
+
+	VukaPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	VukaPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
+	VukaPayB2CInitiatorName  = "Collin"
+	VukaPayB2CPassword       = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
+	VukaPayB2CShortCode      = "3008816"
 )
 
 // revert amout  using the api
@@ -99,7 +113,7 @@ func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 }
 
 // alias payins
-func StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
+func StkPush(phoneNumber string, amount int, callbackURL, accountReference, consumerKey, consumerSecret, businessShortCode, passKey string) (*StkPushResponse, error) {
 	url := "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
 	timestamp := time.Now().Format("20060102150405")
 	token, err := GenerateAccessToken(consumerKey, consumerSecret)
@@ -232,15 +246,23 @@ func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) 
 	return token, nil
 }
 
-func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier string) (*B2BResponse, error) {
-	consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
-	consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
+func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName string) (*B2BResponse, error) {
+	// consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
+	// consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
 
-	token, _ := generateB2BAccessToken(consumer_key, consumer_secret)
+	// consumerKey1 := "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	// consumerSecret1 := "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
+	// initiatorName1 := "Collin"
+	// password1 := "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
+	// businessShortCode1 := "3008816"
+
+	token, _ := generateB2BAccessToken(consumerKey, consumerSecret)
 	fmt.Println("Access Token:", token)
 
-	businessShortCode := "3039805"
-	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
+	// businessShortCode := "3039805"
+	// how is the password generated
+
+	// password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 
 	re := regexp.MustCompile(`\D`)
 	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
@@ -249,7 +271,7 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 
 	b2cRequest := B2CRequest{
 		OriginatorConversationID: identifier,
-		InitiatorName:            "b2cInit",
+		InitiatorName:            initiatorName,
 		SecurityCredential:       password,
 		CommandID:                "PromotionPayment",
 		Amount:                   amount,
@@ -257,8 +279,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		PartyB:                   phoneNumberStr,
 		Remarks:                  "payments done",
 		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
+		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		ResultURL: "https://webhook.site/b67e9e96-b44c-4880-95ee-6ea2519a65ee",
 		// ResultURL: "https://webhook.site/c7edfd71-ae2e-4a15-9d7a-c4132c05e746",
 
 		Occassion: "Ok",

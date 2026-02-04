@@ -15,14 +15,14 @@ import (
 const (
 	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
 	// 4904594
-	consumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
-	consumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
-	businessShortCode = "4130455"
-	passKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
+	consumerKey       = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
+	consumerSecret    = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
+	businessShortCode = "4041587"
+	passKey           = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
 	phoneNumber       = "254768899729" // Replace with a valid phone number
-	callbackURL       = "https://example.com/callback"
-	accountReference  = "Account123"
-	amount            = 1
+	// callbackURL       = "https://example.com/callback"
+	accountReference = "Account123"
+	amount           = 1
 )
 
 // revert amout  using the api
@@ -240,6 +240,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	fmt.Println("Access Token:", token)
 
 	businessShortCode := "3039805"
+	// how is the password generated
+
 	password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 
 	re := regexp.MustCompile(`\D`)
@@ -254,15 +256,17 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		CommandID:                "PromotionPayment",
 		Amount:                   amount,
 		PartyA:                   businessShortCode,
-		PartyB:                   phoneNumber,
+		PartyB:                   phoneNumberStr,
 		Remarks:                  "payments done",
-		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/callback",
+		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
 		// ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/callback",
-		ResultURL: "https://webhook.site/00f617b7-7815-4bd6-b233-1e115aa8671e",
+		// ResultURL: "https://webhook.site/c7edfd71-ae2e-4a15-9d7a-c4132c05e746",
 
 		Occassion: "Ok",
 	}
-
+	// print the b2c request payload
+	fmt.Println("B2C Request Payload:", b2cRequest)
 	requestBody, err := json.Marshal(b2cRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request body: %w", err)
@@ -303,19 +307,16 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	return &b2bResponse, nil
 }
 
-// a main test function to test b2c
-func main2() {
-	phoneNumber := "254768899729"
-	amount := 10.0
-	callbackURL := "https://webhook.site/c7edfd71-ae2e-4a15-9d7a-c4132c05e746"
-	externalID := "External1239000"
-	identifier := GenerateSecureID()
-
-	response, err := GenerateB2CRequest(phoneNumber, amount, callbackURL, externalID, identifier)
+func main3() {
+	// identifier := GenerateSecureID()
+	// inititate c2b payment
+	response, err := StkPush("254701150055", 500, "https://webhook.site/2d9f7791-b8a3-4cb6-bbe7-9d14bfda0b60", "CHUBWI")
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		fmt.Println("Error initiating STK Push:", err)
+	} else {
+		fmt.Println("STK Push initiated successfully:", response)
 	}
 
-	fmt.Println("B2C Response:", response)
+	// initiate b2c payment
+
 }

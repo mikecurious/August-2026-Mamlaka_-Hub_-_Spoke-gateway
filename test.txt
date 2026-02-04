@@ -1,0 +1,6 @@
+$initiatorPassword = "YourInitiatorPassword";
+$certificatePath = "path/to/sandbox.cer"; // Downloaded from Daraja
+$pubKey = openssl_pkey_get_public(file_get_contents($certificatePath));
+openssl_public_encrypt($initiatorPassword, $encrypted, $pubKey, OPENSSL_PKCS1_PADDING);
+$securityCredential = base64_encode($encrypted);
+// Use $securityCredential in your B2C API request header

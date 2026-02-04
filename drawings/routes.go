@@ -438,6 +438,7 @@ func UpdateWithdrawalRequestHandler(c *gin.Context) {
 		return
 	}
 
+	// Build the base update payload
 	updatedData := map[string]interface{}{
 		"status":  updateReq.Status,
 		"comment": updateReq.Comment,
@@ -445,19 +446,44 @@ func UpdateWithdrawalRequestHandler(c *gin.Context) {
 		"approvedBy": updateReq.ApprovedBy,
 	}
 
-	if updateReq.Status == "APPROVED" {
+	// Two-step admin flow:
+	// 1) First admin sets status = "CONFIRMED" (no funds move)
+	// 2) Second admin sets status = "APPROVED" (funds move via WalletTransfer)
+	switch updateReq.Status {
+	case "CONFIRMED":
+		// Only allow CONFIRMED from PENDING state
+		if withdrawalRequest.Status != "PENDING" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "INVALID_STATUS_TRANSITION",
+				"message": fmt.Sprintf("Cannot CONFIRM a request in status %s", withdrawalRequest.Status),
+			})
+			return
+		}
+	case "APPROVED":
+		// Only allow APPROVED from CONFIRMED state
+		if withdrawalRequest.Status != "CONFIRMED" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "INVALID_STATUS_TRANSITION",
+				"message": fmt.Sprintf("Cannot APPROVE a request in status %s, must be CONFIRMED first", withdrawalRequest.Status),
+			})
+			return
+		}
+
+		// On APPROVED, perform the actual wallet transfer (collection -> payout wallet)
 		transferRequest := &TransferRequest{
 			ImpalaMerchantId: withdrawalRequest.ImpalaMerchantID,
 			Amount:           withdrawalRequest.Amount,
-			Currency:         "kesBalance",
+			Currency:         "KES", // toPayout uses KES wallet; adjust if multi-currency is added
 		}
 
 		if err := WalletTransfer(transferRequest); err != nil {
-			log.Printf("Transfer failed: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			log.Printf("Transfer failed for Withdrawal Request ID %d: %v", idUint, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "TRANSFER_FAILED", "details": err.Error()})
 			return
 		}
 		log.Printf("Transfer successful for Withdrawal Request ID %d", idUint)
+	default:
+		// For other statuses (e.g. CANCELED, DISBURSED) we simply update the record
 	}
 
 	if err := UpdateSingleWithdrawalRequest(&withdrawalRequest, updatedData); err != nil {
@@ -492,31 +518,61 @@ func DeleteWithdrawalRequestHandler(c *gin.Context) {
 	c.JSON(http.StatusNoContent, gin.H{"message": "Withdrawal Request Deleted"})
 }
 
-// wallet to wallet transfer
-// WalletTransferHandler handles wallet-to-wallet transfer requests.
+// WalletTransferHandler now creates a pending withdrawal/transfer request
+// that must be confirmed and then approved by admins before funds move.
 func WalletTransferHandler(c *gin.Context) {
-	// Bind the incoming JSON to the TransferRequest struct
-	merchantID, merchantExists := c.Get("merchantID")
+	// Merchant identity comes from the auth middleware
+	merchantIDVal, merchantExists := c.Get("merchantID")
 	if !merchantExists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
 		return
 	}
+	merchantID, ok := merchantIDVal.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchantID type"})
+		return
+	}
+
+	// Parse transfer request payload (amount, currency)
 	var transferRequest TransferRequest
-	transferRequest.ImpalaMerchantId = merchantID.(string)
 	if err := c.ShouldBindJSON(&transferRequest); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format", "details": err.Error()})
+		return
+	}
+	// Ensure the merchantId in the body (if any) cannot override the token merchant
+	transferRequest.ImpalaMerchantId = merchantID
+
+	if transferRequest.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Amount must be greater than 0"})
 		return
 	}
 
-	// Call the WalletTransfer function to handle the transaction
-	err := WalletTransfer(&transferRequest)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Transaction failed", "details": err.Error()})
+	// Create a pending withdrawal/transfer request.
+	// This will later be:
+	//  - CONFIRMED by the first admin
+	//  - APPROVED by the second admin (which then moves the funds)
+	req := WithdrawalRequestModel{
+		ImpalaMerchantID: merchantID,
+		RequestedBy:      0, // can be mapped to a real user ID in future
+		ApprovedBy:       nil,
+		Amount:           transferRequest.Amount,
+		Status:           "PENDING",
+		DateRequested:    time.Now().Unix(),
+		TransferType:     "transfer", // wallet (collection) -> payout wallet
+		Comment:          fmt.Sprintf("toPayout %s %.2f", transferRequest.Currency, transferRequest.Amount),
+	}
+
+	if err := SaveWithdrawalRequest(&req); err != nil {
+		log.Printf("Error saving wallet transfer request: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create transfer request", "details": err.Error()})
 		return
 	}
 
-	// Respond with success message
-	c.JSON(http.StatusOK, gin.H{"message": "Transfer successful"})
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Transfer request created successfully and is pending approval",
+		"requestId": req.ID,
+		"status":    req.Status,
+	})
 }
 
 // WalletTransferHandler handles wallet-to-wallet transfer requests.
