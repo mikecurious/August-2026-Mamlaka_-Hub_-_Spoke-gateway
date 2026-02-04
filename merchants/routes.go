@@ -597,7 +597,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		var b2bResponse *mpesa.B2BResponse
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
-		if req.ImpalaMerchantId == "VukaPay" || req.ImpalaMerchantId == "ncgames_sandbox" {
+		if req.ImpalaMerchantId == "VukaPay" || req.ImpalaMerchantId == "crayinstant_sandbox" {
+
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
 		} else {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
@@ -1917,7 +1918,7 @@ func MobileCallbackHandler(c *gin.Context) {
 
 // B2CCallbackHandler handles M-Pesa B2C (withdrawal) callback responses
 func B2CCallbackHandler(c *gin.Context) {
-	log.Println("📞 Received M-Pesa B2C callback")
+	log.Println(" Received M-Pesa B2C callback")
 
 	// Read the raw request body
 	rawBody, err := c.GetRawData()
