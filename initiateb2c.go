@@ -87,8 +87,8 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/2d9f7791-b8a3-4cb6-bbe7-9d14bfda0b60",
-		ResultURL:          "https://webhook.site/2d9f7791-b8a3-4cb6-bbe7-9d14bfda0b60",
+		QueueTimeOutURL:    "https://webhook.site/d1b7a677-9ea1-4bbc-9d49-406b1d39c2ff",
+		ResultURL:          "https://webhook.site/d1b7a677-9ea1-4bbc-9d49-406b1d39c2ff",
 		Occasion:           "Withdrawal",
 	}
 
@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main3() {
+func main7() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -196,20 +196,20 @@ func main3() {
 	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	// 		return
 	// 	}
-	resp, err := sendB2CPayment("254701150055", "10")
+	resp, err := sendB2CPayment("254794940160", "10")
 	if err != nil {
 		fmt.Println("Error sending B2C payment:", err)
 	}
 
 	fmt.Println("B2C Payment Response:", resp)
 
-	resp2, err1 := checkBalance()
+	// resp2, err1 := checkBalance()
 
-	if err1 != nil {
-		fmt.Println("Error checking balance:", err)
-	}
+	// if err1 != nil {
+	// 	fmt.Println("Error checking balance:", err)
+	// }
 
-	fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -254,12 +254,12 @@ func main3() {
 }
 
 const (
-	conumerKey         = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-	conumerSecret      = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	initiatorName      = "Collin"
-	securityCredential = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	shortCode          = "3008816"
-	callbackURL        = "https://webhook.site/8ca16d53-4105-4411-a531-623522914c1c"
+	conumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
+	conumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
+	initiatorName      = "collins"
+	securityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
+	shortCode          = "3008826"
+	callbackURL        = "https://webhook.site/d1b7a677-9ea1-4bbc-9d49-406b1d39c2ff"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
