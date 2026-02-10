@@ -597,7 +597,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		var b2bResponse *mpesa.B2BResponse
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
-		if req.ImpalaMerchantId == "VukaPay" || req.ImpalaMerchantId == "crayinstant_sandbox" { //figue ...
+		if req.ImpalaMerchantId == "VukaPay" || req.ImpalaMerchantId == "app" { //figue ...
 
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
 		} else {
