@@ -20,7 +20,7 @@ func Migration(database *gorm.DB) {
 	forex.AutoMigrate()
 }
 
-func main() {
+func main7() {
 	//load the env
 	err := godotenv.Load()
 	if err != nil {
@@ -48,7 +48,7 @@ func main() {
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
 
-	if err := router.Run(":8090"); err != nil {
+	if err := router.Run("0.0.0.0:8090"); err != nil {
 		panic(err)
 	}
 }

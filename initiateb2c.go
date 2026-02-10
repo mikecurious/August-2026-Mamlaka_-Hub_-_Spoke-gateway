@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main7() {
+func main() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -259,7 +259,7 @@ const (
 	initiatorName      = "collins"
 	securityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
 	shortCode          = "3008826"
-	callbackURL        = "https://webhook.site/d1b7a677-9ea1-4bbc-9d49-406b1d39c2ff"
+	callbackURL        = "https://webhook.site/51d8759c-2f80-4cdd-ae83-58535ef2a742"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
