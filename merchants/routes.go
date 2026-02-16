@@ -407,6 +407,8 @@ func MobilePaymentHandler(c *gin.Context) {
 		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "app" {
 
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+			// log the paybill being used
+			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
 		} else {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
