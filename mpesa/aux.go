@@ -51,6 +51,21 @@ const (
 	VukaPayB2CPassword       = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
 	VukaPayB2CShortCode      = "3008816"
 )
+//technology@crayfinance.com
+const (
+	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
+	// 4904594
+	CrayC2BConsumerKey       = "v1PsGtti6d1GaS1JYV9Txo2S5dEI3Ea3V6SdCQ9B98HVuXW5"
+	CrayC2BConsumerSecret    = "3JP0v5g0AJm2GEUAVDOD9sbxp1XPpQwNhAoAqZFBbBTt0JMXDHGIs46X7NkrVQAo"
+	CrayC2BBusinessShortCode = "4041603"
+	CrayC2BPassKey           = "4f2269d5d4270a073d41f9f9b72260dfa5265c78eae65cf5f2635bc06883e0fe"
+
+	CrayPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	CrayPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
+	CrayPayB2CInitiatorName  = "Collin"
+	CrayPayB2CPassword       = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
+	CrayPayB2CShortCode      = "3008816"
+)
 
 // revert amout  using the api
 
@@ -271,6 +286,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 
 	token, _ := generateB2BAccessToken(consumerKey, consumerSecret)
 	fmt.Println("Access Token:", token)
+	fmt.Printf("------Generating B2C request with phone: %s, amount: %.2f, callbackURL: %s, externalID: %s, identifier: %s, consumerKey: %s, consumerSecret: %s, password: %s, businessShortCode: %s, initiatorName: %s\n",
+		RemovePlusPrefix(phoneNumber), amount, callbackURL, externalID, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName)
 
 	// businessShortCode := "3039805"
 	// how is the password generated
@@ -336,4 +353,8 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 
 	fmt.Println("Parsed Response:", b2bResponse)
 	return &b2bResponse, nil
+}
+
+func RemovePlusPrefix(phoneNumber string) any {
+	panic("unimplemented")
 }

@@ -402,8 +402,12 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	if req.Currency == "KES" {
 
-		if req.ImpalaMerchantId == "vukaPay_production" || req.ImpalaMerchantId == "ncgames_sandbox" {
+		if req.ImpalaMerchantId == "vukaPay_production" {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "app" {
+
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+
 		} else {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
 
@@ -602,6 +606,14 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "app" {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.AppconumerKey, mpesa.AppconumerSecret, mpesa.AppsecurityCredential, mpesa.APPshortCode, mpesa.AppinitiatorName)
+
+		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
+			//return withdrawl not allowed and end the process here
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "WITHDRAWAL_NOT_ALLOWED",
+				"message": "Withdrawal requests are not allowed for this merchant.",
+			})
+			return
 
 		} else {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.B2Cconsumerkey, mpesa.B2Cconsumersecret, mpesa.B2CPassword, mpesa.B2CBusinessShortCode, mpesa.InitiatorName)

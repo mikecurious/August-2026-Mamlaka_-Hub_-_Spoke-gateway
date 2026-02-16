@@ -127,8 +127,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    callbackURL,
-		"ResultURL":          callbackURL,
+		"QueueTimeOutURL":    "https://webhook.site/c66d1896-47d8-4bbc-a91c-f66273e3ebf3",
+		"ResultURL":          "https://webhook.site/c66d1896-47d8-4bbc-a91c-f66273e3ebf3",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -163,8 +163,8 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 		"TransactionID":      transactionID,
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
-		"ResultURL":          "https://airtel-apm.mam-laka.com/airtel/callbacks/collections",
-		"QueueTimeOutURL":    "https://airtel-apm.mam-laka.com/airtel/callbacks/collections",
+		"ResultURL":          "https://webhook.site/c66d1896-47d8-4bbc-a91c-f66273e3ebf3",
+		"QueueTimeOutURL":    "https://webhook.site/c66d1896-47d8-4bbc-a91c-f66273e3ebf3",
 		"Remarks":            "Check transaction status",
 	}
 
@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main3() {
+func main() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -259,7 +259,7 @@ const (
 	initiatorName      = "collins"
 	securityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
 	shortCode          = "3008826"
-	callbackURL        = "https://webhook.site/51d8759c-2f80-4cdd-ae83-58535ef2a742"
+	callbackURL        = "https://webhook.site/c66d1896-47d8-4bbc-a91c-f66273e3ebf3"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
