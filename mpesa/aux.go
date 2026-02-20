@@ -356,6 +356,10 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 	return &b2bResponse, nil
 }
 
-func RemovePlusPrefix(phoneNumber string) any {
-	panic("unimplemented")
+// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
+func RemovePlusPrefix(phoneNumber string) string {
+	if len(phoneNumber) > 0 && phoneNumber[0] == '+' {
+		return phoneNumber[1:] // Remove the first character
+	}
+	return phoneNumber
 }
