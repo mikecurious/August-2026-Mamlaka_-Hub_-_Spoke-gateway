@@ -52,6 +52,32 @@ const (
 	VukaPayB2CShortCode      = "3008816"
 )
 
+const (
+	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
+	/*
+		initiateb2c.go
+			conumerKey         = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
+		conumerSecret      = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
+		initiatorName      = "Anuar"
+		securityCredential = "ZaZL3V2T1zRirqevhpYDSRBGvstw7kg+V/W6w9v6ipFmIIlYEubYb0lcjFPsS47GS8KzxfBeFs3rtgoKF/ZgIGSnsTXSNVwPR+1r50ypxXjwl722doeUolmkMRaeonsHcVACASz8CwGXg/STXoU14MxB4WejmM//5hc+9VSaqCoSBGTmNxQbethuQOk5JsQ9YNi1JSDb5eFOzAO6lj4/BBxIhsOFPdAF3maxZHPdxAvjGK9DLEYvOGFQLv9ll/j5IzwnoM0/KVH8k2fJFgXlTfmGw2S72GxHmd/HcXKARKSyfDQos9ZFoTrvlZH0Vt8qHpZYbqPviuzyHjDEm8IwNw=="
+		shortCode          = "3008818"
+
+
+
+	*/
+	// 4904594
+	AppC2BConsumerKey       = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
+	AppC2BConsumerSecret    = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
+	AppC2BBusinessShortCode = "4041529"
+	AppC2BPassKey           = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
+
+	AppPayB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
+	AppPayB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
+	AppPayB2CInitiatorName  = "Anuar"
+	AppPayB2CPassword       = "ZaZL3V2T1zRirqevhpYDSRBGvstw7kg+V/W6w9v6ipFmIIlYEubYb0lcjFPsS47GS8KzxfBeFs3rtgoKF/ZgIGSnsTXSNVwPR+1r50ypxXjwl722doeUolmkMRaeonsHcVACASz8CwGXg/STXoU14MxB4WejmM//5hc+9VSaqCoSBGTmNxQbethuQOk5JsQ9YNi1JSDb5eFOzAO6lj4/BBxIhsOFPdAF3maxZHPdxAvjGK9DLEYvOGFQLv9ll/j5IzwnoM0/KVH8k2fJFgXlTfmGw2S72GxHmd/HcXKARKSyfDQos9ZFoTrvlZH0Vt8qHpZYbqPviuzyHjDEm8IwNw=="
+	AppPayB2CShortCode      = "3008818"
+)
+
 // technology@crayfinance.com
 const (
 	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7

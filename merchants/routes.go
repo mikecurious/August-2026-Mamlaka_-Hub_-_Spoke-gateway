@@ -604,11 +604,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
-
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
-		} else if req.ImpalaMerchantId == "app" {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.AppconumerKey, mpesa.AppconumerSecret, mpesa.AppsecurityCredential, mpesa.APPshortCode, mpesa.AppinitiatorName)
-
+		} else if req.ImpalaMerchantId == "app" { // use app paybill
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
