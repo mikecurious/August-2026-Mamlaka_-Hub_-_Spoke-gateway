@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main() {
+func main990() {
 	// r := gin.Default()
 
 	// B2C Payment
