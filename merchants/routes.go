@@ -404,16 +404,19 @@ func MobilePaymentHandler(c *gin.Context) {
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
-		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox"{
+		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
 
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
 			// log the paybill being used
 			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
-		}else if req.ImpalaMerchantId == "app" {
+		} else if req.ImpalaMerchantId == "app" {
 			//use app c2b detail
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
-		}else {
+		} else if req.ImpalaMerchantId == "transactworld" {
+			//use app c2b detail
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+		} else {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
 
 		}
@@ -607,9 +610,11 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
 		} else if req.ImpalaMerchantId == "app" { // use app paybill
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+		} else if req.ImpalaMerchantId == "transactworld" { // use app paybill
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)

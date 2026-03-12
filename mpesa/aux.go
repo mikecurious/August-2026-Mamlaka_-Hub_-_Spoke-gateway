@@ -53,18 +53,7 @@ const (
 )
 
 const (
-	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
-	/*
-		initiateb2c.go
-			conumerKey         = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-		conumerSecret      = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-		initiatorName      = "Anuar"
-		securityCredential = "ZaZL3V2T1zRirqevhpYDSRBGvstw7kg+V/W6w9v6ipFmIIlYEubYb0lcjFPsS47GS8KzxfBeFs3rtgoKF/ZgIGSnsTXSNVwPR+1r50ypxXjwl722doeUolmkMRaeonsHcVACASz8CwGXg/STXoU14MxB4WejmM//5hc+9VSaqCoSBGTmNxQbethuQOk5JsQ9YNi1JSDb5eFOzAO6lj4/BBxIhsOFPdAF3maxZHPdxAvjGK9DLEYvOGFQLv9ll/j5IzwnoM0/KVH8k2fJFgXlTfmGw2S72GxHmd/HcXKARKSyfDQos9ZFoTrvlZH0Vt8qHpZYbqPviuzyHjDEm8IwNw=="
-		shortCode          = "3008818"
 
-
-
-	*/
 	// 4904594
 	AppC2BConsumerKey       = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
 	AppC2BConsumerSecret    = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
@@ -92,6 +81,20 @@ const (
 	CrayPayB2CInitiatorName  = "collins"
 	CrayPayB2CPassword       = "P8tMtdc3GunIzpxqKoF4FC8SbPIGvV5lMtoqWMZvdQ5aKeRzWqQItVqAs8BDXSHoJS+kUZpjJ7xAH4q0W/L3Wv421RiI7VpTHk7TfcSFVPnwL1dYYUVPaSSuZPSMAgedkGIfL/kR8Uc9Q+pE4CMS7bCkDUdHfm61YiNgFQ+mabs0aFPynI4hYXEYGAXc4VIMQ+hevhKDs4cKvddrVGoGVYapi+vjqdzMe25gnyp6pZdHT+y6Lkm09WhIkmgRsVOSZnXixmPLEIgTjdw+xLHGFIqYn+QDE0Mk2jahNVXi82P2BGZ4ouORSHPrwE7nLOCKyiZUcfZKbok44uO+9BTjgg=="
 	CrayPayB2CShortCode      = "3008814"
+)
+
+// TWD
+const (
+	TWDC2BConsumerKey       = "P2BwQcGj8fnnvsgirs2iFZ6pWbjLsrAJEzIlO2vvOnHM4uHS"
+	TWDC2BConsumerSecret    = "26RPkoUxX4RRa9Wywg5RAQFOGwZwZYxjTzCIlO3kj6it56J9ze40TUxLvYMGj4Gd"
+	TWDC2BBusinessShortCode = "4041809"
+	TWDC2BPassKey           = "ef99e90e1744e1a689df2a3c2bcee521caf8c93d7db8f723c7634ad8424db324"
+
+	TWDPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	TWDPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
+	TWDPayB2CInitiatorName  = "collins"
+	TWDPayB2CPassword       = "AB2K1KfElkp1OY9VRAixm3qE99wo//IuJWs0CVdUMdq5L5zPjeGcWrlIdhZdErO9SVGQ5Ba3kVvmPw9Cw1xtH1zKBVd9sY4byCQj9Hbr5qfnjk3wjV8WGw/1gtGI7SA+aRPdelKSnwlbO+6JMX2fHr+0YcBWkaRV8JxoQBuKWbk0jvy+mh8u822M69kiUCphzbT4uO1p6mXm++ahK2oVMc1UBJC6OgxMHep2zDvm45hqsnTgJYHds8xrgFbXomg6MEiqEfuf4XXexogtGv3YXewYXsyy2uhFshLj+aRipANstEsLGzC4+nd5Grr5aLFQQhJ4iviZEGpD+mHDS78sZA=="
+	TWDPayB2CShortCode      = "3008816"
 )
 
 // revert amout  using the api
