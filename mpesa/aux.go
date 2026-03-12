@@ -92,8 +92,8 @@ const (
 
 	TWDPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
 	TWDPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	TWDPayB2CInitiatorName  = "collins"
-	TWDPayB2CPassword       = "AB2K1KfElkp1OY9VRAixm3qE99wo//IuJWs0CVdUMdq5L5zPjeGcWrlIdhZdErO9SVGQ5Ba3kVvmPw9Cw1xtH1zKBVd9sY4byCQj9Hbr5qfnjk3wjV8WGw/1gtGI7SA+aRPdelKSnwlbO+6JMX2fHr+0YcBWkaRV8JxoQBuKWbk0jvy+mh8u822M69kiUCphzbT4uO1p6mXm++ahK2oVMc1UBJC6OgxMHep2zDvm45hqsnTgJYHds8xrgFbXomg6MEiqEfuf4XXexogtGv3YXewYXsyy2uhFshLj+aRipANstEsLGzC4+nd5Grr5aLFQQhJ4iviZEGpD+mHDS78sZA=="
+	TWDPayB2CInitiatorName  = "Collin"
+	TWDPayB2CPassword       = "ajq1mKTrsuOWwm1p2Evt4xXOKEDR6Mx5oL3k386/icTRhpFLE6AkvYj1qKG15nd6LgM6GSsY6eFi6F2KRrmT3tAQaDgY0pptsUBNnUaQgGOaeDyrojijTG9YwjsZBh5CwhMrutBcD4b/0kRFweGLF/oDPQacYbh0zU3f8zIpjbXHkU8UJdkLDa6YX89EHFrXYSM6JQ5Vp+npxQHyXbxIT95+nbXkElcTDIkB6/Dd83GXr6rdXsZMtD9zCpZYqVUAiFfpACeN9n6QBkGnDNmGWoFYp75+1ci6J9EWRUmMnSHr3Q43Iw6GIQYe0oorv6Vxh92CmYtstGwwoGDb2GTz4w=="
 	TWDPayB2CShortCode      = "3008816"
 )
 
