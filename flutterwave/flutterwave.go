@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	flutterwaveAPIKey = "FLWSECK-bd2da1b48751990a85a47313a55c7b15-19a05a00a20vt-X"
+	flutterwaveAPIKey  = "FLWSECK-bd2da1b48751990a85a47313a55c7b15-19a05a00a20vt-X"
 	flutterwaveBaseURL = "https://api.flutterwave.com/v3/charges"
 )
 
@@ -179,6 +179,46 @@ func InitiateFlutterwavePayment(phoneNumber, email string, amount int, currency,
 	fmt.Printf("Flutterwave Raw Response Body: %s\n", string(body))
 
 	return &flutterwaveResponse, nil
+}
+
+// ListBanks calls the Flutterwave Banks API for the given country.
+// country should be a 2-letter country code (e.g., "ZM").
+// includeProviderType is typically "1" to include provider_type in the response.
+func ListBanks(country, includeProviderType string) (map[string]interface{}, error) {
+	if country == "" {
+		return nil, fmt.Errorf("country is required")
+	}
+
+	url := fmt.Sprintf("https://api.flutterwave.com/v3/banks/%s", country)
+	if includeProviderType != "" {
+		url = fmt.Sprintf("%s?include_provider_type=%s", url, includeProviderType)
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+flutterwaveAPIKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result, nil
 }
 
 // ProcessFlutterwaveCallback processes the callback from Flutterwave

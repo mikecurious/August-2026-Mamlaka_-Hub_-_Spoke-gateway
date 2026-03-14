@@ -69,16 +69,17 @@ type AirtimeCallbackRequest struct {
 	Currency                string  `json:"currency"`
 }
 
-// CallbackResponse represents the response sent back to merchant
+// CallbackResponse represents the response sent back to merchant (payin/payout callback). Fee is not sent to customer.
 type CallbackResponse struct {
-	Amount            int    `json:"amount"`
-	Currency          string `json:"currency"`
-	ExternalID        string `json:"externalId"`
-	NetAmount         int    `json:"netAmount"`
-	SecureID          string `json:"secureId"`
-	TransactionReport string `json:"transactionReport"`
 	TransactionStatus string `json:"transactionStatus"`
-	Reason            string `json:"reason,omitempty"` // Only included for failed transactions
+	TransactionReport string `json:"transactionReport"`
+	SecureID          string `json:"secureId"`
+	ExternalID        string `json:"externalId"`
+	Amount            int    `json:"amount"`
+	NetAmount         int    `json:"netAmount"`
+	Currency          string `json:"currency"`
+	Reason            string `json:"reason,omitempty"` // Only for failed
+	ProviderReference string `json:"providerReference,omitempty"`
 }
 
 // TransactionType represents the type of transaction
@@ -4304,17 +4305,18 @@ func KorapayCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Find the transaction by Korapay payment reference
+	// Find the transaction by payment_reference (CheckoutRequestID) or reference (MerchantRequestID / external_id)
 	var transaction transactions.TransactionModel
 	db := database.GetConnection()
 
-	// Log what we're searching for
-	log.Printf("Searching for transaction with Korapay payment reference: %s", callbackReq.Data.PaymentReference)
+	log.Printf("Bank deposit callback: reference=%s, payment_reference=%s", callbackReq.Data.Reference, callbackReq.Data.PaymentReference)
 
-	// Try to find by Korapay payment reference (stored in CheckoutRequestID)
 	err = db.Where("checkoutRequestID = ?", callbackReq.Data.PaymentReference).First(&transaction).Error
 	if err != nil {
-		log.Printf("Transaction not found for Korapay reference: %s", callbackReq.Data.PaymentReference)
+		err = db.Where("merchantRequestID = ?", callbackReq.Data.Reference).First(&transaction).Error
+	}
+	if err != nil {
+		log.Printf("Transaction not found for reference: %s or payment_reference: %s", callbackReq.Data.Reference, callbackReq.Data.PaymentReference)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found"})
 		return
 	}
@@ -4353,8 +4355,8 @@ func KorapayCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Update merchant balance if payment was successful
-	if callbackReq.Event == "charge.success" {
+	// Update merchant balance only for payins (collection), not for payouts (withdraw)
+	if callbackReq.Event == "charge.success" && transaction.TransactionReport == "collection" {
 		// Get merchant balance
 		var balance balances.MerchantBalance
 		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&balance).Error
@@ -4392,33 +4394,32 @@ func KorapayCallbackHandler(c *gin.Context) {
 		netAmount = callbackReq.Data.Amount // Fallback to original amount if calculation results in negative
 	}
 
-	// Prepare callback response for merchant
+	// Prepare standardised callback payload for merchant (same shape for payin and payout)
 	callbackResponse := CallbackResponse{
-		Amount:            callbackReq.Data.Amount,
-		Currency:          callbackReq.Data.Currency,
-		ExternalID:        transaction.ExternalID,
-		NetAmount:         netAmount,
-		SecureID:          transaction.SecureID,
-		TransactionReport: transactionReport,
 		TransactionStatus: transactionStatus,
+		TransactionReport: transactionReport,
+		SecureID:          transaction.SecureID,
+		ExternalID:        transaction.ExternalID,
+		Amount:            callbackReq.Data.Amount,
+		NetAmount:         netAmount,
+		Currency:          callbackReq.Data.Currency,
+		ProviderReference: transaction.CheckoutRequestID,
 	}
-
-	// Add reason only for failed transactions
 	if transactionStatus == "FAILED" {
 		callbackResponse.Reason = failureReason
 	}
 
-	// Send callback to merchant if callback URL is provided
 	if transaction.CallbackURL != "" {
+		url := transaction.CallbackURL
+		payload := callbackResponse
 		go func() {
-			// Send HTTP POST request to merchant's callback URL
-			jsonData, _ := json.Marshal(callbackResponse)
-			resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(jsonData))
+			jsonData, _ := json.Marshal(payload)
+			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 			if err != nil {
 				log.Printf("Failed to send callback to merchant: %v", err)
 			} else {
 				resp.Body.Close()
-				log.Printf("Callback sent to merchant: %s", transaction.CallbackURL)
+				log.Printf("Callback sent to merchant: %s", url)
 			}
 		}()
 	}
@@ -4549,6 +4550,226 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// ListBanksHandler lists banks for a country from Korapay (GET /list/banks?countryCode=NG).
+// Protected: requires Authorization Bearer token.
+func ListBanksHandler(c *gin.Context) {
+	countryCode := c.Query("countryCode")
+	if countryCode == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "countryCode query parameter is required"})
+		return
+	}
+
+	result, err := korapay.ListBanks(countryCode)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch banks", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// KorapayBankPayinHandler initiates a Korapay bank-transfer (payin). Creates a pending transaction,
+// calls Korapay, then returns a simple response with secureId, externalId, status, and bank details for the customer to pay.
+func KorapayBankPayinHandler(c *gin.Context) {
+	merchantID, ok := c.Get("merchantID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
+		return
+	}
+	mid := merchantID.(string)
+
+	var req KorapayBankPayinRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "DUPLICATE_EXTERNAL_ID", "message": "A transaction with this externalId already exists"})
+		return
+	}
+
+	secureID := korapay.GenerateSecureID()
+	dateAdded := time.Now().Unix()
+	accountName := req.AccountName
+	if accountName == "" {
+		accountName = "Payment"
+	}
+
+	txn := &transactions.TransactionModel{
+		ImpalaMerchantID:    mid,
+		SecureID:            secureID,
+		ExternalID:          req.ExternalID,
+		MerchantRequestID:   req.ExternalID,
+		Amount:              req.Amount,
+		Currency:            req.Currency,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           dateAdded,
+		TransactionStatus:   "pending",
+		TransactionReport:   "collection",
+		SourceOfFunds:       "korapay",
+		NetAmount:           float64(req.Amount),
+	}
+	if err := transactions.SaveTransaction(txn); err != nil {
+		log.Printf("Failed to save bank payin transaction: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	resp, rawResp, err := korapay.ChargeBankTransfer(accountName, req.Amount, req.Currency, req.ExternalID, req.CustomerName, req.CustomerEmail)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Bank transfer initiation failed", "details": err.Error()})
+		return
+	}
+
+	if resp.Data != nil && resp.Data.PaymentReference != "" {
+		db := database.GetConnection()
+		_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Update("checkoutRequestID", resp.Data.PaymentReference).Error
+	}
+
+	// Simple response for the user
+	out := gin.H{
+		"secureId":   secureID,
+		"externalId": req.ExternalID,
+		"status":     "pending",
+		"message":    "Bank transfer initiated. Customer should pay to the account below.",
+		"amount":     req.Amount,
+		"currency":   req.Currency,
+	}
+	// Bank details: prefer struct, then raw response (handles snake_case and camelCase)
+	var ba map[string]interface{}
+	if resp.Data != nil && resp.Data.BankAccount != nil {
+		ba = resp.Data.BankAccount
+	} else if rawResp != nil {
+		if data, _ := rawResp["data"].(map[string]interface{}); data != nil {
+			if b, ok := data["bank_account"].(map[string]interface{}); ok {
+				ba = b
+			}
+			if ba == nil {
+				if b, ok := data["bankAccount"].(map[string]interface{}); ok {
+					ba = b
+				}
+			}
+		}
+	}
+	if ba != nil {
+		out["bankAccountName"] = getStr(ba, "account_name", "accountName")
+		out["bankAccountNumber"] = getStr(ba, "account_number", "accountNumber")
+		out["bankName"] = getStr(ba, "bank_name", "bankName")
+		out["bankCode"] = getStr(ba, "bank_code", "bankCode")
+		if exp := getStr(ba, "expiry_date_in_utc", "expiryDateInUtc", "expiryDate"); exp != "" {
+			out["expiryDate"] = exp
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// KorapayPayoutHandler initiates a Korapay bank payout (disburse). Creates a pending transaction,
+// calls Korapay, returns a clean response. Callback URL receives status updates.
+func KorapayPayoutHandler(c *gin.Context) {
+	merchantID, ok := c.Get("merchantID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
+		return
+	}
+	mid := merchantID.(string)
+
+	var req KorapayPayoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "DUPLICATE_EXTERNAL_ID", "message": "A transaction with this externalId already exists"})
+		return
+	}
+
+	secureID := korapay.GenerateSecureID()
+	dateAdded := time.Now().Unix()
+	narration := req.Narration
+	if narration == "" {
+		narration = "Payout"
+	}
+
+	// Parse amount for DB (store as int cents or whole units; Korapay uses string "100")
+	amountInt := 0
+	if _, err := fmt.Sscanf(req.Amount, "%d", &amountInt); err != nil {
+		amountInt = 0
+	}
+
+	txn := &transactions.TransactionModel{
+		ImpalaMerchantID:  mid,
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		MerchantRequestID: req.ExternalID,
+		Currency:          req.Currency,
+		CallbackURL:       req.CallbackURL,
+		DateAdded:         dateAdded,
+		TransactionStatus: "pending",
+		TransactionReport: "withdraw",
+		SourceOfFunds:     "korapay",
+		Amount:            amountInt,
+		NetAmount:         float64(amountInt),
+	}
+	if err := transactions.SaveTransaction(txn); err != nil {
+		log.Printf("Failed to save payout transaction: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	resp, err := korapay.Disburse(req.ExternalID, req.Amount, req.Currency, narration, req.BankCode, req.AccountNumber, req.CustomerName, req.CustomerEmail)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Payout initiation failed", "details": err.Error()})
+		return
+	}
+
+	// Store Korapay reference for callback lookup
+	if resp.Data != nil && resp.Data.Reference != "" {
+		db := database.GetConnection()
+		_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Update("checkoutRequestID", resp.Data.Reference).Error
+	}
+
+	// Standardised response for consumers
+	out := gin.H{
+		"secureId":   secureID,
+		"externalId": req.ExternalID,
+		"status":     "pending",
+		"message":    "Payout initiated successfully. You will be notified via callback when it completes.",
+		"amount":     req.Amount,
+		"currency":   req.Currency,
+	}
+	if resp.Data != nil {
+		out["providerReference"] = resp.Data.Reference
+		out["fee"] = resp.Data.Fee
+		out["narration"] = resp.Data.Narration
+		if resp.Data.Message != "" {
+			out["providerMessage"] = resp.Data.Message
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// getStr returns the first non-empty string from m for the given keys (tries snake and camelCase).
+func getStr(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // FlutterwaveCallbackHandler handles Flutterwave payment callbacks
@@ -5347,6 +5568,8 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("usdc/callback", CryptoCallbackHandler)
 	router.POST("korapay/initiate", KorapayPaymentHandler)
 	router.POST("korapay/callback", KorapayCallbackHandler)
+	router.POST("bank/deposit/callback", KorapayCallbackHandler) // Payin webhook: same payload as Korapay
+	router.POST("bank/payout/callback", KorapayCallbackHandler)  // Payout webhook: same event/data format; we update txn and forward to your callbackUrl
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)
@@ -5370,6 +5593,10 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.GET("/read/payins/balance", GetTotalPayinBalanceHandler) // get payin balance
 	// drawings.V1(mercury.Group("/drawings"))
 	protected.POST("/wallet/transfer/toPayout", drawings.WalletTransferHandler)
+	// Flutterwave utilities
+	protected.GET("/list/banks", ListBanksHandler)
+	protected.POST("/bank/payin", KorapayBankPayinHandler)
+	protected.POST("/bank/payout", KorapayPayoutHandler)
 	// virtualcard endpoins
 
 	// migrate the virtual careds

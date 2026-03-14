@@ -193,6 +193,30 @@ type KorapayCallbackData struct {
 	Status           string  `json:"status"`
 }
 
+// KorapayBankPayinRequest is the request body for initiating a Korapay bank-transfer (payin).
+type KorapayBankPayinRequest struct {
+	ExternalID   string `json:"externalId" binding:"required"`
+	Amount       int    `json:"amount" binding:"required,gt=0"`
+	Currency     string `json:"currency" binding:"required"`
+	AccountName  string `json:"accountName"` // Optional; displayed to payer (e.g. "Demo account")
+	CallbackURL  string `json:"callbackUrl" binding:"required"`
+	CustomerName string `json:"customerName" binding:"required"`
+	CustomerEmail string `json:"customerEmail" binding:"required,email"`
+}
+
+// KorapayPayoutRequest is the request body for Korapay bank payout (disburse).
+type KorapayPayoutRequest struct {
+	ExternalID     string `json:"externalId" binding:"required"`
+	Amount         string `json:"amount" binding:"required"`
+	Currency       string `json:"currency" binding:"required"`
+	Narration      string `json:"narration"`
+	BankCode       string `json:"bankCode" binding:"required"`
+	AccountNumber  string `json:"accountNumber" binding:"required"`
+	CustomerName   string `json:"customerName" binding:"required"`
+	CustomerEmail  string `json:"customerEmail" binding:"required,email"`
+	CallbackURL    string `json:"callbackUrl" binding:"required"`
+}
+
 // Flutterwave structures
 type FlutterwavePaymentRequest struct {
 	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
