@@ -689,7 +689,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// Initiate payment via reize remit
 		status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
-		fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
+		// status is a bool; use %v to avoid format errors.
+		fmt.Printf("payment status: %v, message: %s, error: %v\n", status, message, err)
 
 		// Determine transaction status and prepare response
 		var transactionStatus, responseStatus, responseMessage string
@@ -4355,35 +4356,50 @@ func KorapayCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Update merchant balance only for payins (collection), not for payouts (withdraw)
+	// Update merchant collection wallet only for payins (collection), not for payouts (withdraw)
 	if callbackReq.Event == "charge.success" && transaction.TransactionReport == "collection" {
-		// Get merchant balance
-		var balance balances.MerchantBalance
-		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&balance).Error
+		var coll balances.MerchantCollectionBalance
+		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&coll).Error
 		if err != nil {
-			log.Printf("Balance not found for merchant %s", transaction.ImpalaMerchantID)
+			log.Printf("Collection balance not found for merchant %s", transaction.ImpalaMerchantID)
 		} else {
-			// Add amount to balance based on currency
 			switch callbackReq.Data.Currency {
 			case "KES":
-				balance.KESBalance += float64(callbackReq.Data.Amount)
+				coll.KESBalance += float64(callbackReq.Data.Amount)
 			case "UGX":
-				balance.UGXBalance += float64(callbackReq.Data.Amount)
+				coll.UGXBalance += float64(callbackReq.Data.Amount)
 			case "USD":
-				balance.USDBalance += float64(callbackReq.Data.Amount)
+				coll.USDBalance += float64(callbackReq.Data.Amount)
 			case "EUR":
-				balance.EURBalance += float64(callbackReq.Data.Amount)
+				coll.EURBalance += float64(callbackReq.Data.Amount)
 			case "GBP":
-				balance.GBPBalance += float64(callbackReq.Data.Amount)
+				coll.GBPBalance += float64(callbackReq.Data.Amount)
 			case "TZS":
-				balance.TZSBalance += float64(callbackReq.Data.Amount)
+				coll.TZSBalance += float64(callbackReq.Data.Amount)
 			case "XAF":
-				balance.XAFBalance += float64(callbackReq.Data.Amount)
+				coll.XAFBalance += float64(callbackReq.Data.Amount)
+			case "NGN":
+				coll.NGNBalance += float64(callbackReq.Data.Amount)
 			default:
-				log.Printf("Unsupported currency for balance update: %s", callbackReq.Data.Currency)
+				log.Printf("Unsupported currency for collection balance update: %s", callbackReq.Data.Currency)
 			}
-			if err := db.Save(&balance).Error; err != nil {
-				log.Printf("Failed to update balance: %v", err)
+			if err := db.Save(&coll).Error; err != nil {
+				log.Printf("Failed to update collection balance: %v", err)
+			}
+		}
+	}
+
+	// Refund payout wallet on decline (withdraw failed)
+	if callbackReq.Event == "charge.failed" && transaction.TransactionReport == "withdraw" && callbackReq.Data.Currency == "NGN" {
+		var payout balances.MerchantBalance
+		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&payout).Error
+		if err != nil {
+			log.Printf("Payout balance not found for merchant %s", transaction.ImpalaMerchantID)
+		} else {
+			payout.NGNBalance += float64(callbackReq.Data.Amount)
+			payout.LastUpdated = time.Now().Unix()
+			if err := db.Save(&payout).Error; err != nil {
+				log.Printf("Failed to refund NGN payout balance: %v", err)
 			}
 		}
 	}
@@ -4680,6 +4696,7 @@ func KorapayPayoutHandler(c *gin.Context) {
 		return
 	}
 
+	// Idempotency (avoid duplicates for this merchant)
 	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
@@ -4690,69 +4707,100 @@ func KorapayPayoutHandler(c *gin.Context) {
 		return
 	}
 
-	secureID := korapay.GenerateSecureID()
-	dateAdded := time.Now().Unix()
+	// For now, NGN payouts rely on NGN wallet balance.
+	if req.Currency != "NGN" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "UNSUPPORTED_CURRENCY", "message": "Only NGN payout is supported for now"})
+		return
+	}
+
+	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
+	if err != nil || amountFloat <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
+		return
+	}
+	amountInt := int(amountFloat)
+
+	// Always check NGN balance before initiating the payout.
+	balance, err := balances.GetMerchantBalance(mid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+		return
+	}
+	if balance.NGNBalance < amountFloat {
+		c.JSON(http.StatusForbidden, gin.H{"error": "INSUFFICIENT_NGN_BALANCE", "message": "Please top up your payout wallet"})
+		return
+	}
+
 	narration := req.Narration
 	if narration == "" {
 		narration = "Payout"
 	}
 
-	// Parse amount for DB (store as int cents or whole units; Korapay uses string "100")
-	amountInt := 0
-	if _, err := fmt.Sscanf(req.Amount, "%d", &amountInt); err != nil {
-		amountInt = 0
-	}
-
-	txn := &transactions.TransactionModel{
-		ImpalaMerchantID:  mid,
-		SecureID:          secureID,
-		ExternalID:        req.ExternalID,
-		MerchantRequestID: req.ExternalID,
-		Currency:          req.Currency,
-		CallbackURL:       req.CallbackURL,
-		DateAdded:         dateAdded,
-		TransactionStatus: "pending",
-		TransactionReport: "withdraw",
-		SourceOfFunds:     "korapay",
-		Amount:            amountInt,
-		NetAmount:         float64(amountInt),
-	}
-	if err := transactions.SaveTransaction(txn); err != nil {
-		log.Printf("Failed to save payout transaction: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
-		return
-	}
-
+	// Call Korapay first; if it declines (not_authorized/conflict), don't create a transaction or deduct funds.
 	resp, err := korapay.Disburse(req.ExternalID, req.Amount, req.Currency, narration, req.BankCode, req.AccountNumber, req.CustomerName, req.CustomerEmail)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Payout initiation failed", "details": err.Error()})
 		return
 	}
 
-	// Store Korapay reference for callback lookup
-	if resp.Data != nil && resp.Data.Reference != "" {
-		db := database.GetConnection()
-		_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Update("checkoutRequestID", resp.Data.Reference).Error
+	if resp == nil || !resp.Status {
+		code := resp.Error
+		httpCode := http.StatusBadRequest
+		if code == "not_authorized" {
+			httpCode = http.StatusForbidden
+		} else if code == "conflict" {
+			httpCode = http.StatusConflict
+		}
+		c.JSON(httpCode, gin.H{
+			"status":  false,
+			"error":   code,
+			"message": resp.Message,
+		})
+		return
+	}
+	if resp.Data == nil || resp.Data.Reference == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "MISSING_PROVIDER_REFERENCE", "message": "Korapay did not return a payout reference"})
+		return
 	}
 
-	// Standardised response for consumers
-	out := gin.H{
+	// Now deduct NGN from payout wallet and create pending transaction record.
+	if err := balances.DeductNGNBalance(mid, amountFloat); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "INSUFFICIENT_NGN_BALANCE", "details": err.Error()})
+		return
+	}
+
+	secureID := korapay.GenerateSecureID()
+	dateAdded := time.Now().Unix()
+
+	txn := &transactions.TransactionModel{
+		ImpalaMerchantID:     mid,
+		SecureID:             secureID,
+		ExternalID:           req.ExternalID,
+		MerchantRequestID:    req.ExternalID,
+		CheckoutRequestID:    resp.Data.Reference,
+		Currency:             req.Currency,
+		CallbackURL:          req.CallbackURL,
+		DateAdded:            dateAdded,
+		TransactionStatus:    "pending",
+		TransactionReport:    "withdraw",
+		SourceOfFunds:        "korapay",
+		Amount:               amountInt,
+		NetAmount:            float64(amountInt),
+	}
+	if err := transactions.SaveTransaction(txn); err != nil {
+		// Refund if we failed to persist the transaction.
+		_ = balances.AddNGNPayoutBalance(mid, amountFloat)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	// Simple response: no fee/charges, only confirmation + secure id.
+	c.JSON(http.StatusOK, gin.H{
 		"secureId":   secureID,
 		"externalId": req.ExternalID,
 		"status":     "pending",
 		"message":    "Payout initiated successfully. You will be notified via callback when it completes.",
-		"amount":     req.Amount,
-		"currency":   req.Currency,
-	}
-	if resp.Data != nil {
-		out["providerReference"] = resp.Data.Reference
-		out["fee"] = resp.Data.Fee
-		out["narration"] = resp.Data.Narration
-		if resp.Data.Message != "" {
-			out["providerMessage"] = resp.Data.Message
-		}
-	}
-	c.JSON(http.StatusOK, out)
+	})
 }
 
 // getStr returns the first non-empty string from m for the given keys (tries snake and camelCase).

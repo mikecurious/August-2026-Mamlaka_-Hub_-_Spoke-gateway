@@ -23,6 +23,7 @@ type MerchantBalance struct {
 	TZSBalance       float64 `gorm:"column:tzsBalance;type:float(100,2)" json:"tzsBalance"`
 	UGXBalance       float64 `gorm:"column:ugxBalance;type:float(100,2)" json:"ugxBalance"`
 	XAFBalance       float64 `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
+	NGNBalance       float64 `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -97,14 +98,16 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"TZS":  balance.TZSBalance,
 		"UGX":  balance.UGXBalance,
 		"XAF":  balance.XAFBalance,
+		"NGN":  balance.NGNBalance,
 	}
 
 	// Calculate total balance converted to base currency
 	totalBalance := 0.0
 	for currency, amount := range balances {
 		rate, ok := forexMap[currency]
-		if !ok {
-			return nil, fmt.Errorf("missing conversion rate for currency: %s", currency)
+		if !ok || rate == 0 {
+			// Skip currencies without a configured conversion rate.
+			continue
 		}
 		converted := (amount / rate) * baseRate
 		totalBalance += converted
@@ -122,6 +125,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"gbpBalance":   balance.GBPBalance,
 		"tzsBalance":   balance.TZSBalance,
 		"ugxBalance":   balance.UGXBalance,
+		"ngnBalance":   balance.NGNBalance,
 		"totalBalance": totalBalance,
 		"xafBalance":   balance.XAFBalance,
 		"baseCurrency": baseCurrency,
@@ -318,6 +322,8 @@ func AddBalance(impalaMerchantID string, currency string, amount float64) error 
 		balance.TZSBalance += amount
 	case "UGX":
 		balance.UGXBalance += amount
+	case "NGN":
+		balance.NGNBalance += amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -396,6 +402,11 @@ func DeductBalance(impalaMerchantID string, currency string, amount float64) err
 			return fmt.Errorf("insufficient UGX balance: available %.2f, required %.2f", balance.UGXBalance, amount)
 		}
 		balance.UGXBalance -= amount
+	case "NGN":
+		if balance.NGNBalance < amount {
+			return fmt.Errorf("insufficient NGN balance: available %.2f, required %.2f", balance.NGNBalance, amount)
+		}
+		balance.NGNBalance -= amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -573,6 +584,69 @@ func AddXAFBalance(impalaMerchantID string, amount float64) error {
 	// Update the balance in the database
 	err = db.Save(&balance).Error
 	if err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// DeductNGNBalance deducts NGN from the merchant payout wallet (merchant_balances).
+func DeductNGNBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	if balance.NGNBalance < amount {
+		return fmt.Errorf("insufficient NGN balance: available %.2f, required %.2f", balance.NGNBalance, amount)
+	}
+
+	balance.NGNBalance -= amount
+	balance.LastUpdated = time.Now().Unix()
+
+	if err := db.Save(&balance).Error; err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// AddNGNBalance adds NGN to the merchant collection wallet (merchant_collection_balance).
+func AddNGNBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	var balance MerchantCollectionBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant collection balance: %w", err)
+	}
+
+	balance.NGNBalance += amount
+
+	if err := db.Save(&balance).Error; err != nil {
+		return fmt.Errorf("could not update merchant balance: %w", err)
+	}
+
+	return nil
+}
+
+// AddNGNPayoutBalance adds NGN to the merchant payout wallet (merchant_balances) - used for payout refunds.
+func AddNGNPayoutBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+
+	var balance MerchantBalance
+	err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error
+	if err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+
+	balance.NGNBalance += amount
+	balance.LastUpdated = time.Now().Unix()
+
+	if err := db.Save(&balance).Error; err != nil {
 		return fmt.Errorf("could not update merchant balance: %w", err)
 	}
 

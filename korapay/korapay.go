@@ -414,8 +414,9 @@ type DisburseBankAccount struct {
 
 // DisburseResponse is the response from Korapay disburse.
 type DisburseResponse struct {
-	Status  bool                `json:"status"`
-	Message string              `json:"message"`
+	Status  bool                   `json:"status"`
+	Error   string                 `json:"error"`
+	Message string                 `json:"message"`
 	Data    *DisburseResponseData `json:"data"`
 }
 

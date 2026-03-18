@@ -23,6 +23,7 @@ type MerchantCollectionBalance struct {
 	TZSBalance       float64   `gorm:"column:tzsBalance;type:float(100,2)" json:"tzsBalance"`
 	UGXBalance       float64   `gorm:"column:ugxBalance;type:float(100,2)" json:"ugxBalance"`
 	XAFBalance       float64   `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
+	NGNBalance       float64   `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -32,6 +33,8 @@ func (MerchantCollectionBalance) TableName() string {
 }
 func AutoMigrate() {
 	db := database.GetConnection()
+	// Ensure both payout and collection wallets have the latest fields.
+	db.AutoMigrate(&MerchantBalance{})
 	db.AutoMigrate(&MerchantCollectionBalance{})
 }
 
@@ -173,14 +176,16 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"TZS":  balance.TZSBalance,
 		"UGX":  balance.UGXBalance,
 		"XAF":  balance.XAFBalance,
+		"NGN":  balance.NGNBalance,
 	}
 
 	// Calculate total balance converted to base currency
 	totalBalance := 0.0
 	for currency, amount := range balances {
 		rate, ok := forexMap[currency]
-		if !ok {
-			return nil, fmt.Errorf("missing conversion rate for currency: %s", currency)
+		if !ok || rate == 0 {
+			// Skip currencies without a configured conversion rate.
+			continue
 		}
 		converted := (amount / rate) * baseRate
 		totalBalance += converted
@@ -198,6 +203,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"gbpBalance":   balance.GBPBalance,
 		"tzsBalance":   balance.TZSBalance,
 		"ugxBalance":   balance.UGXBalance,
+		"ngnBalance":   balance.NGNBalance,
 		"totalBalance": totalBalance,
 		"baseCurrency": baseCurrency,
 		"xafBalance":   balance.XAFBalance,
