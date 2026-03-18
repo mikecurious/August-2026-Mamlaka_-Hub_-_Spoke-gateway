@@ -87,8 +87,8 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d",
-		ResultURL:          "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d",
+		QueueTimeOutURL:    "https://webhook.site/e56eb610-5ab5-48ac-922c-adf8fb271a78",
+		ResultURL:          "https://webhook.site/e56eb610-5ab5-48ac-922c-adf8fb271a78",
 		Occasion:           "Withdrawal",
 	}
 
@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main990() {
+func main() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -196,7 +196,7 @@ func main990() {
 	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	// 		return
 	// 	}
-	resp, err := sendB2CPayment("254794721042", "10")
+	resp, err := sendB2CPayment("254768899729", "10")
 	if err != nil {
 		fmt.Println("Error sending B2C payment:", err)
 	}
@@ -256,21 +256,21 @@ func main990() {
 /*
 
 
-	TWDPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-	TWDPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	TWDPayB2CInitiatorName  = "Collin"
-	TWDPayB2CPassword       = "ajq1mKTrsuOWwm1p2Evt4xXOKEDR6Mx5oL3k386/icTRhpFLE6AkvYj1qKG15nd6LgM6GSsY6eFi6F2KRrmT3tAQaDgY0pptsUBNnUaQgGOaeDyrojijTG9YwjsZBh5CwhMrutBcD4b/0kRFweGLF/oDPQacYbh0zU3f8zIpjbXHkU8UJdkLDa6YX89EHFrXYSM6JQ5Vp+npxQHyXbxIT95+nbXkElcTDIkB6/Dd83GXr6rdXsZMtD9zCpZYqVUAiFfpACeN9n6QBkGnDNmGWoFYp75+1ci6J9EWRUmMnSHr3Q43Iw6GIQYe0oorv6Vxh92CmYtstGwwoGDb2GTz4w=="
-	TWDPayB2CShortCode      = "3008816"
+	AppconumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
+	AppconumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
+	AppinitiatorName      = "collins"
+	AppsecurityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
+	APPshortCode          = "3008826"
 
 
 */
 
 const (
-	conumerKey         = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-	conumerSecret      = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	initiatorName      = "Collin"
-	securityCredential = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	shortCode          = "3008816"
+	conumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
+	conumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
+	initiatorName      = "collins"
+	securityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
+	shortCode          = "3008826"
 	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"

@@ -20,7 +20,7 @@ func Migration(database *gorm.DB) {
 	forex.AutoMigrate()
 }
 
-func main() {
+func main8() {
 	//load the env
 	err := godotenv.Load()
 	if err != nil {

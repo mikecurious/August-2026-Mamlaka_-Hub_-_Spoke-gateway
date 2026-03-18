@@ -24,7 +24,6 @@ func (s *TransactionSerializer) Response() map[string]interface{} {
 		// "msisdn":               s.Transaction.Msisdn,
 		// "net_amount":           s.Transaction.NetAmount,
 		"secure_id":       s.Transaction.SecureID,
-		"source_of_funds": s.Transaction.SourceOfFunds,
 		"external_id":     s.Transaction.ExternalID,
 		"callback_url":    s.Transaction.CallbackURL,
 		// "redirect_url":         s.Transaction.RedirectURL,

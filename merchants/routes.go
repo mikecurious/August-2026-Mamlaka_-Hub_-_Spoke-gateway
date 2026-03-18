@@ -4388,30 +4388,23 @@ func KorapayCallbackHandler(c *gin.Context) {
 		}
 	}
 
-	// Calculate net amount (amount minus fees)
-	netAmount := callbackReq.Data.Amount - int(callbackReq.Data.Fee)
-	if netAmount < 0 {
-		netAmount = callbackReq.Data.Amount // Fallback to original amount if calculation results in negative
-	}
-
-	// Prepare standardised callback payload for merchant (same shape for payin and payout)
-	callbackResponse := CallbackResponse{
-		TransactionStatus: transactionStatus,
-		TransactionReport: transactionReport,
-		SecureID:          transaction.SecureID,
-		ExternalID:        transaction.ExternalID,
-		Amount:            callbackReq.Data.Amount,
-		NetAmount:         netAmount,
-		Currency:          callbackReq.Data.Currency,
-		ProviderReference: transaction.CheckoutRequestID,
+	// Standardised callback payload for merchant (do NOT include netAmount/fee)
+	callbackPayload := gin.H{
+		"transactionStatus": transactionStatus,
+		"transactionReport": transactionReport,
+		"secureId":          transaction.SecureID,
+		"externalId":        transaction.ExternalID,
+		"amount":            callbackReq.Data.Amount,
+		"currency":          callbackReq.Data.Currency,
+		"providerReference": transaction.CheckoutRequestID,
 	}
 	if transactionStatus == "FAILED" {
-		callbackResponse.Reason = failureReason
+		callbackPayload["reason"] = failureReason
 	}
 
 	if transaction.CallbackURL != "" {
 		url := transaction.CallbackURL
-		payload := callbackResponse
+		payload := callbackPayload
 		go func() {
 			jsonData, _ := json.Marshal(payload)
 			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
