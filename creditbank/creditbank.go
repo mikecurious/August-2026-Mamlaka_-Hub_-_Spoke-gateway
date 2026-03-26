@@ -70,9 +70,12 @@ func InitiateTillPayment(creditAccount, narration, amount, callbackURL, transact
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		// Some environments don't have the CA chain for this gateway.
+		// Some environments fail TLS validation for this gateway (unknown CA, expired/not-yet-valid cert, etc).
 		// Retry once with TLS verification disabled only for this call.
-		if strings.Contains(err.Error(), "certificate signed by unknown authority") {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "tls: failed to verify certificate") ||
+			strings.Contains(errMsg, "x509: certificate signed by unknown authority") ||
+			strings.Contains(errMsg, "x509: certificate has expired or is not yet valid") {
 			insecureClient := &http.Client{
 				Timeout: 30 * time.Second,
 				Transport: &http.Transport{
