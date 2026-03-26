@@ -4875,7 +4875,7 @@ func TillPaymentHandler(c *gin.Context) {
 		return
 	}
 
-	amountInt, _ := strconv.Atoi(req.Amount)
+	amountInt := int(amountFloat)
 	transaction := &transactions.TransactionModel{
 		ImpalaMerchantID:    mid,
 		TransactionStatus:   "pending",
@@ -4883,6 +4883,7 @@ func TillPaymentHandler(c *gin.Context) {
 		Currency:            req.Currency,
 		Amount:              amountInt,
 		NetAmount:           float64(amountInt),
+		Msisdn:              "TILL-" + req.CreditAccount, // Save till account label in phone field for transaction views
 		SecureID:            internalRef,
 		SourceOfFunds:       "till",
 		ExternalID:          req.ExternalID,
