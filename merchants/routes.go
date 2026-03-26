@@ -4840,6 +4840,28 @@ func TillPaymentHandler(c *gin.Context) {
 		return
 	}
 
+	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
+	if err != nil || amountFloat <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
+		return
+	}
+
+	// Check KES payout balance before initiating till payment.
+	if req.Currency == "KES" {
+		payoutBalance, err := balances.GetMerchantBalance(mid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+			return
+		}
+		if payoutBalance.KESBalance < amountFloat {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "INSUFFICIENT_KES_BALANCE",
+				"message": "Insufficient payout balance. Please top up your KES wallet.",
+			})
+			return
+		}
+	}
+
 	internalRef := generateRef12()
 	internalCallback := "https://payments.mam-laka.com/api/v1/till/callback"
 	narration := req.Narration
@@ -4911,10 +4933,26 @@ func TillCallbackHandler(c *gin.Context) {
 	status := "FAILED"
 	report := "FAILED"
 	callbackStatus := "FAILED"
+	deductedOnSuccess := false
 	if payload.ResultCode == 0 {
 		status = "SUCCESS"
 		report = "COMPLETE"
 		callbackStatus = "SENT"
+
+		// Deduct payout balance only on successful callback (requested behavior).
+		// Protect against duplicate callbacks by skipping if already marked success.
+		if txn.TransactionStatus != "SUCCESS" {
+			switch txn.Currency {
+			case "KES":
+				if err := balances.DeductKESBalance(txn.ImpalaMerchantID, float64(txn.Amount)); err != nil {
+					c.JSON(http.StatusForbidden, gin.H{"error": "INSUFFICIENT_KES_BALANCE", "details": err.Error()})
+					return
+				}
+				deductedOnSuccess = true
+			default:
+				// No deduction logic for other currencies in till flow.
+			}
+		}
 	}
 
 	err = db.Model(&transactions.TransactionModel{}).
@@ -4943,6 +4981,10 @@ func TillCallbackHandler(c *gin.Context) {
 		callbackBody["reason"] = payload.ResultDesc
 	}
 	if err := SendCallback(txn.ID, callbackBody); err != nil {
+		// If merchant callback fails after successful deduction, refund KES to avoid stuck state.
+		if deductedOnSuccess && txn.Currency == "KES" {
+			_ = balances.AddBalance(txn.ImpalaMerchantID, "KES", float64(txn.Amount))
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send merchant callback", "details": err.Error()})
 		return
 	}
