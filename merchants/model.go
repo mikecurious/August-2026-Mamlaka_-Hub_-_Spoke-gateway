@@ -217,6 +217,17 @@ type KorapayPayoutRequest struct {
 	CallbackURL    string `json:"callbackUrl" binding:"required"`
 }
 
+// TillPaymentRequest is the request body for CreditBank till payment.
+type TillPaymentRequest struct {
+	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
+	Currency         string `json:"currency" binding:"required"`
+	Amount           string `json:"amount" binding:"required"`
+	CreditAccount    string `json:"creditAccount" binding:"required"`
+	Narration        string `json:"narration"`
+	ExternalID       string `json:"externalId" binding:"required"`
+	CallbackURL      string `json:"callbackUrl" binding:"required"`
+}
+
 // Flutterwave structures
 type FlutterwavePaymentRequest struct {
 	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`

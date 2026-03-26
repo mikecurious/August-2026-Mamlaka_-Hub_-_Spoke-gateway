@@ -87,8 +87,8 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/e56eb610-5ab5-48ac-922c-adf8fb271a78",
-		ResultURL:          "https://webhook.site/e56eb610-5ab5-48ac-922c-adf8fb271a78",
+		QueueTimeOutURL:    "https://webhook.site/389ef100-b115-4af9-a749-6168b3735790",
+		ResultURL:          "https://webhook.site/389ef100-b115-4af9-a749-6168b3735790",
 		Occasion:           "Withdrawal",
 	}
 
@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main55() {
+func main() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -266,11 +266,11 @@ func main55() {
 */
 
 const (
-	conumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
-	conumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
-	initiatorName      = "collins"
-	securityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
-	shortCode          = "3008826"
+	conumerKey         = "NfAquJ6uJGrGVEZKl7w3bgOdf8fat40j540E3xnfZTnZ9zSH"
+	conumerSecret      = "zv4mdYZ0RJ6sGu2jVAKIMVih4HAhbso2LVyCWvsFOr5FlbYL5wFciuHrm8NzwgkU"
+	initiatorName      = "Joyce"
+	securityCredential = "oYpH7/VLVYMlsEfRNDxB42Ta5mdouKDfg0DS2WZckAKBMXPdJeVVo1OxYp0PQpVEbAAuVEwSsTYbJr1PI/ccq8Evy6So8Q4aybx8gAGgLVBkAtFKtJqlmKHaoFEYtkjaWueL4WGmsBZ45Z/q9tZscHul/hlV43IcSm0QoudNqCXWVg70xCYE5cKDoaNqOg6wOHEDj7lf8K6ZZ0uxtt+jJGYDIh1q58K/LpUn2Tucans91PnkoJHsy5IDSIDU6++6nDrTjTXLDBLdxMSs3wcRooAT4S56HbRI5X9eDMJoJcY2FYGHJKAU0orZfxJIG9rZRSNNwm3qbeiaDP31WCPScg=="
+	shortCode          = "3008816"
 	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"

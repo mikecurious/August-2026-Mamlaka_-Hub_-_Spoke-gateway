@@ -21,6 +21,7 @@ import (
 	"com.mam-laka/auth"
 	"com.mam-laka/balances"
 	"com.mam-laka/cameroon"
+	"com.mam-laka/main/creditbank"
 	"com.mam-laka/database"
 	"com.mam-laka/flutterwave"
 	"com.mam-laka/korapay"
@@ -4803,6 +4804,152 @@ func KorapayPayoutHandler(c *gin.Context) {
 	})
 }
 
+func generateRef12() string {
+	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 12)
+	rnd := make([]byte, 12)
+	_, _ = rand.Read(rnd)
+	for i := range b {
+		b[i] = chars[int(rnd[i])%len(chars)]
+	}
+	return string(b)
+}
+
+// TillPaymentHandler initiates till payment to CreditBank B2B tills API.
+func TillPaymentHandler(c *gin.Context) {
+	merchantID, ok := c.Get("merchantID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
+		return
+	}
+	mid := merchantID.(string)
+
+	var req TillPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "DUPLICATE_EXTERNAL_ID", "message": "A transaction with this externalId already exists"})
+		return
+	}
+
+	internalRef := generateRef12()
+	internalCallback := "https://payments.mam-laka.com/api/v1/till/callback"
+	narration := req.Narration
+	if narration == "" {
+		narration = "Till payment"
+	}
+
+	resp, err := creditbank.InitiateTillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Till payment initiation failed", "details": err.Error()})
+		return
+	}
+
+	amountInt, _ := strconv.Atoi(req.Amount)
+	transaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    mid,
+		TransactionStatus:   "pending",
+		TransactionReport:   "withdraw",
+		Currency:            req.Currency,
+		Amount:              amountInt,
+		NetAmount:           float64(amountInt),
+		SecureID:            internalRef,
+		SourceOfFunds:       "till",
+		ExternalID:          req.ExternalID,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           time.Now().Unix(),
+		MerchantRequestID:   resp.Data.OriginatorConversationID,
+		CheckoutRequestID:   resp.Data.ConversationID,
+		ResponseCode:        resp.Data.ResponseCode,
+		ResponseDescription: resp.Data.ResponseDescription,
+		CallbackStatus:      "PENDING",
+	}
+	if err := transactions.SaveTransaction(transaction); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Till payment initiated successfully. Await callback for final status.",
+		"secureId":   internalRef,
+		"externalId": req.ExternalID,
+		"status":     "pending",
+	})
+}
+
+// TillCallbackHandler processes CreditBank till callback and forwards final callback to merchant.
+func TillCallbackHandler(c *gin.Context) {
+	var payload struct {
+		ResultType                int    `json:"ResultType"`
+		ResultCode                int    `json:"ResultCode"`
+		ResultDesc                string `json:"ResultDesc"`
+		OriginatorConversationID  string `json:"OriginatorConversationID"`
+		ConversationID            string `json:"ConversationID"`
+		TransactionID             string `json:"TransactionID"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": err.Error()})
+		return
+	}
+
+	txn, err := transactions.GetTransactionByMerchantRequestID(payload.OriginatorConversationID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
+		return
+	}
+
+	db := database.GetConnection()
+	status := "FAILED"
+	report := "FAILED"
+	callbackStatus := "FAILED"
+	if payload.ResultCode == 0 {
+		status = "SUCCESS"
+		report = "COMPLETE"
+		callbackStatus = "SENT"
+	}
+
+	err = db.Model(&transactions.TransactionModel{}).
+		Where("id = ?", txn.ID).
+		Updates(map[string]interface{}{
+			"transactionStatus":   status,
+			"transactionReport":   report,
+			"callbackStatus":      callbackStatus,
+			"responseDescription": payload.ResultDesc,
+			"responseCode":        strconv.Itoa(payload.ResultCode),
+		}).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+		return
+	}
+
+	callbackBody := gin.H{
+		"transactionStatus": report,
+		"transactionReport": report,
+		"currency":          txn.Currency,
+		"amount":            txn.Amount,
+		"secureId":          txn.SecureID,
+		"externalId":        txn.ExternalID,
+	}
+	if report == "FAILED" {
+		callbackBody["reason"] = payload.ResultDesc
+	}
+	if err := SendCallback(txn.ID, callbackBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send merchant callback", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
+}
+
 // getStr returns the first non-empty string from m for the given keys (tries snake and camelCase).
 func getStr(m map[string]interface{}, keys ...string) string {
 	for _, k := range keys {
@@ -5611,6 +5758,8 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("korapay/callback", KorapayCallbackHandler)
 	router.POST("bank/deposit/callback", KorapayCallbackHandler) // Payin webhook: same payload as Korapay
 	router.POST("bank/payout/callback", KorapayCallbackHandler)  // Payout webhook: same event/data format; we update txn and forward to your callbackUrl
+	router.POST("till/callback", TillCallbackHandler)
+	router.POST("till/error-callback", TillCallbackHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)
@@ -5638,6 +5787,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.GET("/list/banks", ListBanksHandler)
 	protected.POST("/bank/payin", KorapayBankPayinHandler)
 	protected.POST("/bank/payout", KorapayPayoutHandler)
+	protected.POST("/till/payment", TillPaymentHandler)
 	// virtualcard endpoins
 
 	// migrate the virtual careds
