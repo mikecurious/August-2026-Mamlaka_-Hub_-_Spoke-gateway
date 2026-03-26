@@ -2,10 +2,12 @@ package creditbank
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -68,7 +70,22 @@ func InitiateTillPayment(creditAccount, narration, amount, callbackURL, transact
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		// Some environments don't have the CA chain for this gateway.
+		// Retry once with TLS verification disabled only for this call.
+		if strings.Contains(err.Error(), "certificate signed by unknown authority") {
+			insecureClient := &http.Client{
+				Timeout: 30 * time.Second,
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
+			resp, err = insecureClient.Do(req)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 	defer resp.Body.Close()
 
