@@ -244,11 +244,11 @@ func ProcessKorapayCallback(callbackData KorapayCallbackRequest) error {
 
 	// Handle different event types
 	switch callbackData.Event {
-	case "charge.success":
+	case "charge.success", "transfer.success":
 		fmt.Printf("Payment successful for reference: %s\n", callbackData.Data.Reference)
 		// Add your success handling logic here
 		return nil
-	case "charge.failed":
+	case "charge.failed", "transfer.failed":
 		fmt.Printf("Payment failed for reference: %s\n", callbackData.Data.Reference)
 		// Add your failure handling logic here
 		return nil
