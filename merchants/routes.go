@@ -4315,9 +4315,12 @@ func KorapayCallbackHandler(c *gin.Context) {
 
 	log.Printf("Bank deposit callback: reference=%s, payment_reference=%s", callbackReq.Data.Reference, callbackReq.Data.PaymentReference)
 
-	err = db.Where("sourceOfFunds = ? AND checkoutRequestID = ?", "korapay", callbackReq.Data.PaymentReference).
-		Order("id DESC").
-		First(&transaction).Error
+	err = gorm.ErrRecordNotFound
+	if strings.TrimSpace(callbackReq.Data.PaymentReference) != "" {
+		err = db.Where("sourceOfFunds = ? AND checkoutRequestID = ?", "korapay", callbackReq.Data.PaymentReference).
+			Order("id DESC").
+			First(&transaction).Error
+	}
 	if err != nil {
 		// New flow: provider reference is our secureId.
 		err = db.Where("sourceOfFunds = ? AND secureId = ?", "korapay", callbackReq.Data.Reference).
