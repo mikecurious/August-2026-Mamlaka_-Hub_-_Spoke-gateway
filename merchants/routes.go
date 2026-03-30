@@ -4308,15 +4308,27 @@ func KorapayCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Find the transaction by payment_reference (CheckoutRequestID) or reference (MerchantRequestID / external_id)
+	// Find the transaction by payment_reference (CheckoutRequestID) or reference (MerchantRequestID / external_id).
+	// Use latest match to avoid older duplicate references from previous transactions.
 	var transaction transactions.TransactionModel
 	db := database.GetConnection()
 
 	log.Printf("Bank deposit callback: reference=%s, payment_reference=%s", callbackReq.Data.Reference, callbackReq.Data.PaymentReference)
 
-	err = db.Where("checkoutRequestID = ?", callbackReq.Data.PaymentReference).First(&transaction).Error
+	err = db.Where("sourceOfFunds = ? AND checkoutRequestID = ?", "korapay", callbackReq.Data.PaymentReference).
+		Order("id DESC").
+		First(&transaction).Error
 	if err != nil {
-		err = db.Where("merchantRequestID = ?", callbackReq.Data.Reference).First(&transaction).Error
+		// New flow: provider reference is our secureId.
+		err = db.Where("sourceOfFunds = ? AND secureId = ?", "korapay", callbackReq.Data.Reference).
+			Order("id DESC").
+			First(&transaction).Error
+	}
+	if err != nil {
+		// Backward compatibility: older records used merchantRequestID/reference mapping.
+		err = db.Where("sourceOfFunds = ? AND merchantRequestID = ?", "korapay", callbackReq.Data.Reference).
+			Order("id DESC").
+			First(&transaction).Error
 	}
 	if err != nil {
 		log.Printf("Transaction not found for reference: %s or payment_reference: %s", callbackReq.Data.Reference, callbackReq.Data.PaymentReference)
@@ -4582,6 +4594,22 @@ func ListBanksHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// generateUniqueKorapaySecureID generates a unique secureId across all transactions.
+func generateUniqueKorapaySecureID() (string, error) {
+	db := database.GetConnection()
+	for i := 0; i < 5; i++ {
+		id := korapay.GenerateSecureID()
+		var count int64
+		if err := db.Model(&transactions.TransactionModel{}).Where("secureId = ?", id).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("failed to generate unique secureId after retries")
+}
+
 // KorapayBankPayinHandler initiates a Korapay bank-transfer (payin). Creates a pending transaction,
 // calls Korapay, then returns a simple response with secureId, externalId, status, and bank details for the customer to pay.
 func KorapayBankPayinHandler(c *gin.Context) {
@@ -4608,7 +4636,11 @@ func KorapayBankPayinHandler(c *gin.Context) {
 		return
 	}
 
-	secureID := korapay.GenerateSecureID()
+	secureID, err := generateUniqueKorapaySecureID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate secureId", "details": err.Error()})
+		return
+	}
 	dateAdded := time.Now().Unix()
 	accountName := req.AccountName
 	if accountName == "" {
@@ -4619,7 +4651,7 @@ func KorapayBankPayinHandler(c *gin.Context) {
 		ImpalaMerchantID:    mid,
 		SecureID:            secureID,
 		ExternalID:          req.ExternalID,
-		MerchantRequestID:   req.ExternalID,
+		MerchantRequestID:   secureID,
 		Amount:              req.Amount,
 		Currency:            req.Currency,
 		CallbackURL:         req.CallbackURL,
@@ -4635,7 +4667,8 @@ func KorapayBankPayinHandler(c *gin.Context) {
 		return
 	}
 
-	resp, rawResp, err := korapay.ChargeBankTransfer(accountName, req.Amount, req.Currency, req.ExternalID, req.CustomerName, req.CustomerEmail)
+	// Provider reference uses secureId to guarantee uniqueness and deterministic callback lookup.
+	resp, rawResp, err := korapay.ChargeBankTransfer(accountName, req.Amount, req.Currency, secureID, req.CustomerName, req.CustomerEmail)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Bank transfer initiation failed", "details": err.Error()})
 		return
@@ -4740,7 +4773,14 @@ func KorapayPayoutHandler(c *gin.Context) {
 	}
 
 	// Call Korapay first; if it declines (not_authorized/conflict), don't create a transaction or deduct funds.
-	resp, err := korapay.Disburse(req.ExternalID, req.Amount, req.Currency, narration, req.BankCode, req.AccountNumber, req.CustomerName, req.CustomerEmail)
+	secureID, err := generateUniqueKorapaySecureID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate secureId", "details": err.Error()})
+		return
+	}
+
+	// Provider reference uses secureId to guarantee uniqueness and deterministic callback lookup.
+	resp, err := korapay.Disburse(secureID, req.Amount, req.Currency, narration, req.BankCode, req.AccountNumber, req.CustomerName, req.CustomerEmail)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Payout initiation failed", "details": err.Error()})
 		return
@@ -4772,14 +4812,13 @@ func KorapayPayoutHandler(c *gin.Context) {
 		return
 	}
 
-	secureID := korapay.GenerateSecureID()
 	dateAdded := time.Now().Unix()
 
 	txn := &transactions.TransactionModel{
 		ImpalaMerchantID:     mid,
 		SecureID:             secureID,
 		ExternalID:           req.ExternalID,
-		MerchantRequestID:    req.ExternalID,
+		MerchantRequestID:    secureID,
 		CheckoutRequestID:    resp.Data.Reference,
 		Currency:             req.Currency,
 		CallbackURL:          req.CallbackURL,
