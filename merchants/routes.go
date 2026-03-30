@@ -4420,19 +4420,20 @@ func KorapayCallbackHandler(c *gin.Context) {
 		callbackPayload["reason"] = failureReason
 	}
 
+	log.Printf("Korapay callback matched transaction: id=%d merchant=%s secureId=%s callbackUrl=%q",
+		transaction.ID, transaction.ImpalaMerchantID, transaction.SecureID, transaction.CallbackURL)
 	if transaction.CallbackURL != "" {
-		url := transaction.CallbackURL
-		payload := callbackPayload
-		go func() {
-			jsonData, _ := json.Marshal(payload)
-			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-			if err != nil {
-				log.Printf("Failed to send callback to merchant: %v", err)
-			} else {
-				resp.Body.Close()
-				log.Printf("Callback sent to merchant: %s", url)
-			}
-		}()
+		jsonData, _ := json.Marshal(callbackPayload)
+		log.Printf("Sending merchant callback to URL: %s payload=%s", transaction.CallbackURL, string(jsonData))
+		resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("Failed to send callback to merchant URL=%s error=%v", transaction.CallbackURL, err)
+		} else {
+			log.Printf("Merchant callback sent URL=%s status=%d", transaction.CallbackURL, resp.StatusCode)
+			resp.Body.Close()
+		}
+	} else {
+		log.Printf("Skipping merchant callback: callbackUrl is empty for transaction id=%d secureId=%s", transaction.ID, transaction.SecureID)
 	}
 
 	log.Printf("✅ Korapay callback processed successfully for reference: %s", callbackReq.Data.Reference)
