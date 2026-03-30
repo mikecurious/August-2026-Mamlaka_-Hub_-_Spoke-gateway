@@ -4331,11 +4331,11 @@ func KorapayCallbackHandler(c *gin.Context) {
 	var failureReason string
 
 	switch callbackReq.Event {
-	case "charge.success":
+	case "charge.success", "transfer.success":
 		newStatus = "success"
 		transactionStatus = "COMPLETE"
 		transactionReport = "COMPLETE"
-	case "charge.failed":
+	case "charge.failed", "transfer.failed":
 		newStatus = "failed"
 		transactionStatus = "FAILED"
 		transactionReport = "FAILED"
@@ -4359,7 +4359,7 @@ func KorapayCallbackHandler(c *gin.Context) {
 	}
 
 	// Update merchant collection wallet only for payins (collection), not for payouts (withdraw)
-	if callbackReq.Event == "charge.success" && transaction.TransactionReport == "collection" {
+	if (callbackReq.Event == "charge.success" || callbackReq.Event == "transfer.success") && transaction.TransactionReport == "collection" {
 		var coll balances.MerchantCollectionBalance
 		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&coll).Error
 		if err != nil {
@@ -4392,7 +4392,7 @@ func KorapayCallbackHandler(c *gin.Context) {
 	}
 
 	// Refund payout wallet on decline (withdraw failed)
-	if callbackReq.Event == "charge.failed" && transaction.TransactionReport == "withdraw" && callbackReq.Data.Currency == "NGN" {
+	if (callbackReq.Event == "charge.failed" || callbackReq.Event == "transfer.failed") && transaction.TransactionReport == "withdraw" && callbackReq.Data.Currency == "NGN" {
 		var payout balances.MerchantBalance
 		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&payout).Error
 		if err != nil {
