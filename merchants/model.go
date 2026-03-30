@@ -228,6 +228,16 @@ type TillPaymentRequest struct {
 	CallbackURL      string `json:"callbackUrl" binding:"required"`
 }
 
+type PesalinkPayoutRequest struct {
+	ExternalID    string `json:"externalId" binding:"required"`
+	Amount        string `json:"amount" binding:"required"`
+	Currency      string `json:"currency" binding:"required"`
+	BankCode      string `json:"bankCode" binding:"required"`
+	CreditAccount string `json:"creditAccount" binding:"required"`
+	CallbackURL   string `json:"callbackUrl" binding:"required"`
+	Narration     string `json:"narration"`
+}
+
 // Flutterwave structures
 type FlutterwavePaymentRequest struct {
 	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`

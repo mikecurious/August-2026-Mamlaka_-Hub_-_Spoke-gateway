@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	// "net/http"
@@ -4815,6 +4816,223 @@ func generateRef12() string {
 	return string(b)
 }
 
+var pesalinkSyncOnce sync.Once
+
+// StartPesalinkPayoutStatusCron starts a background ticker to finalize pending Pesalink payouts.
+func StartPesalinkPayoutStatusCron() {
+	pesalinkSyncOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(60 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				SyncPendingPesalinkPayouts()
+			}
+		}()
+	})
+}
+
+// SyncPendingPesalinkPayouts checks provider status for pending Pesalink payouts and finalizes them.
+func SyncPendingPesalinkPayouts() {
+	db := database.GetConnection()
+	var pending []transactions.TransactionModel
+	if err := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus = ?",
+		"pesalink_creditbank", "withdraw", "pending").Find(&pending).Error; err != nil {
+		log.Printf("Pesalink sync query failed: %v", err)
+		return
+	}
+
+	for _, txn := range pending {
+		if txn.CheckoutRequestID == "" {
+			continue
+		}
+
+		resp, err := creditbank.CheckPesalinkPayoutStatus(txn.CheckoutRequestID)
+		if err != nil {
+			log.Printf("Pesalink status check failed for %s: %v", txn.SecureID, err)
+			continue
+		}
+		status := strings.ToUpper(resp.ResponseData.Status)
+		if status == "" {
+			// Provider may still be processing or returned non-standard error body.
+			continue
+		}
+
+		if status == "SUCCESS" {
+			// Deduct only once when transaction completes.
+			if txn.TransactionStatus != "SUCCESS" && txn.Currency == "KES" {
+				if err := balances.DeductKESBalance(txn.ImpalaMerchantID, float64(txn.Amount)); err != nil {
+					log.Printf("KES deduction failed for %s: %v", txn.SecureID, err)
+					continue
+				}
+			}
+
+			_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Updates(map[string]interface{}{
+				"transactionStatus":   "SUCCESS",
+				"transactionReport":   "COMPLETE",
+				"callbackStatus":      "SENT",
+				"responseCode":        resp.ResponseData.StatusCode,
+				"responseDescription": resp.ResponseData.StatusDescription,
+			}).Error
+
+			callbackBody := gin.H{
+				"transactionStatus": "COMPLETE",
+				"transactionReport": "COMPLETE",
+				"currency":          txn.Currency,
+				"amount":            txn.Amount,
+				"secureId":          txn.SecureID,
+				"externalId":        txn.ExternalID,
+				"providerReference": txn.CheckoutRequestID,
+			}
+			if err := SendCallback(txn.ID, callbackBody); err != nil {
+				log.Printf("Pesalink success callback failed for %s: %v", txn.SecureID, err)
+			}
+			continue
+		}
+
+		if status == "FAILED" {
+			_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Updates(map[string]interface{}{
+				"transactionStatus":   "FAILED",
+				"transactionReport":   "FAILED",
+				"callbackStatus":      "SENT",
+				"responseCode":        resp.ResponseData.StatusCode,
+				"responseDescription": resp.ResponseData.StatusDescription,
+			}).Error
+
+			reason := resp.ResponseData.StatusDescription
+			if reason == "" {
+				reason = resp.ResponseData.ErrorCode
+			}
+
+			callbackBody := gin.H{
+				"transactionStatus": "FAILED",
+				"transactionReport": "FAILED",
+				"currency":          txn.Currency,
+				"amount":            txn.Amount,
+				"secureId":          txn.SecureID,
+				"externalId":        txn.ExternalID,
+				"providerReference": txn.CheckoutRequestID,
+				"reason":            reason,
+			}
+			if err := SendCallback(txn.ID, callbackBody); err != nil {
+				log.Printf("Pesalink failed callback failed for %s: %v", txn.SecureID, err)
+			}
+		}
+	}
+}
+
+// PesalinkPayoutHandler initiates CreditBank Pesalink payout and stores transaction as pending.
+func PesalinkPayoutHandler(c *gin.Context) {
+	merchantID, ok := c.Get("merchantID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
+		return
+	}
+	mid := merchantID.(string)
+
+	var req PesalinkPayoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "DUPLICATE_EXTERNAL_ID", "message": "A transaction with this externalId already exists"})
+		return
+	}
+
+	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
+	if err != nil || amountFloat <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
+		return
+	}
+	amountInt := int(amountFloat)
+
+	// Check KES balance before initiating payout.
+	if strings.ToUpper(req.Currency) == "KES" {
+		payoutBalance, err := balances.GetMerchantBalance(mid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+			return
+		}
+		if payoutBalance.KESBalance < amountFloat {
+			c.JSON(http.StatusForbidden, gin.H{"error": "INSUFFICIENT_KES_BALANCE", "message": "Please top up your KES payout wallet"})
+			return
+		}
+	}
+
+	narration := req.Narration
+	if narration == "" {
+		narration = "pesalink payout"
+	}
+
+	internalRef := generateRef12()
+	providerResp, err := creditbank.InitiatePesalinkPayout(req.BankCode, req.CreditAccount, req.Amount, req.Currency, narration, internalRef)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Pesalink payout initiation failed", "details": err.Error()})
+		return
+	}
+
+	// Must be accepted by provider.
+	if strings.ToUpper(providerResp.ResponseData.Status) != "SUCCESS" {
+		msg := providerResp.ResponseData.StatusDescription
+		if msg == "" {
+			msg = providerResp.ResponseData.StatusMessage
+		}
+		if msg == "" {
+			msg = "Provider rejected request"
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Pesalink payout initiation failed", "message": msg})
+		return
+	}
+
+	originalRequestID := providerResp.ResponseData.OriginalRequestID
+	if originalRequestID == "" {
+		originalRequestID = providerResp.RequestID
+	}
+
+	txn := &transactions.TransactionModel{
+		ImpalaMerchantID:    mid,
+		TransactionStatus:   "pending",
+		TransactionReport:   "withdraw",
+		Currency:            req.Currency,
+		Amount:              amountInt,
+		NetAmount:           float64(amountInt),
+		Msisdn:              "PESA-" + req.CreditAccount,
+		SecureID:            internalRef,
+		SourceOfFunds:       "pesalink_creditbank",
+		ExternalID:          req.ExternalID,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           time.Now().Unix(),
+		MerchantRequestID:   providerResp.RequestID,
+		CheckoutRequestID:   originalRequestID,
+		ResponseCode:        providerResp.ResponseData.StatusCode,
+		ResponseDescription: providerResp.ResponseData.StatusDescription,
+		CallbackStatus:      "PENDING",
+	}
+	if err := transactions.SaveTransaction(txn); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Pesalink payout initiated successfully. Await final status update.",
+		"secureId":   internalRef,
+		"externalId": req.ExternalID,
+		"status":     "pending",
+	})
+}
+
+// SyncPesalinkPayoutsNowHandler manually triggers one status sync run.
+func SyncPesalinkPayoutsNowHandler(c *gin.Context) {
+	SyncPendingPesalinkPayouts()
+	c.JSON(http.StatusOK, gin.H{"message": "Pesalink payout sync triggered"})
+}
+
 // TillPaymentHandler initiates till payment to CreditBank B2B tills API.
 func TillPaymentHandler(c *gin.Context) {
 	merchantID, ok := c.Get("merchantID")
@@ -5803,6 +6021,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("bank/payout/callback", KorapayCallbackHandler)  // Payout webhook: same event/data format; we update txn and forward to your callbackUrl
 	router.POST("till/callback", TillCallbackHandler)
 	router.POST("till/error-callback", TillCallbackHandler)
+	router.POST("bank/pesalink/sync", SyncPesalinkPayoutsNowHandler) // Public trigger endpoint (for external schedulers)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)
@@ -5830,6 +6049,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.GET("/list/banks", ListBanksHandler)
 	protected.POST("/bank/payin", KorapayBankPayinHandler)
 	protected.POST("/bank/payout", KorapayPayoutHandler)
+	protected.POST("/bank/pesalink/payout", PesalinkPayoutHandler)
 	protected.POST("/till/payment", TillPaymentHandler)
 	// virtualcard endpoins
 

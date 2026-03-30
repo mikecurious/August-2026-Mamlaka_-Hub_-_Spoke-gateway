@@ -44,6 +44,7 @@ func main() {
 	sun := router.Group("/api")
 	// users.Create(sun.Group("/users"))
 	merchants.RegisterRoutes(sun.Group("/v1"))
+	merchants.StartPesalinkPayoutStatusCron()
 	forex.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
