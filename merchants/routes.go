@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -4861,6 +4862,30 @@ func generateRef12() string {
 
 var pesalinkSyncOnce sync.Once
 
+func appendCBLog(line string) {
+	f, err := os.OpenFile("cb.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("failed to open cb.log: %v", err)
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(line + "\n")
+}
+
+func logCBSync(callerIP, requestPayload, message string, data interface{}) {
+	dataJSON := ""
+	if data != nil {
+		if b, err := json.Marshal(data); err == nil {
+			dataJSON = string(b)
+		} else {
+			dataJSON = fmt.Sprintf("marshal_error=%v", err)
+		}
+	}
+	line := fmt.Sprintf("%s ip=%s payload=%s message=%s response=%s",
+		time.Now().Format(time.RFC3339), callerIP, requestPayload, message, dataJSON)
+	appendCBLog(line)
+}
+
 // StartPesalinkPayoutStatusCron starts a background ticker to finalize pending Pesalink payouts.
 func StartPesalinkPayoutStatusCron() {
 	pesalinkSyncOnce.Do(func() {
@@ -4868,35 +4893,47 @@ func StartPesalinkPayoutStatusCron() {
 			ticker := time.NewTicker(60 * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
-				SyncPendingPesalinkPayouts()
+				SyncPendingPesalinkPayoutsWithMeta("cron", "{}")
 			}
 		}()
 	})
 }
 
-// SyncPendingPesalinkPayouts checks provider status for pending Pesalink payouts and finalizes them.
+// SyncPendingPesalinkPayouts is kept for existing call sites.
 func SyncPendingPesalinkPayouts() {
+	SyncPendingPesalinkPayoutsWithMeta("cron", "{}")
+}
+
+// SyncPendingPesalinkPayouts checks provider status for pending Pesalink payouts and finalizes them.
+func SyncPendingPesalinkPayoutsWithMeta(callerIP, requestPayload string) {
+	logCBSync(callerIP, requestPayload, "sync_started", nil)
+
 	db := database.GetConnection()
 	var pending []transactions.TransactionModel
 	if err := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus = ?",
 		"pesalink_creditbank", "withdraw", "pending").Find(&pending).Error; err != nil {
 		log.Printf("Pesalink sync query failed: %v", err)
+		logCBSync(callerIP, requestPayload, fmt.Sprintf("sync_query_failed error=%v", err), nil)
 		return
 	}
 
 	for _, txn := range pending {
 		if txn.CheckoutRequestID == "" {
+			logCBSync(callerIP, requestPayload, fmt.Sprintf("skip_missing_original_request_id secureId=%s", txn.SecureID), nil)
 			continue
 		}
 
 		resp, err := creditbank.CheckPesalinkPayoutStatus(txn.CheckoutRequestID)
 		if err != nil {
 			log.Printf("Pesalink status check failed for %s: %v", txn.SecureID, err)
+			logCBSync(callerIP, requestPayload, fmt.Sprintf("status_check_failed secureId=%s error=%v", txn.SecureID, err), nil)
 			continue
 		}
+		logCBSync(callerIP, requestPayload, fmt.Sprintf("status_response secureId=%s originalRequestID=%s", txn.SecureID, txn.CheckoutRequestID), resp)
 		status := strings.ToUpper(resp.ResponseData.Status)
 		if status == "" {
 			// Provider may still be processing or returned non-standard error body.
+			logCBSync(callerIP, requestPayload, fmt.Sprintf("status_empty secureId=%s", txn.SecureID), resp)
 			continue
 		}
 
@@ -4928,6 +4965,9 @@ func SyncPendingPesalinkPayouts() {
 			}
 			if err := SendCallback(txn.ID, callbackBody); err != nil {
 				log.Printf("Pesalink success callback failed for %s: %v", txn.SecureID, err)
+				logCBSync(callerIP, requestPayload, fmt.Sprintf("merchant_callback_failed secureId=%s status=COMPLETE error=%v", txn.SecureID, err), callbackBody)
+			} else {
+				logCBSync(callerIP, requestPayload, fmt.Sprintf("merchant_callback_sent secureId=%s status=COMPLETE", txn.SecureID), callbackBody)
 			}
 			continue
 		}
@@ -4958,9 +4998,14 @@ func SyncPendingPesalinkPayouts() {
 			}
 			if err := SendCallback(txn.ID, callbackBody); err != nil {
 				log.Printf("Pesalink failed callback failed for %s: %v", txn.SecureID, err)
+				logCBSync(callerIP, requestPayload, fmt.Sprintf("merchant_callback_failed secureId=%s status=FAILED error=%v", txn.SecureID, err), callbackBody)
+			} else {
+				logCBSync(callerIP, requestPayload, fmt.Sprintf("merchant_callback_sent secureId=%s status=FAILED", txn.SecureID), callbackBody)
 			}
 		}
 	}
+
+	logCBSync(callerIP, requestPayload, "sync_completed", nil)
 }
 
 // PesalinkPayoutHandler initiates CreditBank Pesalink payout and stores transaction as pending.
@@ -5072,7 +5117,14 @@ func PesalinkPayoutHandler(c *gin.Context) {
 
 // SyncPesalinkPayoutsNowHandler manually triggers one status sync run.
 func SyncPesalinkPayoutsNowHandler(c *gin.Context) {
-	SyncPendingPesalinkPayouts()
+	raw, _ := c.GetRawData()
+	payload := strings.TrimSpace(string(raw))
+	if payload == "" {
+		payload = "{}"
+	}
+	callerIP := c.ClientIP()
+	logCBSync(callerIP, payload, "manual_sync_trigger_received", nil)
+	SyncPendingPesalinkPayoutsWithMeta(callerIP, payload)
 	c.JSON(http.StatusOK, gin.H{"message": "Pesalink payout sync triggered"})
 }
 
