@@ -4398,6 +4398,8 @@ func KorapayCallbackHandler(c *gin.Context) {
 				coll.XAFBalance += float64(callbackReq.Data.Amount)
 			case "NGN":
 				coll.NGNBalance += float64(callbackReq.Data.Amount)
+			case "ZMW":
+				coll.ZMWBalance += float64(callbackReq.Data.Amount)
 			default:
 				log.Printf("Unsupported currency for collection balance update: %s", callbackReq.Data.Currency)
 			}

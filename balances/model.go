@@ -24,6 +24,7 @@ type MerchantBalance struct {
 	UGXBalance       float64 `gorm:"column:ugxBalance;type:float(100,2)" json:"ugxBalance"`
 	XAFBalance       float64 `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
 	NGNBalance       float64 `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
+	ZMWBalance       float64 `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -99,6 +100,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"UGX":  balance.UGXBalance,
 		"XAF":  balance.XAFBalance,
 		"NGN":  balance.NGNBalance,
+		"ZMW":  balance.ZMWBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -126,6 +128,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"tzsBalance":   balance.TZSBalance,
 		"ugxBalance":   balance.UGXBalance,
 		"ngnBalance":   balance.NGNBalance,
+		"zmwBalance":   balance.ZMWBalance,
 		"totalBalance": totalBalance,
 		"xafBalance":   balance.XAFBalance,
 		"baseCurrency": baseCurrency,
@@ -324,6 +327,8 @@ func AddBalance(impalaMerchantID string, currency string, amount float64) error 
 		balance.UGXBalance += amount
 	case "NGN":
 		balance.NGNBalance += amount
+	case "ZMW":
+		balance.ZMWBalance += amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -407,6 +412,11 @@ func DeductBalance(impalaMerchantID string, currency string, amount float64) err
 			return fmt.Errorf("insufficient NGN balance: available %.2f, required %.2f", balance.NGNBalance, amount)
 		}
 		balance.NGNBalance -= amount
+	case "ZMW":
+		if balance.ZMWBalance < amount {
+			return fmt.Errorf("insufficient ZMW balance: available %.2f, required %.2f", balance.ZMWBalance, amount)
+		}
+		balance.ZMWBalance -= amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -458,6 +468,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		originBalance = &balance.TZSBalance
 	case "UGX":
 		originBalance = &balance.UGXBalance
+	case "ZMW":
+		originBalance = &balance.ZMWBalance
 	default:
 		return fmt.Errorf("invalid origin currency: %s", originCurrency)
 	}
@@ -484,6 +496,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		destinationBalance = &balance.TZSBalance
 	case "UGX":
 		destinationBalance = &balance.UGXBalance
+	case "ZMW":
+		destinationBalance = &balance.ZMWBalance
 	default:
 		return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
 	}
