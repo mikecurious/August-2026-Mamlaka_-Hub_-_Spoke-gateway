@@ -275,6 +275,9 @@ type FlutterwaveCallbackData struct {
 	CreatedAt         string              `json:"created_at"`
 	AccountID         int                 `json:"account_id"`
 	Customer          FlutterwaveCustomer `json:"customer"`
+	Reference         string              `json:"reference"`
+	CompleteMessage   string              `json:"complete_message"`
+	TransferFee       float64             `json:"fee"`
 }
 
 type FlutterwaveCustomer struct {

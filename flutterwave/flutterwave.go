@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -113,6 +114,9 @@ type FlutterwaveCallbackData struct {
 	CreatedAt         string              `json:"created_at"`
 	AccountID         int                 `json:"account_id"`
 	Customer          FlutterwaveCustomer `json:"customer"`
+	Reference         string              `json:"reference"`
+	CompleteMessage   string              `json:"complete_message"`
+	TransferFee       float64             `json:"fee"`
 }
 
 // GenerateSecureID generates a secure random ID for transaction reference
@@ -181,6 +185,72 @@ func InitiateFlutterwavePayment(phoneNumber, email string, amount int, currency,
 	return &flutterwaveResponse, nil
 }
 
+// InitiateZMWCollection initiates a Zambia mobile money collection charge.
+func InitiateZMWCollection(accountBank, phoneNumber string, amount int, txRef string) (map[string]interface{}, error) {
+	url := "https://api.flutterwave.com/v3/charges?type=mobile_money_zambia"
+	payload := map[string]interface{}{
+		"account_bank":     accountBank,
+		"phone_number":     phoneNumber,
+		"amount":           amount,
+		"narration":        "SAMPLE zmw TRANSFER",
+		"currency":         "ZMW",
+		"beneficiary_name": "NWABALI S.",
+		"tx_ref":           txRef,
+		"email":            "tech@mam-laka.com",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+flutterwaveAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// InitiateZMWTransfer initiates a Zambia mobile money transfer payout.
+func InitiateZMWTransfer(accountBank, accountNumber string, amount int) (map[string]interface{}, error) {
+	url := "https://api.flutterwave.com/v3/transfers/"
+	payload := map[string]interface{}{
+		"account_bank":     accountBank,
+		"account_number":   accountNumber,
+		"amount":           amount,
+		"narration":        "SAMPLE zmw TRANSFER",
+		"currency":         "ZMW",
+		"beneficiary_name": "NWABALI S.",
+	}
+	jsonData, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+flutterwaveAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListBanks calls the Flutterwave Banks API for the given country.
 // country should be a 2-letter country code (e.g., "ZM").
 // includeProviderType is typically "1" to include provider_type in the response.
@@ -234,6 +304,13 @@ func ProcessFlutterwaveCallback(callbackData FlutterwaveCallbackRequest) error {
 			fmt.Printf("Payment failed for tx_ref: %s\n", callbackData.Data.TxRef)
 		}
 		// Add your success/failure handling logic here
+		return nil
+	case "transfer.completed":
+		if strings.ToUpper(callbackData.Data.Status) == "SUCCESSFUL" {
+			fmt.Printf("Transfer successful for reference: %s\n", callbackData.Data.Reference)
+		} else {
+			fmt.Printf("Transfer failed for reference: %s\n", callbackData.Data.Reference)
+		}
 		return nil
 	default:
 		return fmt.Errorf("unknown event type: %s", callbackData.Event)

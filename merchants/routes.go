@@ -351,6 +351,17 @@ func RemovePlusPrefix(phone string) string {
 	return phone
 }
 
+func normalizeZambiaBank(sp string) string {
+	up := strings.ToUpper(strings.TrimSpace(sp))
+	if up == "AIRTEL" {
+		return "Airtel"
+	}
+	if up == "MTN" {
+		return "MTN"
+	}
+	return sp
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Authrorization already dont on anothr page before this handler is called
@@ -472,6 +483,29 @@ func MobilePaymentHandler(c *gin.Context) {
 		responseDescription = "Merchant initiated XOF payment via Payaza"
 		responseCode = stkResponse.ResponseCode
 
+	} else if req.Currency == "ZMW" {
+		accountBank := normalizeZambiaBank(req.MobileMoneySP)
+		flutterwaveResp, errFw := flutterwave.InitiateZMWCollection(accountBank, RemovePlusPrefix(req.PayerPhone), req.Amount, secureID)
+		if errFw != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errFw.Error()})
+			return
+		}
+		status, _ := flutterwaveResp["status"].(string)
+		if strings.ToLower(status) != "success" {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": flutterwaveResp})
+			return
+		}
+		merchantRequestID = secureID
+		responseDescription = "Merchant initiated ZMW collection via Flutterwave"
+		responseCode = "0"
+		if data, ok := flutterwaveResp["data"].(map[string]interface{}); ok {
+			if flwRef, ok2 := data["flw_ref"].(string); ok2 {
+				checkoutRequestID = flwRef
+			}
+		}
+		if checkoutRequestID == "" {
+			checkoutRequestID = secureID
+		}
 	}
 
 	// Replace with actual logic for initiating the M-Pesa request
@@ -1084,6 +1118,67 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				"secureId":      secureID,
 			})
 		}
+	case "ZMW":
+		zmwBalance := balance.ZMWBalance
+		if zmwBalance < float64(req.Amount) {
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "FAILED",
+				"error":   "INSUFFICIENT_BALANCE",
+				"message": fmt.Sprintf("Insufficient balance. Available: %.2f ZMW, Required: %.2f ZMW", zmwBalance, float64(req.Amount)),
+			})
+			return
+		}
+
+		accountBank := normalizeZambiaBank(req.MobileMoneySP)
+		transferResp, errTransfer := flutterwave.InitiateZMWTransfer(accountBank, req.RecipientPhone, int(req.Amount))
+		if errTransfer != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errTransfer.Error()})
+			return
+		}
+		status, _ := transferResp["status"].(string)
+		if strings.ToLower(status) != "success" {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": transferResp})
+			return
+		}
+
+		flwReference := secureID
+		if data, ok := transferResp["data"].(map[string]interface{}); ok {
+			if ref, ok2 := data["reference"].(string); ok2 && ref != "" {
+				flwReference = ref
+			}
+		}
+
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   secureID,
+			CheckoutRequestID:   flwReference,
+			ResponseDescription: "ZMW transfer queued via Flutterwave",
+			ResponseCode:        "0",
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            secureID,
+			SourceOfFunds:       "flutterwave",
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   "withdraw",
+			TransactionStatus:   "PENDING",
+		}
+
+		db := database.GetConnection()
+		if err := db.Create(newTransaction).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":       "Payment initiation successful",
+			"transactionId": req.ExternalID,
+			"secureId":      secureID,
+		})
+		return
 
 	}
 }
@@ -5331,7 +5426,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	}
 
 	// Log the callback details
-	log.Printf("🔍 Processing Flutterwave callback for tx_ref: %s", callbackReq.Data.TxRef)
+	log.Printf("🔍 Processing Flutterwave callback event=%s tx_ref=%s reference=%s", callbackReq.Event, callbackReq.Data.TxRef, callbackReq.Data.Reference)
 
 	// Process the callback
 	err := flutterwave.ProcessFlutterwaveCallback(flutterwave.FlutterwaveCallbackRequest{
@@ -5374,8 +5469,12 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	var transaction transactions.TransactionModel
 	db := database.GetConnection()
 
-	// Try to find by external ID first, then by reference
-	err = db.Where("externalId = ? OR secureId LIKE ?", callbackReq.Data.TxRef, "%"+callbackReq.Data.TxRef+"%").First(&transaction).Error
+	ref := callbackReq.Data.TxRef
+	if ref == "" {
+		ref = callbackReq.Data.Reference
+	}
+	// Try to find by secureId / provider refs
+	err = db.Where("secureId = ? OR merchantRequestID = ? OR checkoutRequestID = ?", ref, ref, ref).Order("id DESC").First(&transaction).Error
 	if err != nil {
 		log.Printf("Transaction not found for reference: %s", callbackReq.Data.TxRef)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found"})
@@ -5407,6 +5506,20 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown status"})
 			return
 		}
+	} else if callbackReq.Event == "transfer.completed" {
+		if strings.ToUpper(callbackReq.Data.Status) == "SUCCESSFUL" {
+			newStatus = "success"
+			transactionStatus = "COMPLETE"
+			transactionReport = "COMPLETE"
+		} else {
+			newStatus = "failed"
+			transactionStatus = "FAILED"
+			transactionReport = "FAILED"
+			failureReason = callbackReq.Data.CompleteMessage
+			if failureReason == "" {
+				failureReason = "Transfer failed"
+			}
+		}
 	} else {
 		log.Printf("Unknown Flutterwave event: %s", callbackReq.Event)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown event type"})
@@ -5421,36 +5534,24 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Update merchant balance if payment was successful
-	if callbackReq.Data.Status == "successful" {
-		// Get merchant balance
-		var balance balances.MerchantBalance
-		err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&balance).Error
-		if err != nil {
-			log.Printf("Balance not found for merchant %s", transaction.ImpalaMerchantID)
-		} else {
-			// Add amount to balance based on currency
-			switch callbackReq.Data.Currency {
-			case "KES":
-				balance.KESBalance += float64(callbackReq.Data.Amount)
-			case "UGX":
-				balance.UGXBalance += float64(callbackReq.Data.Amount)
-			case "USD":
-				balance.USDBalance += float64(callbackReq.Data.Amount)
-			case "EUR":
-				balance.EURBalance += float64(callbackReq.Data.Amount)
-			case "GBP":
-				balance.GBPBalance += float64(callbackReq.Data.Amount)
-			case "TZS":
-				balance.TZSBalance += float64(callbackReq.Data.Amount)
-			case "XAF":
-				balance.XAFBalance += float64(callbackReq.Data.Amount)
-			default:
-				log.Printf("Unsupported currency for balance update: %s", callbackReq.Data.Currency)
+	// Balance handling on success:
+	// - collection: credit collection wallet
+	// - withdraw: deduct payout wallet
+	if newStatus == "success" {
+		if transaction.TransactionReport == "collection" {
+			var coll balances.MerchantCollectionBalance
+			err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&coll).Error
+			if err == nil {
+				switch callbackReq.Data.Currency {
+				case "ZMW":
+					coll.ZMWBalance += float64(callbackReq.Data.Amount)
+				case "KES":
+					coll.KESBalance += float64(callbackReq.Data.Amount)
+				}
+				_ = db.Save(&coll).Error
 			}
-			if err := db.Save(&balance).Error; err != nil {
-				log.Printf("Failed to update balance: %v", err)
-			}
+		} else if transaction.TransactionReport == "withdraw" {
+			_ = balances.DeductBalance(transaction.ImpalaMerchantID, callbackReq.Data.Currency, float64(callbackReq.Data.Amount))
 		}
 	}
 
