@@ -1130,7 +1130,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		accountBank := normalizeZambiaBank(req.MobileMoneySP)
-		transferResp, errTransfer := flutterwave.InitiateZMWTransfer(accountBank, req.RecipientPhone, int(req.Amount))
+		transferResp, errTransfer := flutterwave.InitiateZMWTransfer(accountBank, req.RecipientPhone, int(req.Amount), secureID)
 		if errTransfer != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errTransfer.Error()})
 			return
@@ -5456,6 +5456,9 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 				Email:       callbackReq.Data.Customer.Email,
 				CreatedAt:   callbackReq.Data.Customer.CreatedAt,
 			},
+			Reference:       callbackReq.Data.Reference,
+			CompleteMessage: callbackReq.Data.CompleteMessage,
+			TransferFee:     callbackReq.Data.TransferFee,
 		},
 		EventType: callbackReq.EventType,
 	})

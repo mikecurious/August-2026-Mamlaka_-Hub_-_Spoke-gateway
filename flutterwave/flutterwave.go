@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -199,6 +200,7 @@ func InitiateZMWCollection(accountBank, phoneNumber string, amount int, txRef st
 		"email":            "tech@mam-laka.com",
 	}
 	jsonData, _ := json.Marshal(payload)
+	log.Printf("Flutterwave ZMW collection request: %s", string(jsonData))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -212,6 +214,7 @@ func InitiateZMWCollection(accountBank, phoneNumber string, amount int, txRef st
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("Flutterwave ZMW collection response status=%d body=%s", resp.StatusCode, string(body))
 	var out map[string]interface{}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, err
@@ -220,7 +223,8 @@ func InitiateZMWCollection(accountBank, phoneNumber string, amount int, txRef st
 }
 
 // InitiateZMWTransfer initiates a Zambia mobile money transfer payout.
-func InitiateZMWTransfer(accountBank, accountNumber string, amount int) (map[string]interface{}, error) {
+// reference should be our internal secureId.
+func InitiateZMWTransfer(accountBank, accountNumber string, amount int, reference string) (map[string]interface{}, error) {
 	url := "https://api.flutterwave.com/v3/transfers/"
 	payload := map[string]interface{}{
 		"account_bank":     accountBank,
@@ -229,8 +233,10 @@ func InitiateZMWTransfer(accountBank, accountNumber string, amount int) (map[str
 		"narration":        "SAMPLE zmw TRANSFER",
 		"currency":         "ZMW",
 		"beneficiary_name": "NWABALI S.",
+		"reference":        reference,
 	}
 	jsonData, _ := json.Marshal(payload)
+	log.Printf("Flutterwave ZMW transfer request: %s", string(jsonData))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -244,6 +250,7 @@ func InitiateZMWTransfer(accountBank, accountNumber string, amount int) (map[str
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("Flutterwave ZMW transfer response status=%d body=%s", resp.StatusCode, string(body))
 	var out map[string]interface{}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, err
