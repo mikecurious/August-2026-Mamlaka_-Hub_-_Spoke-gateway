@@ -542,9 +542,9 @@ func MobilePaymentHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Payment initiation successful",
-		"transactionId": merchantRequestID,
-		"secureId":      secureID,
+		"message":    "Payment initiation successful",
+		"externalId": req.ExternalID,
+		"secureId":   secureID,
 	})
 
 }
