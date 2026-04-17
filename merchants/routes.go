@@ -1011,61 +1011,32 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				details = response.Message
 			}
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  500,
-				"error":   "1991",
-				"message": "Failed to initiate payment",
-				"details": details,
-				// "resp":    response,
-				"err": err.Error(),
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error":   "Payment initiation failed",
+				"message": details,
+				"details": err.Error(),
 			})
 			return
 		}
 
-		// ✅ Success
-		// c.JSON(http.StatusOK, gin.H{
-		// 	"status":  response.StatusCode,
-		// 	"state":   response.Data.State,
-		// 	"message": response.Message,
-		// 	// "resp":    response,
-		// })
-
-		// status, message, err := uganda.SendMoneyToPhoneReal(req.RecipientPhone, float64(req.Amount))
-		// fmt.Printf("payment status: %s, message: %s, error: %v\n", status, message, err)
-
-		// Determine transaction status and prepare response
-		var transactionStatus, responseStatus, responseMessage string
-		var responseCode int
-
-		if err == nil {
-			transactionStatus = "PENDING"
-			responseStatus = "SUCCESS"
-			responseMessage = "Payment initiated  successfully"
-			responseCode = http.StatusOK
-		} else {
-			transactionStatus = "FAILED"
-			responseStatus = "FAILED"
-			responseMessage = "Payment initiation failed"
-			responseCode = http.StatusOK
-
-			// Refund the balance since payment failed
-			if refundErr := balances.AddXOFBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
-				log.Printf("Failed to refund balance for merchant %s: %v", req.ImpalaMerchantId, refundErr)
-			}
+		transactionStatus := "PENDING"
+		checkoutRef := response.Data.Response
+		if checkoutRef == "" {
+			checkoutRef = response.Data.TransactionID
 		}
 
-		// Create transaction record (for both success and failure)
+		// Create transaction record — provider id in merchantRequestID (callback lookup); internal id in secureId (API response).
 		newTransaction := &transactions.TransactionModel{
 			ImpalaMerchantID:    req.ImpalaMerchantId,
 			MerchantRequestID:   response.Data.TransactionID,
-			CheckoutRequestID:   response.Data.TransactionID,
+			CheckoutRequestID:   checkoutRef,
 			ResponseDescription: response.Message,
 			ResponseCode:        response.Data.State,
 			Currency:            req.Currency,
 			Amount:              int(req.Amount),
 			Msisdn:              req.RecipientPhone,
 			NetAmount:           float64(req.Amount),
-			SecureID:            response.Data.TransactionID,
+			SecureID:            secureID,
 			SourceOfFunds:       req.MobileMoneySP,
 			ExternalID:          req.ExternalID,
 			CallbackURL:         req.CallbackURL,
@@ -1074,29 +1045,20 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			TransactionStatus:   transactionStatus,
 		}
 
-		// Save transaction to database
 		db := database.GetConnection()
 		if dbErr := db.Create(newTransaction).Error; dbErr != nil {
 			log.Printf("Failed to save transaction: %v", dbErr)
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  401,
-				"error":   "1994",
-				"message": "Failed to record transaction",
+				"error":   "Failed to record transaction",
 				"details": dbErr.Error(),
 			})
 			return
 		}
 
-		// Get the transaction ID from the saved record
-		// transactionID := newTransaction.ID
-
-		// Send API response
-		c.JSON(responseCode, gin.H{
-			"status":     responseStatus,
-			"message":    responseMessage,
-			"error":      "1995",
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "Payment initiation successful",
 			"externalId": req.ExternalID,
-			"secureId":   response.Data.TransactionID,
+			"secureId":   secureID,
 		})
 	case "XAF":
 		// check the mobile service sp
