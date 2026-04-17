@@ -23,10 +23,10 @@ import (
 	"com.mam-laka/auth"
 	"com.mam-laka/balances"
 	"com.mam-laka/cameroon"
-	"com.mam-laka/main/creditbank"
 	"com.mam-laka/database"
 	"com.mam-laka/flutterwave"
 	"com.mam-laka/korapay"
+	"com.mam-laka/main/creditbank"
 	"com.mam-laka/mpesa"
 	"com.mam-laka/payaza"
 	"com.mam-laka/pesalink"
@@ -60,11 +60,11 @@ type AirtimeCallbackRequest struct {
 	IPNUrl                  string  `json:"ipn_url"`
 	TransactionChannel      string  `json:"transaction_channel"`
 	ProviderID              string  `json:"provider_id"`
-	SMSLink                 int     `json:"sms_link"`
+	SMSLink                 *int    `json:"sms_link"`
 	CreatedAt               string  `json:"created_at"`
 	UpdatedAt               string  `json:"updated_at"`
-	IPNState                int     `json:"ipn_state"`
-	WAmountAfterTransaction string  `json:"w_amount_after_transaction"`
+	IPNState                *int    `json:"ipn_state"`
+	WAmountAfterTransaction *string `json:"w_amount_after_transaction"`
 	PLastWalletAmount       int     `json:"p_last_wallet_amount"`
 	PNewWalletAmount        int     `json:"p_new_wallet_amount"`
 	PID                     int     `json:"p_id"`
@@ -84,14 +84,6 @@ type CallbackResponse struct {
 	Reason            string `json:"reason,omitempty"` // Only for failed
 	ProviderReference string `json:"providerReference,omitempty"`
 }
-
-// TransactionType represents the type of transaction
-type TransactionType string
-
-const (
-	TransactionTypePayin  TransactionType = "DEPOSIT"
-	TransactionTypePayout TransactionType = "WITHDRAW"
-)
 
 // WestAfricaCallbackHandler handles airtime transaction callbacks
 func WestAfricaCallbackHandler(c *gin.Context) {
@@ -117,8 +109,8 @@ func WestAfricaCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	// Retrieve the transaction by external transaction ID
-	transaction, err := getTransactionByExternalID(db, callbackReq.TransactionID)
+	// Retrieve the transaction by provider transaction id (PIX_…) stored in merchantRequestID
+	transaction, err := getTransactionByProviderReference(db, callbackReq.TransactionID)
 	if err != nil {
 		log.Printf(" Transaction not found: %s, Error: %v", callbackReq.TransactionID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
@@ -161,6 +153,9 @@ func processSuccessfulTransaction(db *gorm.DB, transaction *transactions.Transac
 	updates := map[string]interface{}{
 		"transactionStatus": "SUCCESSFUL",
 		"callbackStatus":    "SENT",
+	}
+	if callback.Benefice > 0 {
+		updates["netAmount"] = float64(callback.Benefice)
 	}
 
 	if err := db.Model(&transactions.TransactionModel{}).
@@ -230,15 +225,14 @@ func processFailedTransaction(db *gorm.DB, transaction *transactions.Transaction
 
 // handleBalanceUpdates handles balance updates based on transaction type and success status
 func handleBalanceUpdates(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, isSuccessful bool) error {
-	transactionType := TransactionType(strings.ToUpper(transaction.TransactionReport))
+	report := strings.ToLower(strings.TrimSpace(transaction.TransactionReport))
 
-	log.Printf("Handling balance updates - Type: %s, Successful: %v, Amount: %d", transactionType, isSuccessful, callback.Amount)
+	log.Printf("Handling balance updates - Report: %s, Successful: %v, Amount: %d", report, isSuccessful, callback.Amount)
 
-	fmt.Println("Transaction Type", transactionType)
-	switch transactionType {
-	case TransactionTypePayin:
+	switch report {
+	case "collection":
 		return handlePayinBalanceUpdate(db, transaction, callback, isSuccessful)
-	case TransactionTypePayout:
+	case "withdraw":
 		return handlePayoutBalanceUpdate(db, transaction, callback, isSuccessful)
 	default:
 		log.Printf("⚠️  Unknown transaction type: %s", transaction.TransactionReport)
@@ -248,17 +242,20 @@ func handleBalanceUpdates(db *gorm.DB, transaction *transactions.TransactionMode
 
 // handlePayinBalanceUpdate handles balance updates for payin transactions
 func handlePayinBalanceUpdate(db *gorm.DB, transaction *transactions.TransactionModel, callback *AirtimeCallbackRequest, isSuccessful bool) error {
-	// if !isSuccessful {
-	// 	log.Println("Skipping payin balance update for failed transaction")
-	// 	return nil
-	// }
+	if !isSuccessful {
+		log.Println("Skipping payin balance update for failed transaction")
+		return nil
+	}
 
-	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, Amount: %d",
-		transaction.ImpalaMerchantID, callback.Benefice)
+	credit := transaction.NetAmount
+	if callback != nil && callback.Benefice > 0 {
+		credit = float64(callback.Benefice)
+	}
 
-	// For successful payin, add the benefice (amount after fees/commission) to merchant balance
+	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, credit: %.2f",
+		transaction.ImpalaMerchantID, credit)
 
-	if err := balances.AddXOFBalance(transaction.ImpalaMerchantID, transaction.NetAmount); err != nil {
+	if err := balances.AddXOFBalance(transaction.ImpalaMerchantID, credit); err != nil {
 		return fmt.Errorf("failed to update merchant collection balance: %w", err)
 	}
 
@@ -310,19 +307,21 @@ func buildCallbackResponse(transaction *transactions.TransactionModel, callback 
 	return response
 }
 
-// getTransactionByExternalID retrieves transaction by external ID
-func getTransactionByExternalID(db *gorm.DB, externalID string) (*transactions.TransactionModel, error) {
+// getTransactionByProviderReference finds a row by provider transaction id (e.g. PIX_…) or internal secureId.
+func getTransactionByProviderReference(db *gorm.DB, providerRef string) (*transactions.TransactionModel, error) {
 	var transaction transactions.TransactionModel
 
-	// Try to find by external ID first
-	if err := db.Where("secureId = ?", externalID).First(&transaction).Error; err != nil {
-		// If not found by external ID, try by merchant request ID as fallback
-		if err := db.Where("secureId = ?", externalID).First(&transaction).Error; err != nil {
-			return nil, fmt.Errorf("transaction not found: %w", err)
-		}
+	if err := db.Where("merchantRequestID = ?", providerRef).First(&transaction).Error; err == nil {
+		return &transaction, nil
+	}
+	if err := db.Where("checkoutRequestID = ?", providerRef).First(&transaction).Error; err == nil {
+		return &transaction, nil
+	}
+	if err := db.Where("secureId = ?", providerRef).First(&transaction).Error; err == nil {
+		return &transaction, nil
 	}
 
-	return &transaction, nil
+	return nil, fmt.Errorf("transaction not found for reference %s", providerRef)
 }
 
 // Helper function to log callback details (can be used for debugging)
@@ -360,6 +359,17 @@ func normalizeZambiaBank(sp string) string {
 		return "MTN"
 	}
 	return sp
+}
+
+// isBeninMSISDN reports whether digits (no +, no spaces) are a Benin number (229… or detected BJ).
+func isBeninMSISDN(digits string) bool {
+	if len(digits) < 3 {
+		return false
+	}
+	if payaza.DetectCountryCode(digits) == "BJ" {
+		return true
+	}
+	return strings.HasPrefix(digits, "229")
 }
 
 // MobilePaymentHandler to handle mobile payment initiation
@@ -414,6 +424,8 @@ func MobilePaymentHandler(c *gin.Context) {
 	var checkoutRequestID string
 	var responseDescription string
 	var responseCode string
+	netAmount := float64(req.Amount)
+	msisdnStored := req.PayerPhone
 
 	if req.Currency == "KES" {
 
@@ -441,47 +453,101 @@ func MobilePaymentHandler(c *gin.Context) {
 		responseDescription = stkResponse.ResponseDescription
 		responseCode = stkResponse.ResponseCode
 
-	} else if req.Currency == "XOF" || req.Currency == "UGX" { // WE USING PAYAZA FOR THIS
+	} else if req.Currency == "XOF" || req.Currency == "UGX" {
 
-		// get country code from phone
-		countryCode := payaza.DetectCountryCode(req.PayerPhone)
-		CustomerBankCode := payaza.GetBankCode(countryCode, req.MobileMoneySP)
+		payerDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.PayerPhone), " ", ""))
+		countryCode := payaza.DetectCountryCode(payerDigits)
 
-		fmt.Println("Determined Bank Code:", CustomerBankCode)
-		// prepare payload
-		payload := payaza.PayazaPayload{
-			Amount:                 req.Amount,
-			CustomerNumber:         req.PayerPhone,
-			TransactionReference:   secureID,
-			TransactionDescription: "Test Payment",
-			CustomerBankCode:       CustomerBankCode,
-			CurrencyCode:           req.Currency,
-			CustomerEmail:          "bigmaitre@blondmail.com",
-			CustomerFirstName:      "Robert",
-			CustomerLastName:       "Stones",
-			CustomerPhoneNumber:    "2290196289492",
-			CountryCode:            countryCode,
-		}
-
-		stkResponse, errror_stk := payaza.SendPayazaRequest(payload)
-		if errror_stk != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Payment initiation failed", "details": stkResponse})
+		if countryCode == "BJ" && !strings.EqualFold(strings.TrimSpace(req.MobileMoneySP), "MTN") {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_NETWORK",
+				"message": "Only MTN is supported for Benin",
+			})
 			return
 		}
 
-		if stkResponse.IsSuccess() {
-			fmt.Println("SUCCESS (PENDING):")
-			fmt.Println("Transaction Ref:", stkResponse.TransactionReference)
-			fmt.Println("Payment Token:", stkResponse.PaymentToken)
+		// Benin MTN (XOF): Pixel core API — collection service 305; other XOF/UGX routes stay on Payaza.
+		if req.Currency == "XOF" && countryCode == "BJ" && strings.EqualFold(strings.TrimSpace(req.MobileMoneySP), "MTN") {
+			ipnURL := os.Getenv("WEST_AFRICA_IPN_URL")
+			if ipnURL == "" {
+				ipnURL = "https://payments.mam-laka.com/api/v1/west-africa/callback"
+			}
+			apiKey := os.Getenv("PIXEL_CORE_API_KEY")
+			if apiKey == "" {
+				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			}
+
+			dest := westafrica.NormalizeBeninMSISDN(req.PayerPhone)
+			msisdnStored = dest
+			client := westafrica.NewAirtimeClient()
+			westReq := &westafrica.AirtimeRequest{
+				Amount:      req.Amount,
+				Destination: dest,
+				APIKey:      apiKey,
+				IPNUrl:      ipnURL,
+				ServiceID:   westafrica.ServiceIDBeninMTNCollection,
+				CustomData:  secureID,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+
+			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
+			if errWa != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				return
+			}
+
+			merchantRequestID = waResp.Data.TransactionID
+			checkoutRequestID = waResp.Data.Response
+			responseDescription = waResp.Message
+			if strings.TrimSpace(responseDescription) == "" {
+				responseDescription = "Payment request pending"
+			}
+			responseCode = "0"
+			if waResp.Data.Benefice > 0 {
+				netAmount = float64(waResp.Data.Benefice)
+			}
+			errror_stk = nil
 		} else {
-			fmt.Println("FAILED / DECLINED:")
-			fmt.Println("Code:", stkResponse.ResponseCode)
-			fmt.Println("Message:", stkResponse.ResponseMessage)
+			CustomerBankCode := payaza.GetBankCode(countryCode, req.MobileMoneySP)
+
+			fmt.Println("Determined Bank Code:", CustomerBankCode)
+			payload := payaza.PayazaPayload{
+				Amount:                 req.Amount,
+				CustomerNumber:         req.PayerPhone,
+				TransactionReference:   secureID,
+				TransactionDescription: "Test Payment",
+				CustomerBankCode:       CustomerBankCode,
+				CurrencyCode:           req.Currency,
+				CustomerEmail:          "bigmaitre@blondmail.com",
+				CustomerFirstName:      "Robert",
+				CustomerLastName:       "Stones",
+				CustomerPhoneNumber:    payerDigits,
+				CountryCode:            countryCode,
+			}
+
+			payazaResp, errPayaza := payaza.SendPayazaRequest(payload)
+			errror_stk = errPayaza
+			if errPayaza != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Payment initiation failed", "details": payazaResp})
+				return
+			}
+
+			if payazaResp.IsSuccess() {
+				fmt.Println("SUCCESS (PENDING):")
+				fmt.Println("Transaction Ref:", payazaResp.TransactionReference)
+				fmt.Println("Payment Token:", payazaResp.PaymentToken)
+			} else {
+				fmt.Println("FAILED / DECLINED:")
+				fmt.Println("Code:", payazaResp.ResponseCode)
+				fmt.Println("Message:", payazaResp.ResponseMessage)
+			}
+			merchantRequestID = payazaResp.TransactionReference
+			checkoutRequestID = payazaResp.PaymentToken
+			responseDescription = "Payment request pending"
+			responseCode = payazaResp.ResponseCode
 		}
-		merchantRequestID = stkResponse.TransactionReference
-		checkoutRequestID = stkResponse.PaymentToken
-		responseDescription = "Merchant initiated XOF payment via Payaza"
-		responseCode = stkResponse.ResponseCode
 
 	} else if req.Currency == "ZMW" {
 		accountBank := normalizeZambiaBank(req.MobileMoneySP)
@@ -496,7 +562,7 @@ func MobilePaymentHandler(c *gin.Context) {
 			return
 		}
 		merchantRequestID = secureID
-		responseDescription = "Merchant initiated ZMW collection via Flutterwave"
+		responseDescription = "Payment request pending"
 		responseCode = "0"
 		if data, ok := flutterwaveResp["data"].(map[string]interface{}); ok {
 			if flwRef, ok2 := data["flw_ref"].(string); ok2 {
@@ -524,8 +590,8 @@ func MobilePaymentHandler(c *gin.Context) {
 		ResponseCode:        responseCode,
 		Currency:            req.Currency,
 		Amount:              req.Amount,
-		Msisdn:              req.PayerPhone,
-		NetAmount:           float64(req.Amount), // Adjust if there are transaction fees
+		Msisdn:              msisdnStored,
+		NetAmount:           netAmount,
 		SecureID:            secureID,
 		SourceOfFunds:       req.MobileMoneySP,
 		ExternalID:          req.ExternalID,
@@ -829,10 +895,19 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			return id
 		}()
 
+		recipientDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.RecipientPhone), " ", ""))
+		if isBeninMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDBeninMTNPayout {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_SERVICE",
+				"message": "Only MTN Benin payouts are supported; use mobileMoneySP \"304\" with a Benin number",
+			})
+			return
+		}
+
 		// Ensure there’s enough balance before proceeding
 
 		// Define known cash-in and cash-out service IDs
-		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164, 50, 148}
+		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164, 50, 148, westafrica.ServiceIDBeninMTNPayout}
 		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 167, 169, 165, 49, 149}
 
 		var transactionReport string
@@ -869,15 +944,27 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			return
 		}
 
-		// initiatae west africa client
 		client := westafrica.NewAirtimeClient()
 
-		// Initiate payment via reize remit
+		destPhone := req.RecipientPhone
+		if serviceId == westafrica.ServiceIDBeninMTNPayout {
+			destPhone = westafrica.NormalizeBeninMSISDN(req.RecipientPhone)
+		}
+
+		apiKey := os.Getenv("PIXEL_CORE_API_KEY")
+		if apiKey == "" {
+			apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+		}
+		ipnWithdraw := os.Getenv("WEST_AFRICA_IPN_URL")
+		if ipnWithdraw == "" {
+			ipnWithdraw = "https://payments.mam-laka.com/api/v1/west-africa/callback"
+		}
+
 		westAfricaRequest := &westafrica.AirtimeRequest{
 			Amount:      int(req.Amount),
-			Destination: req.RecipientPhone,
-			APIKey:      "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28",
-			IPNUrl:      "https://payments.mam-laka.com/api/v1/west-africa/callback",
+			Destination: destPhone,
+			APIKey:      apiKey,
+			IPNUrl:      ipnWithdraw,
 			ServiceID: func() int {
 				id, err := strconv.Atoi(req.MobileMoneySP)
 				if err != nil {
@@ -2832,7 +2919,11 @@ func SearchTransactionsHandler(c *gin.Context) {
 	params.Page = page
 
 	pageSize := 20
-	if pageSizeParam := c.DefaultQuery("page_size", "20"); pageSizeParam != "" {
+	pageSizeParam := c.Query("limit")
+	if pageSizeParam == "" {
+		pageSizeParam = c.DefaultQuery("page_size", "20")
+	}
+	if pageSizeParam != "" {
 		if parsedPageSize, err := strconv.Atoi(pageSizeParam); err == nil && parsedPageSize > 0 {
 			if parsedPageSize > 100 {
 				pageSize = 100
@@ -2861,8 +2952,12 @@ func SearchTransactionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"transactions": serializer.Response(),
 		"pagination": gin.H{
-			"current_page": page,
-			"per_page":     pageSize,
+			"page":         page,
+			"limit":        pageSize,
+			"totalPages":   totalPages,
+			"totalItems":   total,
+			"current_page": page,     // backward compatibility
+			"per_page":     pageSize, // backward compatibility
 			"total_pages":  totalPages,
 			"total_items":  total,
 		},
@@ -2890,7 +2985,11 @@ func ListTransactionsHandler(c *gin.Context) {
 	}
 
 	pageSize := 20
-	if pageSizeParam := c.DefaultQuery("page_size", "20"); pageSizeParam != "" {
+	pageSizeParam := c.Query("limit")
+	if pageSizeParam == "" {
+		pageSizeParam = c.DefaultQuery("page_size", "20")
+	}
+	if pageSizeParam != "" {
 		if parsedPageSize, err := strconv.Atoi(pageSizeParam); err == nil && parsedPageSize > 0 {
 			if parsedPageSize > 100 {
 				pageSize = 100
@@ -2916,8 +3015,12 @@ func ListTransactionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"transactions": serializer.Response(),
 		"pagination": gin.H{
-			"current_page": page,
-			"per_page":     pageSize,
+			"page":         page,
+			"limit":        pageSize,
+			"totalPages":   totalPages,
+			"totalItems":   total,
+			"current_page": page,     // backward compatibility
+			"per_page":     pageSize, // backward compatibility
 			"total_pages":  totalPages,
 			"total_items":  total,
 		},
@@ -4749,18 +4852,18 @@ func KorapayBankPayinHandler(c *gin.Context) {
 	}
 
 	txn := &transactions.TransactionModel{
-		ImpalaMerchantID:    mid,
-		SecureID:            secureID,
-		ExternalID:          req.ExternalID,
-		MerchantRequestID:   secureID,
-		Amount:              req.Amount,
-		Currency:            req.Currency,
-		CallbackURL:         req.CallbackURL,
-		DateAdded:           dateAdded,
-		TransactionStatus:   "pending",
-		TransactionReport:   "collection",
-		SourceOfFunds:       "korapay",
-		NetAmount:           float64(req.Amount),
+		ImpalaMerchantID:  mid,
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		MerchantRequestID: secureID,
+		Amount:            req.Amount,
+		Currency:          req.Currency,
+		CallbackURL:       req.CallbackURL,
+		DateAdded:         dateAdded,
+		TransactionStatus: "pending",
+		TransactionReport: "collection",
+		SourceOfFunds:     "korapay",
+		NetAmount:         float64(req.Amount),
 	}
 	if err := transactions.SaveTransaction(txn); err != nil {
 		log.Printf("Failed to save bank payin transaction: %v", err)
@@ -4916,19 +5019,19 @@ func KorapayPayoutHandler(c *gin.Context) {
 	dateAdded := time.Now().Unix()
 
 	txn := &transactions.TransactionModel{
-		ImpalaMerchantID:     mid,
-		SecureID:             secureID,
-		ExternalID:           req.ExternalID,
-		MerchantRequestID:    secureID,
-		CheckoutRequestID:    resp.Data.Reference,
-		Currency:             req.Currency,
-		CallbackURL:          req.CallbackURL,
-		DateAdded:            dateAdded,
-		TransactionStatus:    "pending",
-		TransactionReport:    "withdraw",
-		SourceOfFunds:        "korapay",
-		Amount:               amountInt,
-		NetAmount:            float64(amountInt),
+		ImpalaMerchantID:  mid,
+		SecureID:          secureID,
+		ExternalID:        req.ExternalID,
+		MerchantRequestID: secureID,
+		CheckoutRequestID: resp.Data.Reference,
+		Currency:          req.Currency,
+		CallbackURL:       req.CallbackURL,
+		DateAdded:         dateAdded,
+		TransactionStatus: "pending",
+		TransactionReport: "withdraw",
+		SourceOfFunds:     "korapay",
+		Amount:            amountInt,
+		NetAmount:         float64(amountInt),
 	}
 	if err := transactions.SaveTransaction(txn); err != nil {
 		// Refund if we failed to persist the transaction.
@@ -5321,12 +5424,12 @@ func TillPaymentHandler(c *gin.Context) {
 // TillCallbackHandler processes CreditBank till callback and forwards final callback to merchant.
 func TillCallbackHandler(c *gin.Context) {
 	var payload struct {
-		ResultType                int    `json:"ResultType"`
-		ResultCode                int    `json:"ResultCode"`
-		ResultDesc                string `json:"ResultDesc"`
-		OriginatorConversationID  string `json:"OriginatorConversationID"`
-		ConversationID            string `json:"ConversationID"`
-		TransactionID             string `json:"TransactionID"`
+		ResultType               int    `json:"ResultType"`
+		ResultCode               int    `json:"ResultCode"`
+		ResultDesc               string `json:"ResultDesc"`
+		OriginatorConversationID string `json:"OriginatorConversationID"`
+		ConversationID           string `json:"ConversationID"`
+		TransactionID            string `json:"TransactionID"`
 	}
 
 	if err := c.ShouldBindJSON(&payload); err != nil {

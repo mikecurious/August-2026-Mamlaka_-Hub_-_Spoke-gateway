@@ -194,9 +194,8 @@ func GetBankCode(countryCode, network string) string {
 	network = strings.ToUpper(strings.TrimSpace(network))
 
 	bankCodeMap := map[string]map[string]string{
-		"BJ": { // Benin
-			"MTN":  "MTNBEN",
-			"MOOV": "MOOBEN",
+		"BJ": { // Benin — MTN only (Moov disabled)
+			"MTN": "MTNBEN",
 		},
 
 		"UG": { // Benin

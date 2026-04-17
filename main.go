@@ -7,6 +7,7 @@ import (
 	"com.mam-laka/database"
 	"com.mam-laka/forex"
 	"com.mam-laka/main/merchants"
+	"com.mam-laka/main/settlement"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -18,9 +19,10 @@ import (
 func Migration(database *gorm.DB) {
 	balances.AutoMigrate()
 	forex.AutoMigrate()
+	settlement.AutoMigrate()
 }
 
-func main() {
+func main77() {
 	//load the env
 	err := godotenv.Load()
 	if err != nil {
@@ -44,6 +46,7 @@ func main() {
 	sun := router.Group("/api")
 	// users.Create(sun.Group("/users"))
 	merchants.RegisterRoutes(sun.Group("/v1"))
+	settlement.RegisterRoutes(sun.Group("/v1"))
 	merchants.StartPesalinkPayoutStatusCron()
 	forex.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))

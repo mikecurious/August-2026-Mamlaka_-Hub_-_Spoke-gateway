@@ -87,8 +87,8 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/5ec8b8d5-43b3-4de3-8895-34d34165546c",
-		ResultURL:          "https://webhook.site/5ec8b8d5-43b3-4de3-8895-34d34165546c",
+		QueueTimeOutURL:    "https://webhook.site/389ef100-b115-4af9-a749-6168b3735790",
+		ResultURL:          "https://webhook.site/389ef100-b115-4af9-a749-6168b3735790",
 		Occasion:           "Withdrawal",
 	}
 
@@ -127,8 +127,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
-		"ResultURL":          "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
+		"QueueTimeOutURL":    "https://webhook.site/425fba81-298a-4581-8433-fe8e8cf4ee3b",
+		"ResultURL":          "https://webhook.site/425fba81-298a-4581-8433-fe8e8cf4ee3b",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -163,8 +163,8 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 		"TransactionID":      transactionID,
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
-		"ResultURL":          "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
-		"QueueTimeOutURL":    "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
+		"ResultURL":          "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d",
+		"QueueTimeOutURL":    "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d",
 		"Remarks":            "Check transaction status",
 	}
 
@@ -203,13 +203,13 @@ func main() {
 
 	// fmt.Println("B2C Payment Response:", resp)
 
-	resp2, err1 := checkBalance()
+	// resp2, err1 := checkBalance()
 
-	if err1 != nil {
-		fmt.Println("Error checking balance:", err1)
-	}
+	// if err1 != nil {
+	// 	fmt.Println("Error checking balance:", err)
+	// }
 
-	fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -218,11 +218,11 @@ func main() {
 
 	// // Balance Check
 	// r.GET("/check-balance", func(c *gin.Context) {
-	// resp, err := checkBalance()
-	// if err != nil {
-	// 	fmt.Println("Error checking balance:", err)
-	// }
-	// fmt.Println("Balance Check Response:", resp)
+	resp, err := checkBalance()
+	if err != nil {
+		fmt.Println("Error checking balance:", err)
+	}
+	fmt.Println("Balance Check Response:", resp)
 	// })
 
 	// // Transaction Status
@@ -265,11 +265,11 @@ func main() {
 */
 
 const (
-	conumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
-	conumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
-	initiatorName      = "collins"
-	securityCredential = "i0Bz0/V2p4VXAvWcacsQ4f4CF6yZssl9Qx3KJyOw3Ahe3bI34wlYq2xoN2XjctkNrQDLfGuJchS9ObXmMVoMA1/hgqLfhYg+Cw3PVWcY9qoje2cd/H3aY6ALYDkKbYjUQGVA+gtFr3+8TJfrnzs6ebaP1wiOFEXtQGKb49aIBhqIXY/QMvVzfbKlsOeuR36BJKnhl2HNmzb9h3ub5EdQMKfb8GisjxkIaJRLziWyFqAnCVE+WOtzmJvRYYPv+WbvWFMZZL7MenOkh5V0zGUYMFxYTqRwSU2pTazB6largFJ/io/p6mMXti6bslkY/kIu2OKGTo2qEWfj9e53yM32ug=="
-	shortCode          = "3008826"
+	conumerKey         = "NfAquJ6uJGrGVEZKl7w3bgOdf8fat40j540E3xnfZTnZ9zSH"
+	conumerSecret      = "zv4mdYZ0RJ6sGu2jVAKIMVih4HAhbso2LVyCWvsFOr5FlbYL5wFciuHrm8NzwgkU"
+	initiatorName      = "Joyce"
+	securityCredential = "oYpH7/VLVYMlsEfRNDxB42Ta5mdouKDfg0DS2WZckAKBMXPdJeVVo1OxYp0PQpVEbAAuVEwSsTYbJr1PI/ccq8Evy6So8Q4aybx8gAGgLVBkAtFKtJqlmKHaoFEYtkjaWueL4WGmsBZ45Z/q9tZscHul/hlV43IcSm0QoudNqCXWVg70xCYE5cKDoaNqOg6wOHEDj7lf8K6ZZ0uxtt+jJGYDIh1q58K/LpUn2Tucans91PnkoJHsy5IDSIDU6++6nDrTjTXLDBLdxMSs3wcRooAT4S56HbRI5X9eDMJoJcY2FYGHJKAU0orZfxJIG9rZRSNNwm3qbeiaDP31WCPScg=="
+	shortCode          = "3008816"
 	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"

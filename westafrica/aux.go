@@ -7,8 +7,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
+
+// Benin MTN service IDs for Pixel core API (airtime endpoint).
+const (
+	ServiceIDBeninMTNCollection = 305
+	ServiceIDBeninMTNPayout     = 304
+)
+
+// NormalizeBeninMSISDN converts +229 / 229-prefixed numbers to local format with a leading 0 (e.g. 0190760023).
+func NormalizeBeninMSISDN(phone string) string {
+	s := strings.TrimSpace(phone)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.ReplaceAll(s, " ", "")
+	if strings.HasPrefix(s, "229") {
+		s = s[3:]
+	}
+	if s == "" {
+		return s
+	}
+	if !strings.HasPrefix(s, "0") {
+		s = "0" + s
+	}
+	return s
+}
 
 // AirtimeRequest represents the request payload for airtime transaction
 type AirtimeRequest struct {
@@ -17,7 +41,7 @@ type AirtimeRequest struct {
 	APIKey      string `json:"api_key"`
 	IPNUrl      string `json:"ipn_url"`
 	ServiceID   int    `json:"service_id"`
-	OMOTP       string `json:"om_otp"`
+	OMOTP       string `json:"om_otp,omitempty"`
 	CustomData  string `json:"custom_data"`
 }
 
@@ -61,7 +85,7 @@ func NewAirtimeClient() *AirtimeClient {
 	return &AirtimeClient{
 		BaseURL: "https://proxy-coreapi.pixelinnov.net",
 		HTTPClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -115,6 +139,10 @@ func (c *AirtimeClient) SendAirtimeTransaction(ctx context.Context, req *Airtime
 	var airtimeResp AirtimeResponse
 	if err := json.Unmarshal(body, &airtimeResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if airtimeResp.StatusCode != 0 && airtimeResp.StatusCode != http.StatusOK {
+		return &airtimeResp, fmt.Errorf("API statut_code %d: %s", airtimeResp.StatusCode, airtimeResp.Message)
 	}
 
 	// Check if API returned an error
