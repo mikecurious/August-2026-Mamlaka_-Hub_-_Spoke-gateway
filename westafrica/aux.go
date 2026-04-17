@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -16,6 +19,28 @@ const (
 	ServiceIDBeninMTNCollection = 305
 	ServiceIDBeninMTNPayout     = 304
 )
+
+var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)
+
+func redactAPIKeyInJSON(b []byte) string {
+	return pixelOutboundAPIKeyPattern.ReplaceAllString(string(b), `"api_key":"***"`)
+}
+
+// HardcodedIPNURL is the ipn_url sent to Pixel for collections/payouts (must be publicly reachable HTTPS).
+const HardcodedIPNURL = "https://payments.mam-laka.com/api/v1/west-africa/callback"
+
+// DefaultPublicIPNURL kept as alias for HardcodedIPNURL.
+const DefaultPublicIPNURL = HardcodedIPNURL
+
+// ResolveIPNURL returns the hardcoded callback URL (env override disabled for now).
+func ResolveIPNURL() string {
+	return HardcodedIPNURL
+}
+
+// ResolvePixelAPIKey returns PIXEL_CORE_API_KEY trimmed; empty if unset.
+func ResolvePixelAPIKey() string {
+	return strings.TrimSpace(os.Getenv("PIXEL_CORE_API_KEY"))
+}
 
 // NormalizeBeninMSISDN converts +229 / 229-prefixed numbers to local format with a leading 0 (e.g. 0190760023).
 func NormalizeBeninMSISDN(phone string) string {
@@ -96,16 +121,29 @@ func (c *AirtimeClient) SendAirtimeTransaction(ctx context.Context, req *Airtime
 		return nil, fmt.Errorf("request cannot be nil")
 	}
 
+	// Sanitize fields (env / copy-paste often introduces leading/trailing spaces).
+	clean := *req
+	clean.IPNUrl = strings.TrimSpace(clean.IPNUrl)
+	clean.APIKey = strings.TrimSpace(clean.APIKey)
+	clean.Destination = strings.TrimSpace(clean.Destination)
+	clean.CustomData = strings.TrimSpace(clean.CustomData)
+	clean.OMOTP = strings.TrimSpace(clean.OMOTP)
+	req = &clean
+
 	// Validate required fields
 	if err := c.validateRequest(req); err != nil {
 		return nil, fmt.Errorf("validation error: %w", err)
 	}
+
+	log.Printf("westafrica Pixel request: service_id=%d ipn_url=%q destination=%q custom_data=%q", req.ServiceID, req.IPNUrl, req.Destination, req.CustomData)
 
 	// Marshal request to JSON
 	jsonData, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
+
+	log.Printf("westafrica Pixel outbound JSON: %s", redactAPIKeyInJSON(jsonData))
 
 	// Create HTTP request
 	url := fmt.Sprintf("%s/api_v1/transaction/airtime", c.BaseURL)
@@ -166,6 +204,9 @@ func (c *AirtimeClient) validateRequest(req *AirtimeRequest) error {
 	}
 	if req.ServiceID <= 0 {
 		return fmt.Errorf("service_id must be greater than 0")
+	}
+	if req.IPNUrl == "" {
+		return fmt.Errorf("ipn_url is required (set WEST_AFRICA_IPN_URL or pass a public https URL)")
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -87,15 +88,25 @@ type CallbackResponse struct {
 
 // WestAfricaCallbackHandler handles airtime transaction callbacks
 func WestAfricaCallbackHandler(c *gin.Context) {
-	log.Println("📞 Received West Africa callback")
+	body, errRead := io.ReadAll(c.Request.Body)
+	if errRead != nil {
+		log.Printf("westafrica callback: read body: %v", errRead)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read callback body"})
+		return
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	// Parse the callback request
+	log.Printf("westafrica callback received (raw): %s", string(body))
+
 	var callbackReq AirtimeCallbackRequest
-	if err := c.ShouldBindJSON(&callbackReq); err != nil {
-		log.Printf(" Failed to parse callback request: %v", err)
+	if err := json.Unmarshal(body, &callbackReq); err != nil {
+		log.Printf("westafrica callback: JSON parse failed: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": err.Error()})
 		return
 	}
+
+	log.Printf("westafrica callback parsed transaction_id=%s state=%s amount=%d currency=%s benefice=%d destination=%s custom_data=%s",
+		callbackReq.TransactionID, callbackReq.State, callbackReq.Amount, callbackReq.Currency, callbackReq.Benefice, callbackReq.Destination, callbackReq.CustomData)
 
 	// Log the callback details
 	log.Printf("🔍 Processing callback for transaction: %s", callbackReq.TransactionID)
@@ -468,11 +479,8 @@ func MobilePaymentHandler(c *gin.Context) {
 
 		// Benin MTN (XOF): Pixel core API — collection service 305; other XOF/UGX routes stay on Payaza.
 		if req.Currency == "XOF" && countryCode == "BJ" && strings.EqualFold(strings.TrimSpace(req.MobileMoneySP), "MTN") {
-			ipnURL := os.Getenv("WEST_AFRICA_IPN_URL")
-			if ipnURL == "" {
-				ipnURL = "https://payments.mam-laka.com/api/v1/west-africa/callback"
-			}
-			apiKey := os.Getenv("PIXEL_CORE_API_KEY")
+			ipnURL := westafrica.ResolveIPNURL()
+			apiKey := westafrica.ResolvePixelAPIKey()
 			if apiKey == "" {
 				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
 			}
@@ -488,6 +496,9 @@ func MobilePaymentHandler(c *gin.Context) {
 				ServiceID:   westafrica.ServiceIDBeninMTNCollection,
 				CustomData:  secureID,
 			}
+
+			log.Printf("[Benin MTN collection] Pixel outbound amount=%d destination=%s ipn_url=%s secureId=%s merchant=%s",
+				req.Amount, dest, ipnURL, secureID, req.ImpalaMerchantId)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer cancel()
@@ -951,14 +962,11 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			destPhone = westafrica.NormalizeBeninMSISDN(req.RecipientPhone)
 		}
 
-		apiKey := os.Getenv("PIXEL_CORE_API_KEY")
+		apiKey := westafrica.ResolvePixelAPIKey()
 		if apiKey == "" {
 			apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
 		}
-		ipnWithdraw := os.Getenv("WEST_AFRICA_IPN_URL")
-		if ipnWithdraw == "" {
-			ipnWithdraw = "https://payments.mam-laka.com/api/v1/west-africa/callback"
-		}
+		ipnWithdraw := westafrica.ResolveIPNURL()
 
 		westAfricaRequest := &westafrica.AirtimeRequest{
 			Amount:      int(req.Amount),
@@ -975,6 +983,11 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			}(),
 			OMOTP:      strconv.Itoa(req.OMOTP),
 			CustomData: "your_custom_data",
+		}
+
+		if serviceId == westafrica.ServiceIDBeninMTNPayout {
+			log.Printf("[Benin MTN payout] Pixel outbound amount=%f destination=%s ipn_url=%s externalId=%s merchant=%s",
+				req.Amount, destPhone, ipnWithdraw, req.ExternalID, req.ImpalaMerchantId)
 		}
 
 		// Send request with context and timeout
