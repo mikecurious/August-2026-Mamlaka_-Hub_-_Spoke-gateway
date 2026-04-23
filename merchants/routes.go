@@ -361,15 +361,32 @@ func RemovePlusPrefix(phone string) string {
 	return phone
 }
 
-func normalizeZambiaBank(sp string) string {
-	up := strings.ToUpper(strings.TrimSpace(sp))
-	if up == "AIRTEL" {
-		return "Airtel"
+func normalizeFlutterwaveMobileMoneyBank(sp string) string {
+	normalized := strings.TrimSpace(sp)
+	up := strings.ToUpper(normalized)
+
+	// Zambia/Rwanda mobile money + bank aliases accepted by our API and
+	// normalized to the exact Flutterwave account_bank value.
+	mappings := map[string]string{
+		"3044":           "Airtel",
+		"AIRTEL":         "Airtel",
+		"AIRTELTIGO":     "Airtel",
+		"257":            "MPS",
+		"MPS":            "MPS",
+		"MOBILE MONEY":   "MPS",
+		"3045":           "MTN",
+		"MTN":            "MTN",
+		"3046":           "ZAMTEL",
+		"ZAMTEL":         "ZAMTEL",
+		"2236":           "ZM360000",
+		"ZM360000":       "ZM360000",
+		"ECOBANK ZAMBIA": "ZM360000",
 	}
-	if up == "MTN" {
-		return "MTN"
+
+	if mapped, ok := mappings[up]; ok {
+		return mapped
 	}
-	return sp
+	return normalized
 }
 
 // isBeninMSISDN reports whether digits (no +, no spaces) are a Benin number (229… or detected BJ).
@@ -561,8 +578,31 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 
 	} else if req.Currency == "ZMW" {
-		accountBank := normalizeZambiaBank(req.MobileMoneySP)
+		accountBank := normalizeFlutterwaveMobileMoneyBank(req.MobileMoneySP)
 		flutterwaveResp, errFw := flutterwave.InitiateZMWCollection(accountBank, RemovePlusPrefix(req.PayerPhone), req.Amount, secureID)
+		if errFw != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errFw.Error()})
+			return
+		}
+		status, _ := flutterwaveResp["status"].(string)
+		if strings.ToLower(status) != "success" {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": flutterwaveResp})
+			return
+		}
+		merchantRequestID = secureID
+		responseDescription = "Payment request pending"
+		responseCode = "0"
+		if data, ok := flutterwaveResp["data"].(map[string]interface{}); ok {
+			if flwRef, ok2 := data["flw_ref"].(string); ok2 {
+				checkoutRequestID = flwRef
+			}
+		}
+		if checkoutRequestID == "" {
+			checkoutRequestID = secureID
+		}
+	} else if req.Currency == "RWF" {
+		accountBank := normalizeFlutterwaveMobileMoneyBank(req.MobileMoneySP)
+		flutterwaveResp, errFw := flutterwave.InitiateRWFCollection(accountBank, RemovePlusPrefix(req.PayerPhone), req.Amount, secureID)
 		if errFw != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errFw.Error()})
 			return
@@ -1191,7 +1231,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			return
 		}
 
-		accountBank := normalizeZambiaBank(req.MobileMoneySP)
+		accountBank := normalizeFlutterwaveMobileMoneyBank(req.MobileMoneySP)
 		transferResp, errTransfer := flutterwave.InitiateZMWTransfer(accountBank, req.RecipientPhone, int(req.Amount), secureID)
 		if errTransfer != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errTransfer.Error()})

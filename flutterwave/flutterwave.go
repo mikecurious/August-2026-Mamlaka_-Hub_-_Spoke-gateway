@@ -29,11 +29,11 @@ func GetFlutterwaveURL(country, currency string) string {
 		"TZS": "https://api.flutterwave.com/v3/charges?type=mobile_money_tanzania",
 		"RWF": "https://api.flutterwave.com/v3/charges?type=mobile_money_rwanda",
 	}
-	
+
 	if url, ok := urlMap[currency]; ok {
 		return url
 	}
-	
+
 	// Default to M-Pesa if currency not found
 	return "https://api.flutterwave.com/v3/charges?type=mpesa"
 }
@@ -131,7 +131,7 @@ func GenerateSecureID() string {
 func InitiateFlutterwavePayment(phoneNumber, email string, amount int, currency, txRef string) (*FlutterwavePaymentResponse, error) {
 	// Get the appropriate URL based on currency
 	url := GetFlutterwaveURL("", currency)
-	
+
 	// Prepare the request payload
 	request := FlutterwavePaymentRequest{
 		TxRef:       txRef,
@@ -215,6 +215,42 @@ func InitiateZMWCollection(accountBank, phoneNumber string, amount int, txRef st
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	log.Printf("Flutterwave ZMW collection response status=%d body=%s", resp.StatusCode, string(body))
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// InitiateRWFCollection initiates a Rwanda mobile money collection charge.
+func InitiateRWFCollection(accountBank, phoneNumber string, amount int, txRef string) (map[string]interface{}, error) {
+	url := "https://api.flutterwave.com/v3/charges?type=mobile_money_rwanda"
+	payload := map[string]interface{}{
+		"account_bank":     accountBank,
+		"phone_number":     phoneNumber,
+		"amount":           amount,
+		"narration":        "SAMPLE rwf TRANSFER",
+		"currency":         "RWF",
+		"beneficiary_name": "NWABALI S.",
+		"tx_ref":           txRef,
+		"email":            "tech@mam-laka.com",
+	}
+	jsonData, _ := json.Marshal(payload)
+	log.Printf("Flutterwave RWF collection request: %s", string(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+flutterwaveAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("Flutterwave RWF collection response status=%d body=%s", resp.StatusCode, string(body))
 	var out map[string]interface{}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, err

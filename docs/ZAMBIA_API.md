@@ -1,6 +1,6 @@
 # Zambia Mobile Money API (ZMW)
 
-This document describes Zambia support added to the existing APIs:
+This document describes Zambia Flutterwave mobile money support added to the existing APIs:
 
 - `POST /api/v1/mobile/initiate` (collection)
 - `POST /api/v1/mobile/transfer` (withdrawal/transfer)
@@ -35,9 +35,12 @@ The merchant-facing API format remains the same as other channels.
 ### Notes
 
 - Uses Flutterwave: `POST /v3/charges?type=mobile_money_zambia`
-- `mobileMoneySP` normalization:
-  - `AIRTEL` -> `Airtel`
-  - `MTN` -> `MTN`
+- `mobileMoneySP`/`account_bank` normalization:
+  - `3044`, `AIRTEL` -> `Airtel`
+  - `257`, `MPS`, `MOBILE MONEY` -> `MPS`
+  - `3045`, `MTN` -> `MTN`
+  - `3046`, `ZAMTEL` -> `ZAMTEL`
+  - `2236`, `ZM360000`, `ECOBANK ZAMBIA` -> `ZM360000`
 - Default customer email sent upstream: `tech@mam-laka.com`
 - Internal `tx_ref` is generated from our `secureId`
 
