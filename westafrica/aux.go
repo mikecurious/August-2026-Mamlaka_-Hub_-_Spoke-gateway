@@ -20,7 +20,8 @@ const (
 	ServiceIDBeninMTNPayout     = 304
 	ServiceIDSenegalOrangePayin = 153
 	ServiceIDSenegalWavePayin   = 151
-	ServiceIDSenegalPayout      = 150
+	ServiceIDSenegalWavePayout  = 150
+	ServiceIDSenegalOrangePayout = 152
 )
 
 var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)

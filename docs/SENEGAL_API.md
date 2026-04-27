@@ -80,12 +80,15 @@ The response format stays the same and includes `redirectUrl` when the provider 
 ### Endpoint
 
 - **Method:** `POST`
-- **URL:** `/api/v1/mobile/withdraw`
+- **URL:** `/api/v1/mobile/transfer`
 - **Auth:** `Authorization: Bearer <merchant-jwt>`
 
 ### Request
 
-For Senegal payouts, only service `150` is supported.
+For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
+
+- `WAVE` maps to service `150`
+- `ORANGE-MONEY` maps to service `152`
 
 ```json
 {
@@ -93,7 +96,7 @@ For Senegal payouts, only service `150` is supported.
   "currency": "XOF",
   "amount": 200,
   "recipientPhone": "776389999",
-  "mobileMoneySP": "150",
+  "mobileMoneySP": "WAVE",
   "externalId": "SN-OUT-001",
   "callbackUrl": "https://your-domain.com/merchant-callback"
 }
@@ -101,7 +104,8 @@ For Senegal payouts, only service `150` is supported.
 
 ### Service IDs (provider-side mapping)
 
-- Senegal payout -> `150`
+- Senegal payout `WAVE` -> `150`
+- Senegal payout `ORANGE-MONEY` -> `152`
 
 ### Response (Our API)
 

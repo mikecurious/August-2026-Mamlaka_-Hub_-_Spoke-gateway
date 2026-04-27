@@ -420,6 +420,26 @@ func normalizeSenegalProvider(input string) string {
 	}
 }
 
+func resolveXOFPayoutServiceID(rawSP, recipientDigits string) int {
+	if id, err := strconv.Atoi(strings.TrimSpace(rawSP)); err == nil {
+		return id
+	}
+
+	sp := strings.ToUpper(strings.TrimSpace(rawSP))
+	if isSenegalMSISDN(recipientDigits) {
+		switch sp {
+		case "WAVE":
+			return westafrica.ServiceIDSenegalWavePayout
+		case "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+			return westafrica.ServiceIDSenegalOrangePayout
+		}
+	}
+	if isBeninMSISDN(recipientDigits) && sp == "MTN" {
+		return westafrica.ServiceIDBeninMTNPayout
+	}
+	return 0
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Authrorization already dont on anothr page before this handler is called
@@ -1037,16 +1057,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		// ugxBalance := balance.UGXBalance
 		XOFBalance := balance.ImpaBalance
 
-		serviceId := func() int {
-			id, err := strconv.Atoi(req.MobileMoneySP)
-			if err != nil {
-				log.Printf("Failed to convert MobileMoneySP to int: %v", err)
-				return 0 // default value
-			}
-			return id
-		}()
-
 		recipientDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.RecipientPhone), " ", ""))
+		serviceId := resolveXOFPayoutServiceID(req.MobileMoneySP, recipientDigits)
 		if isBeninMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDBeninMTNPayout {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":   "UNSUPPORTED_SERVICE",
@@ -1054,10 +1066,10 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			})
 			return
 		}
-		if isSenegalMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDSenegalPayout {
+		if isSenegalMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDSenegalWavePayout && serviceId != westafrica.ServiceIDSenegalOrangePayout {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":   "UNSUPPORTED_SERVICE",
-				"message": "Only service \"150\" is supported for Senegal payouts",
+				"message": "Senegal payouts support mobileMoneySP \"WAVE\" (150) or \"ORANGE-MONEY\" (152)",
 			})
 			return
 		}
@@ -1112,7 +1124,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		destPhone := req.RecipientPhone
 		if serviceId == westafrica.ServiceIDBeninMTNPayout {
 			destPhone = westafrica.NormalizeBeninMSISDN(req.RecipientPhone)
-		} else if serviceId == westafrica.ServiceIDSenegalPayout {
+		} else if serviceId == westafrica.ServiceIDSenegalWavePayout || serviceId == westafrica.ServiceIDSenegalOrangePayout {
 			destPhone = westafrica.NormalizeSenegalMSISDN(req.RecipientPhone)
 		}
 
@@ -1128,12 +1140,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			APIKey:      apiKey,
 			IPNUrl:      ipnWithdraw,
 			ServiceID: func() int {
-				id, err := strconv.Atoi(req.MobileMoneySP)
-				if err != nil {
-					log.Printf("Failed to convert MobileMoneySP to int: %v", err)
-					return 0 // Default value in case of error
-				}
-				return id
+				return serviceId
 			}(),
 			OMOTP:      omOTP,
 			CustomData: "your_custom_data",
