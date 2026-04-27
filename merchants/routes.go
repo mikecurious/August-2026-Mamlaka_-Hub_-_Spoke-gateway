@@ -80,7 +80,6 @@ type CallbackResponse struct {
 	SecureID          string `json:"secureId"`
 	ExternalID        string `json:"externalId"`
 	Amount            int    `json:"amount"`
-	NetAmount         int    `json:"netAmount"`
 	Currency          string `json:"currency"`
 	Reason            string `json:"reason,omitempty"` // Only for failed
 	ProviderReference string `json:"providerReference,omitempty"`
@@ -181,7 +180,7 @@ func processSuccessfulTransaction(db *gorm.DB, transaction *transactions.Transac
 	}
 
 	// Send callback to merchant
-	callbackResponse := buildCallbackResponse(transaction, callback, "COMPLETED")
+	callbackResponse := buildCallbackResponse(transaction, callback, "COMPLETE")
 	if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 		log.Printf("⚠️  Failed to send callback to merchant: %v", err)
 		// Don't fail the transaction if callback fails
@@ -305,7 +304,6 @@ func buildCallbackResponse(transaction *transactions.TransactionModel, callback 
 		TransactionReport: status,
 		Currency:          callback.Currency,
 		Amount:            callback.Amount,
-		NetAmount:         callback.Benefice,
 		SecureID:          transaction.SecureID,
 		ExternalID:        transaction.ExternalID,
 	}
@@ -400,6 +398,28 @@ func isBeninMSISDN(digits string) bool {
 	return strings.HasPrefix(digits, "229")
 }
 
+func isSenegalMSISDN(digits string) bool {
+	if len(digits) < 2 {
+		return false
+	}
+	if payaza.DetectCountryCode(digits) == "SN" || strings.HasPrefix(digits, "221") {
+		return true
+	}
+	return len(digits) == 9 && strings.HasPrefix(digits, "7")
+}
+
+func normalizeSenegalProvider(input string) string {
+	sp := strings.ToUpper(strings.TrimSpace(input))
+	switch sp {
+	case "151", "WAVE":
+		return "WAVE"
+	case "153", "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+		return "ORANGE_MONEY"
+	default:
+		return sp
+	}
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Authrorization already dont on anothr page before this handler is called
@@ -452,6 +472,7 @@ func MobilePaymentHandler(c *gin.Context) {
 	var checkoutRequestID string
 	var responseDescription string
 	var responseCode string
+	var redirectURL string
 	netAmount := float64(req.Amount)
 	msisdnStored := req.PayerPhone
 
@@ -536,6 +557,81 @@ func MobilePaymentHandler(c *gin.Context) {
 			if waResp.Data.Benefice > 0 {
 				netAmount = float64(waResp.Data.Benefice)
 			}
+			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
+			errror_stk = nil
+		} else if req.Currency == "XOF" && isSenegalMSISDN(payerDigits) {
+			ipnURL := westafrica.ResolveIPNURL()
+			apiKey := westafrica.ResolvePixelAPIKey()
+			if apiKey == "" {
+				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			}
+
+			provider := normalizeSenegalProvider(req.MobileMoneySP)
+			serviceID := 0
+			omOTP := ""
+			switch provider {
+			case "ORANGE_MONEY":
+				serviceID = westafrica.ServiceIDSenegalOrangePayin
+				omOTP = strings.TrimSpace(req.OMOTP)
+				if omOTP == "" {
+					omOTP = strings.TrimSpace(c.Query("om_otp"))
+				}
+				if omOTP == "" {
+					omOTP = strings.TrimSpace(c.GetHeader("X-OM-OTP"))
+				}
+				if omOTP == "" {
+					omOTP = strings.TrimSpace(c.GetHeader("om_otp"))
+				}
+				if omOTP == "" {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error":   "MISSING_OM_OTP",
+						"message": "om_otp is required for ORANGE-MONEY Senegal payin",
+					})
+					return
+				}
+			case "WAVE":
+				serviceID = westafrica.ServiceIDSenegalWavePayin
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "UNSUPPORTED_NETWORK",
+					"message": "Only WAVE and ORANGE-MONEY are supported for Senegal",
+				})
+				return
+			}
+
+			dest := westafrica.NormalizeSenegalMSISDN(req.PayerPhone)
+			msisdnStored = dest
+			client := westafrica.NewAirtimeClient()
+			westReq := &westafrica.AirtimeRequest{
+				Amount:      req.Amount,
+				Destination: dest,
+				APIKey:      apiKey,
+				IPNUrl:      ipnURL,
+				ServiceID:   serviceID,
+				OMOTP:       omOTP,
+				CustomData:  secureID,
+			}
+
+			log.Printf("[Senegal collection] Pixel outbound amount=%d destination=%s service_id=%d ipn_url=%s secureId=%s merchant=%s",
+				req.Amount, dest, serviceID, ipnURL, secureID, req.ImpalaMerchantId)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+
+			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
+			if errWa != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				return
+			}
+
+			merchantRequestID = waResp.Data.TransactionID
+			checkoutRequestID = waResp.Data.Response
+			responseDescription = waResp.Message
+			if strings.TrimSpace(responseDescription) == "" {
+				responseDescription = "Payment request pending"
+			}
+			responseCode = "0"
+			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
 			errror_stk = nil
 		} else {
 			CustomerBankCode := payaza.GetBankCode(countryCode, req.MobileMoneySP)
@@ -658,11 +754,15 @@ func MobilePaymentHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	responsePayload := gin.H{
 		"message":    "Payment initiation successful",
 		"externalId": req.ExternalID,
 		"secureId":   secureID,
-	})
+	}
+	if redirectURL != "" {
+		responsePayload["redirectUrl"] = redirectURL
+	}
+	c.JSON(http.StatusOK, responsePayload)
 
 }
 
@@ -954,6 +1054,13 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			})
 			return
 		}
+		if isSenegalMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDSenegalPayout {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_SERVICE",
+				"message": "Only service \"150\" is supported for Senegal payouts",
+			})
+			return
+		}
 
 		// Ensure there’s enough balance before proceeding
 
@@ -996,10 +1103,17 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		client := westafrica.NewAirtimeClient()
+		redirectURL := ""
+		omOTP := ""
+		if req.OMOTP > 0 {
+			omOTP = strconv.Itoa(req.OMOTP)
+		}
 
 		destPhone := req.RecipientPhone
 		if serviceId == westafrica.ServiceIDBeninMTNPayout {
 			destPhone = westafrica.NormalizeBeninMSISDN(req.RecipientPhone)
+		} else if serviceId == westafrica.ServiceIDSenegalPayout {
+			destPhone = westafrica.NormalizeSenegalMSISDN(req.RecipientPhone)
 		}
 
 		apiKey := westafrica.ResolvePixelAPIKey()
@@ -1021,7 +1135,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				}
 				return id
 			}(),
-			OMOTP:      strconv.Itoa(req.OMOTP),
+			OMOTP:      omOTP,
 			CustomData: "your_custom_data",
 		}
 
@@ -1060,6 +1174,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		transactionStatus := "PENDING"
+		redirectURL = strings.TrimSpace(response.Data.SMSLink)
 		checkoutRef := response.Data.Response
 		if checkoutRef == "" {
 			checkoutRef = response.Data.TransactionID
@@ -1095,11 +1210,15 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
+		responsePayload := gin.H{
 			"message":    "Payment initiation successful",
 			"externalId": req.ExternalID,
 			"secureId":   secureID,
-		})
+		}
+		if redirectURL != "" {
+			responsePayload["redirectUrl"] = redirectURL
+		}
+		c.JSON(http.StatusOK, responsePayload)
 	case "XAF":
 		// check the mobile service sp
 		switch req.MobileMoneySP {
@@ -5676,18 +5795,11 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		}
 	}
 
-	// Calculate net amount (amount minus fees)
-	netAmount := callbackReq.Data.Amount - int(callbackReq.Data.AppFee)
-	if netAmount < 0 {
-		netAmount = callbackReq.Data.Amount // Fallback to original amount if calculation results in negative
-	}
-
 	// Prepare callback response for merchant
 	callbackResponse := CallbackResponse{
 		Amount:            callbackReq.Data.Amount,
 		Currency:          callbackReq.Data.Currency,
 		ExternalID:        transaction.ExternalID,
-		NetAmount:         netAmount,
 		SecureID:          transaction.SecureID,
 		TransactionReport: transactionReport,
 		TransactionStatus: transactionStatus,

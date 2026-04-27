@@ -68,6 +68,7 @@ type MobilePaymentRequest struct {
 	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
 	ExternalID       string `json:"externalId" binding:"required"`
 	CallbackURL      string `json:"callbackUrl" binding:"required"`
+	OMOTP            string `json:"om_otp"`
 }
 type CardPaymentRequest struct {
 	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`

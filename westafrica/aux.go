@@ -14,10 +14,13 @@ import (
 	"time"
 )
 
-// Benin MTN service IDs for Pixel core API (airtime endpoint).
+// West Africa service IDs for Pixel core API (airtime endpoint).
 const (
 	ServiceIDBeninMTNCollection = 305
 	ServiceIDBeninMTNPayout     = 304
+	ServiceIDSenegalOrangePayin = 153
+	ServiceIDSenegalWavePayin   = 151
+	ServiceIDSenegalPayout      = 150
 )
 
 var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)
@@ -55,6 +58,17 @@ func NormalizeBeninMSISDN(phone string) string {
 	}
 	if !strings.HasPrefix(s, "0") {
 		s = "0" + s
+	}
+	return s
+}
+
+// NormalizeSenegalMSISDN accepts +221/221/local numbers and returns local Senegal format.
+func NormalizeSenegalMSISDN(phone string) string {
+	s := strings.TrimSpace(phone)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.ReplaceAll(s, " ", "")
+	if strings.HasPrefix(s, "221") {
+		s = s[3:]
 	}
 	return s
 }
