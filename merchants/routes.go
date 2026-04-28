@@ -23,7 +23,6 @@ import (
 
 	"com.mam-laka/auth"
 	"com.mam-laka/balances"
-	"com.mam-laka/cameroon"
 	"com.mam-laka/database"
 	"com.mam-laka/flutterwave"
 	"com.mam-laka/korapay"
@@ -262,10 +261,11 @@ func handlePayinBalanceUpdate(db *gorm.DB, transaction *transactions.Transaction
 		credit = float64(callback.Benefice)
 	}
 
-	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, credit: %.2f",
-		transaction.ImpalaMerchantID, credit)
+	currency := strings.ToUpper(strings.TrimSpace(transaction.Currency))
+	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, Currency: %s, credit: %.2f",
+		transaction.ImpalaMerchantID, currency, credit)
 
-	if err := balances.AddXOFBalance(transaction.ImpalaMerchantID, credit); err != nil {
+	if err := balances.AddBalance(transaction.ImpalaMerchantID, currency, credit); err != nil {
 		return fmt.Errorf("failed to update merchant collection balance: %w", err)
 	}
 
@@ -282,13 +282,12 @@ func handlePayoutBalanceUpdate(db *gorm.DB, transaction *transactions.Transactio
 		return nil
 	}
 
-	log.Printf("Reversing payout balance for failed transaction - MerchantID: %s, Amount: %d",
-		transaction.ImpalaMerchantID, transaction.Amount)
+	currency := strings.ToUpper(strings.TrimSpace(transaction.Currency))
+	log.Printf("Reversing payout balance for failed transaction - MerchantID: %s, Currency: %s, Amount: %d",
+		transaction.ImpalaMerchantID, currency, transaction.Amount)
 
-	// For failed payout, reverse the deduction by adding back the original amount
-	if err := db.Model(&balances.MerchantBalance{}).
-		Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
-		Update("impaBalance", gorm.Expr("impaBalance + ?", transaction.Amount)).Error; err != nil {
+	// For failed payout, reverse the deduction by adding back the original amount.
+	if err := balances.AddBalance(transaction.ImpalaMerchantID, currency, float64(transaction.Amount)); err != nil {
 		return fmt.Errorf("failed to reverse payout balance: %w", err)
 	}
 
@@ -420,6 +419,29 @@ func normalizeSenegalProvider(input string) string {
 	}
 }
 
+func isCameroonMSISDN(digits string) bool {
+	if len(digits) < 2 {
+		return false
+	}
+	if payaza.DetectCountryCode(digits) == "CM" || strings.HasPrefix(digits, "237") {
+		return true
+	}
+	// Cameroon local numbers are typically 9 digits.
+	return len(digits) == 9
+}
+
+func normalizeCameroonProvider(input string) string {
+	sp := strings.ToUpper(strings.TrimSpace(input))
+	switch sp {
+	case "339", "MTN":
+		return "MTN"
+	case "337", "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+		return "ORANGE_MONEY"
+	default:
+		return sp
+	}
+}
+
 func resolveXOFPayoutServiceID(rawSP, recipientDigits string) int {
 	if id, err := strconv.Atoi(strings.TrimSpace(rawSP)); err == nil {
 		return id
@@ -436,6 +458,23 @@ func resolveXOFPayoutServiceID(rawSP, recipientDigits string) int {
 	}
 	if isBeninMSISDN(recipientDigits) && sp == "MTN" {
 		return westafrica.ServiceIDBeninMTNPayout
+	}
+	return 0
+}
+
+func resolveXAFPayoutServiceID(rawSP, recipientDigits string) int {
+	if id, err := strconv.Atoi(strings.TrimSpace(rawSP)); err == nil {
+		return id
+	}
+
+	sp := strings.ToUpper(strings.TrimSpace(rawSP))
+	if isCameroonMSISDN(recipientDigits) {
+		switch sp {
+		case "MTN":
+			return westafrica.ServiceIDCameroonMtnPayout
+		case "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+			return westafrica.ServiceIDCameroonOMPayout
+		}
 	}
 	return 0
 }
@@ -522,7 +561,7 @@ func MobilePaymentHandler(c *gin.Context) {
 		responseDescription = stkResponse.ResponseDescription
 		responseCode = stkResponse.ResponseCode
 
-	} else if req.Currency == "XOF" || req.Currency == "UGX" {
+	} else if req.Currency == "XOF" || req.Currency == "UGX" || req.Currency == "XAF" {
 
 		payerDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.PayerPhone), " ", ""))
 		countryCode := payaza.DetectCountryCode(payerDigits)
@@ -651,6 +690,64 @@ func MobilePaymentHandler(c *gin.Context) {
 				responseDescription = "Payment request pending"
 			}
 			responseCode = "0"
+			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
+			errror_stk = nil
+		} else if req.Currency == "XAF" && isCameroonMSISDN(payerDigits) {
+			ipnURL := westafrica.ResolveIPNURL()
+			apiKey := westafrica.ResolvePixelAPIKey()
+			if apiKey == "" {
+				apiKey = "PIX_489fb29b-d56e-43cd-99f7-1db09afc175e"
+			}
+
+			provider := normalizeCameroonProvider(req.MobileMoneySP)
+			serviceID := 0
+			switch provider {
+			case "MTN":
+				serviceID = westafrica.ServiceIDCameroonMtnPayin
+			case "ORANGE_MONEY":
+				serviceID = westafrica.ServiceIDCameroonOMPayin
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "UNSUPPORTED_NETWORK",
+					"message": "Only MTN and ORANGE-MONEY are supported for Cameroon",
+				})
+				return
+			}
+
+			dest := westafrica.NormalizeCameroonMSISDN(req.PayerPhone)
+			msisdnStored = dest
+			client := westafrica.NewAirtimeClient()
+			westReq := &westafrica.AirtimeRequest{
+				Amount:      req.Amount,
+				Destination: dest,
+				APIKey:      apiKey,
+				IPNUrl:      ipnURL,
+				ServiceID:   serviceID,
+				CustomData:  secureID,
+			}
+
+			log.Printf("[Cameroon collection] Pixel outbound amount=%d destination=%s service_id=%d ipn_url=%s secureId=%s merchant=%s",
+				req.Amount, dest, serviceID, ipnURL, secureID, req.ImpalaMerchantId)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+
+			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
+			if errWa != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				return
+			}
+
+			merchantRequestID = waResp.Data.TransactionID
+			checkoutRequestID = waResp.Data.Response
+			responseDescription = waResp.Message
+			if strings.TrimSpace(responseDescription) == "" {
+				responseDescription = "Payment request pending"
+			}
+			responseCode = "0"
+			if waResp.Data.Benefice > 0 {
+				netAmount = float64(waResp.Data.Benefice)
+			}
 			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
 			errror_stk = nil
 		} else {
@@ -1227,125 +1324,133 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, responsePayload)
 	case "XAF":
-		// check the mobile service sp
-		switch req.MobileMoneySP {
-		case "200": //cameroon collect
-			token, err := cameroon.GetAccessToken()
-			if err != nil {
-				log.Fatalf("Error getting token: %v", err)
-			}
-			secureID := mpesa.GenerateSecureID()
-
-			err = cameroon.SendCollectRequest(token, req.RecipientPhone, float64(req.Amount), secureID, "https://webhook.site/c24e095f-d9af-4b30-a2ad-3ae5dc048400")
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{
-					"details":       err,
-					"message":       "Payment initiation successful",
-					"code":          "1996",
-					"transactionId": req.ExternalID,
-					"secureId":      secureID,
-				})
-				return
-			}
-
-			// Create transaction record
-			newTransaction := &transactions.TransactionModel{
-				ImpalaMerchantID:    req.ImpalaMerchantId,
-				MerchantRequestID:   secureID,
-				CheckoutRequestID:   secureID,
-				ResponseDescription: "Payment initiated via Cameroon Collect",
-				ResponseCode:        "0",
-				Currency:            req.Currency,
-				Amount:              int(req.Amount),
-				Msisdn:              req.RecipientPhone,
-				NetAmount:           float64(req.Amount),
-				SecureID:            secureID,
-				SourceOfFunds:       req.MobileMoneySP,
-				ExternalID:          req.ExternalID,
-				CallbackURL:         req.CallbackURL,
-				DateAdded:           dateAdded,
-				TransactionReport:   "deposit",
-				TransactionStatus:   "PENDING",
-			}
-
-			db := database.GetConnection()
-			if err := db.Create(newTransaction).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
-				return
-			}
-
-			// Success response
-			c.JSON(http.StatusOK, gin.H{
-				"message":       "Payment initiation successful",
-				"code":          "1996",
-				"transactionId": req.ExternalID,
-				"secureId":      secureID,
+		xafBalance := balance.XAFBalance
+		recipientDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.RecipientPhone), " ", ""))
+		serviceId := resolveXAFPayoutServiceID(req.MobileMoneySP, recipientDigits)
+		if isCameroonMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDCameroonMtnPayout && serviceId != westafrica.ServiceIDCameroonOMPayout {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_SERVICE",
+				"message": "Cameroon payouts support mobileMoneySP \"MTN\" (338) or \"ORANGE-MONEY\" (336)",
 			})
+			return
+		}
 
-		case "201":
-			// cameroon collect
-			token, err := cameroon.GetAccessToken()
-			if err != nil {
-				log.Fatalf("Error getting token: %v", err)
-			}
-			secureID := mpesa.GenerateSecureID()
-			// check xaf balance
-			balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
-			if balance.XAFBalance < float64(req.Amount) {
+		cashinIDs := []int{westafrica.ServiceIDCameroonOMPayout, westafrica.ServiceIDCameroonMtnPayout}
+		cashoutIDs := []int{westafrica.ServiceIDCameroonOMPayin, westafrica.ServiceIDCameroonMtnPayin}
+
+		var transactionReport string
+		if IsInList(serviceId, cashoutIDs) {
+			transactionReport = "deposit"
+		} else if IsInList(serviceId, cashinIDs) {
+			transactionReport = "withdraw"
+			if xafBalance < float64(req.Amount) {
 				c.JSON(http.StatusOK, gin.H{
 					"status":  "FAILED",
 					"error":   "INSUFFICIENT_BALANCE",
-					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XAF, Required: %.2f XAF", balance.XAFBalance, float64(req.Amount)),
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f XAF, Required: %.2f XAF", xafBalance, float64(req.Amount)),
 				})
 				return
 			}
-
-			err = cameroon.SendDisburseRequest(token, req.RecipientPhone, float64(req.Amount), secureID, "https://webhook.site/c24e095f-d9af-4b30-a2ad-3ae5dc048400")
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{
-					"details":       err,
-					"message":       "Payment initiation successful",
-					"code":          "1996",
-					"transactionId": req.ExternalID,
-					"secureId":      secureID,
+			if err := balances.DeductXAFBalance(req.ImpalaMerchantId, float64(req.Amount)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "BALANCE_DEDUCTION_FAILED",
+					"message": "Failed to deduct amount from balance",
+					"details": err.Error(),
 				})
 				return
 			}
-
-			// Create transaction record
-			newTransaction := &transactions.TransactionModel{
-				ImpalaMerchantID:    req.ImpalaMerchantId,
-				MerchantRequestID:   secureID,
-				CheckoutRequestID:   secureID,
-				ResponseDescription: "Payment initiated via Cameroon Collect",
-				ResponseCode:        "0",
-				Currency:            req.Currency,
-				Amount:              int(req.Amount),
-				Msisdn:              req.RecipientPhone,
-				NetAmount:           float64(req.Amount),
-				SecureID:            secureID,
-				SourceOfFunds:       req.MobileMoneySP,
-				ExternalID:          req.ExternalID,
-				CallbackURL:         req.CallbackURL,
-				DateAdded:           dateAdded,
-				TransactionReport:   "withdraw",
-				TransactionStatus:   "PENDING",
-			}
-
-			db := database.GetConnection()
-			if err := db.Create(newTransaction).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record transaction", "details": err.Error()})
-				return
-			}
-
-			// Success response
-			c.JSON(http.StatusOK, gin.H{
-				"message":       "Withdrawal initiation successful",
-				"code":          "1997",
-				"transactionId": req.ExternalID,
-				"secureId":      secureID,
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNKNOWN_SERVICE_ID",
+				"message": "Unknown service ID. Please verify and try again.",
 			})
+			return
 		}
+
+		client := westafrica.NewAirtimeClient()
+		redirectURL := ""
+		destPhone := req.RecipientPhone
+		if serviceId == westafrica.ServiceIDCameroonMtnPayout || serviceId == westafrica.ServiceIDCameroonOMPayout {
+			destPhone = westafrica.NormalizeCameroonMSISDN(req.RecipientPhone)
+		}
+
+		apiKey := westafrica.ResolvePixelAPIKey()
+		if apiKey == "" {
+			apiKey = "PIX_489fb29b-d56e-43cd-99f7-1db09afc175e"
+		}
+		ipnWithdraw := westafrica.ResolveIPNURL()
+
+		westAfricaRequest := &westafrica.AirtimeRequest{
+			Amount:      int(req.Amount),
+			Destination: destPhone,
+			APIKey:      apiKey,
+			IPNUrl:      ipnWithdraw,
+			ServiceID:   serviceId,
+			CustomData:  "your_custom_data",
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
+		if err != nil {
+			details := ""
+			if response != nil {
+				details = response.Message
+			}
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error":   "Payment initiation failed",
+				"message": details,
+				"details": err.Error(),
+			})
+			return
+		}
+
+		transactionStatus := "PENDING"
+		redirectURL = strings.TrimSpace(response.Data.SMSLink)
+		checkoutRef := response.Data.Response
+		if checkoutRef == "" {
+			checkoutRef = response.Data.TransactionID
+		}
+
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   response.Data.TransactionID,
+			CheckoutRequestID:   checkoutRef,
+			ResponseDescription: response.Message,
+			ResponseCode:        response.Data.State,
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            secureID,
+			SourceOfFunds:       req.MobileMoneySP,
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   transactionReport,
+			TransactionStatus:   transactionStatus,
+		}
+
+		db := database.GetConnection()
+		if dbErr := db.Create(newTransaction).Error; dbErr != nil {
+			log.Printf("Failed to save transaction: %v", dbErr)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to record transaction",
+				"details": dbErr.Error(),
+			})
+			return
+		}
+
+		responsePayload := gin.H{
+			"message":    "Payment initiation successful",
+			"externalId": req.ExternalID,
+			"secureId":   secureID,
+		}
+		if redirectURL != "" {
+			responsePayload["redirectUrl"] = redirectURL
+		}
+		c.JSON(http.StatusOK, responsePayload)
 	case "ZMW":
 		zmwBalance := balance.ZMWBalance
 		if zmwBalance < float64(req.Amount) {

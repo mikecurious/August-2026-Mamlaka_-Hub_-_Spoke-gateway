@@ -255,20 +255,17 @@ func main88() {
 /*
 
 
-	AppconumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
-	AppconumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
-	AppinitiatorName      = "collins"
-	AppsecurityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
-	APPshortCode          = "3008826"
+TWDPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	TWDPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
 
 
 */
 
 const (
-	conumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
-	conumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
+	conumerKey         = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
+	conumerSecret      = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
 	initiatorName      = "collins"
-	securityCredential = "i0Bz0/V2p4VXAvWcacsQ4f4CF6yZssl9Qx3KJyOw3Ahe3bI34wlYq2xoN2XjctkNrQDLfGuJchS9ObXmMVoMA1/hgqLfhYg+Cw3PVWcY9qoje2cd/H3aY6ALYDkKbYjUQGVA+gtFr3+8TJfrnzs6ebaP1wiOFEXtQGKb49aIBhqIXY/QMvVzfbKlsOeuR36BJKnhl2HNmzb9h3ub5EdQMKfb8GisjxkIaJRLziWyFqAnCVE+WOtzmJvRYYPv+WbvWFMZZL7MenOkh5V0zGUYMFxYTqRwSU2pTazB6largFJ/io/p6mMXti6bslkY/kIu2OKGTo2qEWfj9e53yM32ug=="
+	securityCredential = "SPRZ15haME9UCkGMLQCb+bOuXBARyQR4e3eYLMV+mB9yJkYR7fQHRqcm3DmodHYB0QP15iVBlcRRntLcX3s9j9hgAEakjOOW0cbt8Vq0hUNxd/NUDjEDfXSuaN+UaXxUD8NUC+yH2H1C74gzVIBPAann6ctpa0DB5UYVRbeYB12gJkAYx6/Wa9Zan0cQB9PK9xQAG0Wo0n/lMew/5r1ynGRPwUfepJZgG8uroH6wfVHuvfLXdv6I8jnmlCM58c+xtLF39cy5lMCUXF6R4U7O1hvasPKJzvSlim730jz3NpwHBbpEK3/AAlWmOKemfwUItvUZbryfIivffIQ51GCQ9w=="
 	shortCode          = "3008826"
 	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"

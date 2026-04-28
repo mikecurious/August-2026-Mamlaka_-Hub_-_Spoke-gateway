@@ -22,6 +22,10 @@ const (
 	ServiceIDSenegalWavePayin   = 151
 	ServiceIDSenegalWavePayout  = 150
 	ServiceIDSenegalOrangePayout = 152
+	ServiceIDCameroonOMPayin    = 337
+	ServiceIDCameroonMtnPayin   = 339
+	ServiceIDCameroonOMPayout   = 336
+	ServiceIDCameroonMtnPayout  = 338
 )
 
 var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)
@@ -69,6 +73,17 @@ func NormalizeSenegalMSISDN(phone string) string {
 	s = strings.TrimPrefix(s, "+")
 	s = strings.ReplaceAll(s, " ", "")
 	if strings.HasPrefix(s, "221") {
+		s = s[3:]
+	}
+	return s
+}
+
+// NormalizeCameroonMSISDN accepts +237/237/local numbers and returns local Cameroon format.
+func NormalizeCameroonMSISDN(phone string) string {
+	s := strings.TrimSpace(phone)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.ReplaceAll(s, " ", "")
+	if strings.HasPrefix(s, "237") {
 		s = s[3:]
 	}
 	return s

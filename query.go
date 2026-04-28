@@ -11,13 +11,11 @@ package main
 // 	"github.com/gin-gonic/gin"
 // )
 
-// // AccessTokenResponse maps the OAuth response from MPESA
 // type AccessTokenResponse struct {
 // 	AccessToken string `json:"access_token"`
 // 	ExpiresIn   string `json:"expires_in"`
 // }
 
-// // TransactionStatusInput is the request body for checking status
 // type TransactionStatusInput struct {
 // 	TransactionID string `json:"transaction_id" binding:"required"`
 // }
@@ -32,7 +30,6 @@ package main
 // 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 // )
 
-// // getAccessToken gets an OAuth access token from MPESA
 // func getAccessToken() (string, error) {
 // 	client := &http.Client{}
 // 	req, err := http.NewRequest("GET", tokenURL, nil)
@@ -62,7 +59,6 @@ package main
 // 	return tokenResp.AccessToken, nil
 // }
 
-// // checkTransactionStatus calls MPESA Transaction Status Query API
 // func checkTransactionStatus(transactionID string) (map[string]interface{}, error) {
 // 	token, err := getAccessToken()
 // 	if err != nil {
@@ -112,9 +108,7 @@ package main
 // 	return pretty, nil
 // }
 
-// // main starts a small HTTP API to query MPESA transaction status.
-// // Run with: go run query.go
-// func main9() {
+// func main() {
 // 	r := gin.Default()
 
 // 	r.POST("/transaction-status", func(c *gin.Context) {

@@ -14,7 +14,7 @@ import (
 func main99() {
 	// Path to the downloaded certificate
 	certPath := "ProductionCertificate.cer"
-	initiatorPassword := "#Collsi@lcodes-003"
+	initiatorPassword := "Sad@magara12345&"
 
 	securityCredential, err := GenerateSecurityCredential(certPath, initiatorPassword)
 	if err != nil {

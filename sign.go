@@ -12,9 +12,8 @@ package main
 // )
 
 // func main() {
-// 	// Path to the downloaded certificate
 // 	certPath := "ProductionCertificate.cer"
-// 	initiatorPassword := "SaloFlex@456_&3mvy"
+// 	initiatorPassword := "Sad@magara12345&"
 
 // 	securityCredential, err := GenerateSecurityCredential(certPath, initiatorPassword)
 // 	if err != nil {
@@ -32,7 +31,6 @@ package main
 
 // 	block, _ := pem.Decode(certData)
 // 	if block == nil {
-// 		// If not PEM, try to parse as DER (most common format for .cer files)
 // 		cert, err := x509.ParseCertificate(certData)
 // 		if err != nil {
 // 			return "", fmt.Errorf("failed to parse certificate as DER: %v", err)
@@ -40,9 +38,7 @@ package main
 // 		return encryptPassword(cert, password)
 // 	}
 
-// 	// Validate PEM block type (should be "CERTIFICATE")
 // 	if block.Type != "CERTIFICATE" {
-// 		// If PEM block exists but isn't a certificate, try parsing raw bytes as DER
 // 		cert, err := x509.ParseCertificate(certData)
 // 		if err != nil {
 // 			return "", fmt.Errorf("PEM block type is %s, expected CERTIFICATE: %v", block.Type, err)
@@ -50,7 +46,6 @@ package main
 // 		return encryptPassword(cert, password)
 // 	}
 
-// 	// Parse PEM certificate
 // 	cert, err := x509.ParseCertificate(block.Bytes)
 // 	if err != nil {
 // 		return "", fmt.Errorf("failed to parse PEM certificate: %v", err)
@@ -64,19 +59,16 @@ package main
 // 		return "", fmt.Errorf("password cannot be empty")
 // 	}
 
-// 	// Verify that the public key is RSA
 // 	pub, ok := cert.PublicKey.(*rsa.PublicKey)
 // 	if !ok {
 // 		return "", fmt.Errorf("certificate does not contain an RSA public key")
 // 	}
 
-// 	// Use RSA PKCS#1 v1.5 padding (not OAEP)
 // 	encryptedBytes, err := rsa.EncryptPKCS1v15(rand.Reader, pub, []byte(password))
 // 	if err != nil {
 // 		return "", fmt.Errorf("error encrypting password: %v", err)
 // 	}
 
-// 	// Base64 encode the result
 // 	encoded := base64.StdEncoding.EncodeToString(encryptedBytes)
 // 	return encoded, nil
 // }
