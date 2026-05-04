@@ -48,10 +48,6 @@ Supported providers:
 }
 ```
 
-### Service IDs (provider-side mapping)
-
-- `ORANGE-MONEY` payin -> `153`
-- `WAVE` payin -> `151`
 
 ### Phone format
 
@@ -87,8 +83,7 @@ The response format stays the same and includes `redirectUrl` when the provider 
 
 For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
 
-- `WAVE` maps to service `150`
-- `ORANGE-MONEY` maps to service `152`
+
 
 ```json
 {
@@ -102,12 +97,6 @@ For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
 }
 ```
 
-### Service IDs (provider-side mapping)
-
-- Senegal payout `WAVE` -> `150`
-- Senegal payout `ORANGE-MONEY` -> `152`
-
-### Response (Our API)
 
 ```json
 {
@@ -118,29 +107,13 @@ For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
 }
 ```
 
-`redirectUrl` is returned only when available from provider `sms_link`.
 
 ---
 
-## 3) Provider Callback (Reference)
 
-The provider callback is consumed internally by Mam-laka at:
-
-- `https://payments.mam-laka.com/api/v1/west-africa/callback`
-
-Provider callbacks include fields such as:
-
-- `transaction_id`
-- `state` (`SUCCESSFUL`, `FAILED`, ...)
-- `sms_link`
-
-These provider-specific details are not exposed directly to merchants.
-
----
 
 ## 4) Merchant Callback Format (Our API -> Merchant)
 
-For Senegal, callback payload no longer includes `netAmount`.
 
 ### Success
 

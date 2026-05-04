@@ -31,57 +31,14 @@ The merchant-facing API format remains the same as other channels.
 }
 ```
 
-### Notes
 
-- Uses Flutterwave: `POST /v3/charges?type=mobile_money_rwanda`
-- The flow matches Zambia collection: pass `phone_number` + normalized `account_bank`.
-- `mobileMoneySP`/`account_bank` normalization:
-  - `3044`, `AIRTEL` -> `Airtel`
-  - `257`, `MPS`, `MOBILE MONEY` -> `MPS`
-  - `3045`, `MTN` -> `MTN`
-  - `3046`, `ZAMTEL` -> `ZAMTEL`
-  - `2236`, `ZM360000`, `ECOBANK ZAMBIA` -> `ZM360000`
-- Default customer email sent upstream: `tech@mam-laka.com`
-- Internal `tx_ref` is generated from our `secureId`
 
-### Response (Our API)
 
 ```json
 {
   "message": "Payment initiation successful",
   "transactionId": "....",
   "secureId": "...."
-}
-```
-
----
-
-## 2) Flutterwave Callback URL
-
-Set this callback URL in Flutterwave for charge events:
-
-- `https://payments.mam-laka.com/api/v1/flutterwave/callback`
-
-Supported event:
-
-- `charge.completed`
-
----
-
-## 3) Provider Callback Example
-
-### Collection success callback (from Flutterwave)
-
-```json
-{
-  "event": "charge.completed",
-  "data": {
-    "tx_ref": "70skksks",
-    "currency": "RWF",
-    "amount": 5000,
-    "app_fee": 0.5,
-    "status": "successful"
-  }
 }
 ```
 
