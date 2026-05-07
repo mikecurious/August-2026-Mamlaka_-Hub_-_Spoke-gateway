@@ -127,8 +127,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    "https://webhook.site/aa0999b6-5494-40f6-a84a-b6ac624d525e",
-		"ResultURL":          "https://webhook.site/aa0999b6-5494-40f6-a84a-b6ac624d525e",
+		"QueueTimeOutURL":    "https://webhook.site/0f36025a-6733-4249-8ca1-e44c37fd8a28",
+		"ResultURL":          "https://webhook.site/0f36025a-6733-4249-8ca1-e44c37fd8a28",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main99() {
+func main() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -196,20 +196,20 @@ func main99() {
 	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	// 		return
 	// 	}
-	resp, err := sendB2CPayment("254768899729", "10")
-	if err != nil {
-		fmt.Println("Error sending B2C payment:", err)
-	}
-
-	fmt.Println("B2C Payment Response:", resp)
-
-	// resp2, err1 := checkBalance()
-
-	// if err1 != nil {
-	// 	fmt.Println("Error checking balance:", err1)
+	// resp, err := sendB2CPayment("254768899729", "10")
+	// if err != nil {
+	// 	fmt.Println("Error sending B2C payment:", err)
 	// }
 
-	// fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("B2C Payment Response:", resp)
+
+	resp2, err1 := checkBalance()
+
+	if err1 != nil {
+		fmt.Println("Error checking balance:", err1)
+	}
+
+	fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 

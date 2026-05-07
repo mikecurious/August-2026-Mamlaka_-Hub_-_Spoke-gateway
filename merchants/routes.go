@@ -2166,7 +2166,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			// Process the callback response to match your required format
 			callbackResponse := map[string]interface{}{
 				"transactionStatus": "FAILED",
-				"transactionReport": "FAILED",
+				"transactionReport": resultDesc,
 				"currency":          "KES", // Default to KES, adjust if necessary
 				"amount":            transaction.Amount,
 				"netAmount":         transaction.Amount,
