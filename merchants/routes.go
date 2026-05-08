@@ -5886,11 +5886,11 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 
 	if callbackReq.Event == "charge.completed" {
 		if callbackReq.Data.Status == "successful" {
-			newStatus = "success"
+			newStatus = "COMPLETE"
 			transactionStatus = "COMPLETE"
 			transactionReport = "COMPLETE"
 		} else if callbackReq.Data.Status == "failed" {
-			newStatus = "failed"
+			newStatus = "FAILED"
 			transactionStatus = "FAILED"
 			transactionReport = "FAILED"
 			// Extract failure reason from processor response
@@ -5905,11 +5905,11 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		}
 	} else if callbackReq.Event == "transfer.completed" {
 		if strings.ToUpper(callbackReq.Data.Status) == "SUCCESSFUL" {
-			newStatus = "success"
+			newStatus = "COMPLETE"
 			transactionStatus = "COMPLETE"
 			transactionReport = "COMPLETE"
 		} else {
-			newStatus = "failed"
+			newStatus = "FAILED"
 			transactionStatus = "FAILED"
 			transactionReport = "FAILED"
 			failureReason = callbackReq.Data.CompleteMessage
@@ -5934,7 +5934,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	// Balance handling on success:
 	// - collection: credit collection wallet
 	// - withdraw: deduct payout wallet
-	if newStatus == "success" {
+	if newStatus == "COMPLETE" {
 		if transaction.TransactionReport == "collection" {
 			var coll balances.MerchantCollectionBalance
 			err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&coll).Error
