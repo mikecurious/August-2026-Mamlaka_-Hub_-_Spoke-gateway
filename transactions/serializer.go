@@ -16,8 +16,9 @@ func NewTransactionSerializer(c *gin.Context, transaction TransactionModel) *Tra
 
 func (s *TransactionSerializer) Response() map[string]interface{} {
 	status := s.Transaction.TransactionStatus
-	if strings.EqualFold(strings.TrimSpace(status), "success") {
-		status = "COMPLETE"
+	normalizedStatus := strings.ToUpper(strings.TrimSpace(status))
+	if normalizedStatus == "SUCCESS" || normalizedStatus == "COMPLETE" {
+		status = "COMPLETED"
 	}
 
 	return map[string]interface{}{
