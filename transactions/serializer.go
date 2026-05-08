@@ -2,6 +2,7 @@ package transactions
 
 import (
 	"github.com/gin-gonic/gin"
+	"strings"
 )
 
 type TransactionSerializer struct {
@@ -14,10 +15,15 @@ func NewTransactionSerializer(c *gin.Context, transaction TransactionModel) *Tra
 }
 
 func (s *TransactionSerializer) Response() map[string]interface{} {
+	status := s.Transaction.TransactionStatus
+	if strings.EqualFold(strings.TrimSpace(status), "success") {
+		status = "COMPLETE"
+	}
+
 	return map[string]interface{}{
 		// "id":               s.Transaction.ID,
 		"impalaMerchantId": s.Transaction.ImpalaMerchantID,
-		"transaction_status":   s.Transaction.TransactionStatus,
+		"transaction_status": status,
 		"transaction_report": s.Transaction.TransactionReport,
 		"currency":           s.Transaction.Currency,
 		"amount":             s.Transaction.Amount,
