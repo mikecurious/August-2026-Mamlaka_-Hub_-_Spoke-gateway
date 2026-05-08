@@ -5762,14 +5762,45 @@ func getStr(m map[string]interface{}, keys ...string) string {
 	return ""
 }
 
+const flutterwaveForwardCallbackURL = "https://api.payer-gateway.com/api/v1/flutterwave/callback"
+
+func forwardFlutterwaveCallback(rawPayload []byte) (int, []byte, error) {
+	resp, err := http.Post(flutterwaveForwardCallbackURL, "application/json", bytes.NewBuffer(rawPayload))
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, err
+	}
+
+	return resp.StatusCode, body, nil
+}
+
 // FlutterwaveCallbackHandler handles Flutterwave payment callbacks
 func FlutterwaveCallbackHandler(c *gin.Context) {
 	log.Println("📞 Received Flutterwave callback")
 
+	rawPayload, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Printf("Failed to read Flutterwave callback request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": "failed to read request body"})
+		return
+	}
+
 	// Parse the callback request
 	var callbackReq FlutterwaveCallbackRequest
-	if err := c.ShouldBindJSON(&callbackReq); err != nil {
+	if err := json.Unmarshal(rawPayload, &callbackReq); err != nil {
 		log.Printf("Failed to parse Flutterwave callback request: %v", err)
+		if statusCode, responseBody, forwardErr := forwardFlutterwaveCallback(rawPayload); forwardErr == nil {
+			log.Printf("Forwarded invalid Flutterwave payload to fallback URL successfully")
+			c.Data(statusCode, "application/json", responseBody)
+			return
+		} else {
+			log.Printf("Failed to forward invalid Flutterwave payload: %v", forwardErr)
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid callback payload", "details": err.Error()})
 		return
 	}
@@ -5778,7 +5809,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	log.Printf("🔍 Processing Flutterwave callback event=%s tx_ref=%s reference=%s", callbackReq.Event, callbackReq.Data.TxRef, callbackReq.Data.Reference)
 
 	// Process the callback
-	err := flutterwave.ProcessFlutterwaveCallback(flutterwave.FlutterwaveCallbackRequest{
+	err = flutterwave.ProcessFlutterwaveCallback(flutterwave.FlutterwaveCallbackRequest{
 		Event: callbackReq.Event,
 		Data: flutterwave.FlutterwaveCallbackData{
 			ID:                callbackReq.Data.ID,
@@ -5813,6 +5844,13 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("Failed to process Flutterwave callback: %v", err)
+		if statusCode, responseBody, forwardErr := forwardFlutterwaveCallback(rawPayload); forwardErr == nil {
+			log.Printf("Forwarded unprocessed Flutterwave payload to fallback URL successfully")
+			c.Data(statusCode, "application/json", responseBody)
+			return
+		} else {
+			log.Printf("Failed to forward unprocessed Flutterwave payload: %v", forwardErr)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process callback"})
 		return
 	}
@@ -5829,6 +5867,13 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	err = db.Where("secureId = ? OR merchantRequestID = ? OR checkoutRequestID = ?", ref, ref, ref).Order("id DESC").First(&transaction).Error
 	if err != nil {
 		log.Printf("Transaction not found for reference: %s", callbackReq.Data.TxRef)
+		if statusCode, responseBody, forwardErr := forwardFlutterwaveCallback(rawPayload); forwardErr == nil {
+			log.Printf("Forwarded transaction-not-found Flutterwave payload to fallback URL successfully")
+			c.Data(statusCode, "application/json", responseBody)
+			return
+		} else {
+			log.Printf("Failed to forward transaction-not-found Flutterwave payload: %v", forwardErr)
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found"})
 		return
 	}

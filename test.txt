@@ -4,3 +4,38 @@ $pubKey = openssl_pkey_get_public(file_get_contents($certificatePath));
 openssl_public_encrypt($initiatorPassword, $encrypted, $pubKey, OPENSSL_PKCS1_PADDING);
 $securityCredential = base64_encode($encrypted);
 // Use $securityCredential in your B2C API request header
+
+
+curl --location 'https://api.payer-gateway.com/api/v1/flutterwave/callback' \
+--header 'Content-Type: application/json' \
+--data '{
+  "event": "charge.completed",
+  "event.type": "MOBILE_MONEY",
+  "data": {
+    "id": 1902562078,
+    "tx_ref": "jS19hlFtpwthQMKOdrUtXw==",
+    "flw_ref": "UXBDCF177816566777256508",
+    "device_fingerprint": "N/A",
+    "amount": 200,
+    "currency": "ZMW",
+    "charged_amount": 200,
+    "app_fee": 6,
+    "merchant_fee": 4,
+    "vat": 1,
+    "processor_response": "Transaction successful",
+    "auth_model": "MOBILE_MONEY",
+    "ip": "52.18.161.235",
+    "narration": "Zambia mobile money charge",
+    "status": "successful",
+    "payment_type": "mobilemoneyzambia",
+    "created_at": "2026-05-08T12:36:00.000Z",
+    "account_id": 3287467,
+    "customer": {
+      "id": 1239815700,
+      "name": "Test Customer",
+      "phone_number": "2609XXXXXXX",
+      "email": "test@example.com",
+      "created_at": "2026-05-08T12:35:00.000Z"
+    }
+  }
+}'
