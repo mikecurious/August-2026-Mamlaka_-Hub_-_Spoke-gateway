@@ -5972,12 +5972,21 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		go func() {
 			// Send HTTP POST request to merchant's callback URL
 			jsonData, _ := json.Marshal(callbackResponse)
+			log.Printf("Sending callback to merchant URL: %s", transaction.CallbackURL)
+			log.Printf("Callback request payload URL=%s body=%s", transaction.CallbackURL, string(jsonData))
 			resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(jsonData))
 			if err != nil {
 				log.Printf("Failed to send callback to merchant: %v", err)
 			} else {
+				responseBody, readErr := io.ReadAll(resp.Body)
 				resp.Body.Close()
-				log.Printf("Callback sent to merchant: %s", transaction.CallbackURL)
+				if readErr != nil {
+					log.Printf("Callback response read failed URL=%s status=%d error=%v",
+						transaction.CallbackURL, resp.StatusCode, readErr)
+				} else {
+					log.Printf("Callback response URL=%s status=%d body=%s",
+						transaction.CallbackURL, resp.StatusCode, string(responseBody))
+				}
 			}
 		}()
 	}
