@@ -186,7 +186,7 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func main999() {
+func mai999() {
 	// r := gin.Default()
 
 	// B2C Payment
@@ -269,19 +269,18 @@ func main999() {
 
 */
 
-// 	TWDPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-// 	TWDPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-// 	TWDPayB2CInitiatorName  = "Collin"
-// 	TWDPayB2CPassword       = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-// 	TWDPayB2CShortCode      = "3008816"
+// CrayC2BConsumerKey       = "v1PsGtti6d1GaS1JYV9Txo2S5dEI3Ea3V6SdCQ9B98HVuXW5"
+// CrayC2BConsumerSecret    = "3JP0v5g0AJm2GEUAVDOD9sbxp1XPpQwNhAoAqZFBbBTt0JMXDHGIs46X7NkrVQAo"
+// CrayC2BBusinessShortCode = "4041603"
 // )
 
 const (
-	conumerKey         = "NfAquJ6uJGrGVEZKl7w3bgOdf8fat40j540E3xnfZTnZ9zSH"
-	conumerSecret      = "zv4mdYZ0RJ6sGu2jVAKIMVih4HAhbso2LVyCWvsFOr5FlbYL5wFciuHrm8NzwgkU"
-	initiatorName      = "collins"
-	securityCredential = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	shortCode          = "3008816"
+	conumerKey    = "3RNMVF7lei58Sm3xGGJv4qkTgz3laFZ3zXi7BI7JjE5pasq5"
+	conumerSecret = "pe5nTUfjgmMXnA8AQ1OX7vuILL7nPZOGqG9JFrTQPOYtDAuQrQBu9kmOcx0TdcLJ"
+	initiatorName = "collins"
+
+	securityCredential = "H3y/unl9dwsviXb6RFQ20Fzdp3DBGWuFuec4tbVgCUQGFZeLVuOILMZLmzYTLGqRCXbxPmlou/VdYrLBwANoFbK53ZSdlW9DsLzWtcRSkrDEoiQU9mDpp4e9T8pPC1Jbg3rISAdTrOP72OBnZPZu5rBkIgMnBPnVa21TJfy3K3xY+Gta+txH4cbguoJ1/ffmhJmMqX0Gcr90N6ozTOWxVsTh4WE904YWxagJrK4iTvHBIAwQ07lnto2dlSMNYAiYwEJF4l5KoNa7v2gtsUr7b3VbQe+4TzQ4KE1N4BHMKIe/tJ7ml2QNn3USyK5gpcKT9zYX75gazfkfg4G3fw9QeA=="
+	shortCode          = "3008814"
 	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
