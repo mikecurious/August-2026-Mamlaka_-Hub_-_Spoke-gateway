@@ -479,6 +479,16 @@ func resolveXAFPayoutServiceID(rawSP, recipientDigits string) int {
 	return 0
 }
 
+const maxKesTestAmountSharedPaybill4130455 = 10
+
+func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
+	if req.TestTransaction {
+		return true
+	}
+	ext := strings.TrimSpace(strings.ToLower(req.ExternalID))
+	return len(ext) >= 4 && strings.HasPrefix(ext, "test")
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Authrorization already dont on anothr page before this handler is called
@@ -551,7 +561,18 @@ func MobilePaymentHandler(c *gin.Context) {
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
+			// Lipad: full use of primary paybill 4130455 (no test-amount cap here).
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
 		} else {
+			// Default: shared paybill 4130455 — cap flagged test flows for other merchants.
+			if isMpesaSharedPaybillTestFlow(&req) && req.Amount > maxKesTestAmountSharedPaybill4130455 {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "TEST_AMOUNT_LIMIT",
+					"message": "contact support for activation",
+				})
+				return
+			}
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
 
 		}
