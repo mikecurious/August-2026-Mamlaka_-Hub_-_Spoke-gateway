@@ -6,11 +6,69 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"com.mam-laka/transactions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// buildMpesaMerchantCallback is the standard webhook payload for KES M-Pesa pay-in/payout.
+func buildMpesaMerchantCallback(tx *transactions.TransactionModel, transactionStatus, transactionReport string, amount int, reference string) map[string]interface{} {
+	payload := map[string]interface{}{
+		"amount":            amount,
+		"currency":          tx.Currency,
+		"externalId":        tx.ExternalID,
+		"secureId":          tx.SecureID,
+		"transactionReport": transactionReport,
+		"transactionStatus": transactionStatus,
+	}
+	if reference != "" {
+		payload["reference"] = reference
+	} else if tx.ProviderReference != "" {
+		payload["reference"] = tx.ProviderReference
+	}
+	return payload
+}
+
+func metadataValueString(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return strconv.FormatInt(int64(t), 10)
+	case int:
+		return strconv.Itoa(t)
+	case int64:
+		return strconv.FormatInt(t, 10)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func metadataValueInt(v interface{}, fallback int) int {
+	switch t := v.(type) {
+	case float64:
+		return int(t)
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case string:
+		if n, err := strconv.Atoi(t); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func mpesaReceiptFromSTKMetadata(metadata map[string]interface{}) string {
+	return metadataValueString(metadata["MpesaReceiptNumber"])
+}
+
+func mpesaReceiptFromB2CMetadata(metadata map[string]interface{}) string {
+	return metadataValueString(metadata["TransactionReceipt"])
+}
 
 // SendCallback now accepts the callbackBody.Body type directly
 func SendCallback(transactionID uint, callbackBody interface{}) error {

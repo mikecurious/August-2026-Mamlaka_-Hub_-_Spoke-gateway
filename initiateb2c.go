@@ -10,9 +10,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
+
+type StkPushResponse struct {
+	MerchantRequestID   string `json:"MerchantRequestID"`
+	CheckoutRequestID   string `json:"CheckoutRequestID"`
+	ResponseCode        string `json:"ResponseCode"`
+	ResponseDescription string `json:"ResponseDescription"`
+	CustomerMessage     string `json:"CustomerMessage"`
+}
+
+type StkPushRequest struct {
+	BusinessShortCode string `json:"BusinessShortCode"`
+	Password          string `json:"Password"`
+	Timestamp         string `json:"Timestamp"`
+	TransactionType   string `json:"TransactionType"`
+	Amount            int    `json:"Amount"`
+	PartyA            string `json:"PartyA"`
+	PartyB            string `json:"PartyB"`
+	PhoneNumber       string `json:"PhoneNumber"`
+	CallBackURL       string `json:"CallBackURL"`
+	AccountReference  string `json:"AccountReference"`
+	TransactionDesc   string `json:"TransactionDesc"`
+}
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   string `json:"expires_in"`
+}
 
 // const (
 // 	conumerKey         = "UH4vHUz8q9IW5XQq9jo0EBPAJ35CsDAphccVp2DFCGMywROu"
@@ -127,8 +155,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    "https://webhook.site/0f36025a-6733-4249-8ca1-e44c37fd8a28",
-		"ResultURL":          "https://webhook.site/0f36025a-6733-4249-8ca1-e44c37fd8a28",
+		"QueueTimeOutURL":    "https://webhook.site/cd090baa-4f28-4d75-ab5e-6f536c36de81",
+		"ResultURL":          "https://webhook.site/cd090baa-4f28-4d75-ab5e-6f536c36de81",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -163,8 +191,8 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 		"TransactionID":      transactionID,
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
-		"ResultURL":          "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
-		"QueueTimeOutURL":    "https://webhook.site/52bb1efc-6e06-41c9-9073-b2685de6f5ed",
+		"ResultURL":          "https://webhook.site/6667752f-d403-4d57-9405-15bdfa9cdc31",
+		"QueueTimeOutURL":    "https://webhook.site/6667752f-d403-4d57-9405-15bdfa9cdc31",
 		"Remarks":            "Check transaction status",
 	}
 
@@ -186,7 +214,118 @@ func checkTransactionStatus(transactionID string) (map[string]interface{}, error
 	return pretty, nil
 }
 
-func mai999() {
+func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
+	url := "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+
+	// Create the basic auth header
+	credentials := base64.StdEncoding.EncodeToString([]byte(consumerKey + ":" + consumerSecret))
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Basic "+credentials)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get access token: %s", resp.Status)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var tokenResponse TokenResponse
+	err = json.Unmarshal(body, &tokenResponse)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenResponse.AccessToken, nil
+}
+
+func StkPush(phoneNumber string, amount int, callbackURL, accountReference, consumerKey, consumerSecret, businessShortCode, passKey string) (*StkPushResponse, error) {
+	url := "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+	timestamp := time.Now().Format("20060102150405")
+	token, err := GenerateAccessToken(consumerKey, consumerSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	password := base64.StdEncoding.EncodeToString([]byte(businessShortCode + passKey + timestamp))
+
+	requestBody := StkPushRequest{
+		BusinessShortCode: businessShortCode,
+		Password:          password,
+		Timestamp:         timestamp,
+		TransactionType:   "CustomerPayBillOnline",
+		Amount:            amount,
+		PartyA:            phoneNumber,
+		PartyB:            businessShortCode,
+		PhoneNumber:       phoneNumber,
+		CallBackURL:       callbackURL,
+		AccountReference:  accountReference,
+		TransactionDesc:   "Payment",
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to initiate STK push: %s, %s", resp.Status, string(body))
+	}
+
+	// Parse the response body
+	var stkResponse StkPushResponse
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(body, &stkResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log or print the response for debugging
+	// fmt.Println("STK Push Response:", stkResponse)
+
+	// Return the parsed response
+	return &stkResponse, nil
+}
+
+func main() {
+	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
+	stkResponse, err := StkPush("254768899729", 2, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	if err != nil {
+		log.Fatal("Error initiating STK push:", err)
+	}
+	fmt.Println("STK Push Response:", stkResponse)
+
 	// r := gin.Default()
 
 	// B2C Payment
@@ -203,13 +342,13 @@ func mai999() {
 
 	// fmt.Println("B2C Payment Response:", resp)
 
-	resp2, err1 := checkBalance()
+	// resp2, err1 := checkBalance()
 
-	if err1 != nil {
-		fmt.Println("Error checking balance:", err1)
-	}
+	// if err1 != nil {
+	// 	fmt.Println("Error checking balance:", err1)
+	// }
 
-	fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -275,13 +414,13 @@ func mai999() {
 // )
 
 const (
-	conumerKey    = "3RNMVF7lei58Sm3xGGJv4qkTgz3laFZ3zXi7BI7JjE5pasq5"
-	conumerSecret = "pe5nTUfjgmMXnA8AQ1OX7vuILL7nPZOGqG9JFrTQPOYtDAuQrQBu9kmOcx0TdcLJ"
-	initiatorName = "collins"
-
-	securityCredential = "H3y/unl9dwsviXb6RFQ20Fzdp3DBGWuFuec4tbVgCUQGFZeLVuOILMZLmzYTLGqRCXbxPmlou/VdYrLBwANoFbK53ZSdlW9DsLzWtcRSkrDEoiQU9mDpp4e9T8pPC1Jbg3rISAdTrOP72OBnZPZu5rBkIgMnBPnVa21TJfy3K3xY+Gta+txH4cbguoJ1/ffmhJmMqX0Gcr90N6ozTOWxVsTh4WE904YWxagJrK4iTvHBIAwQ07lnto2dlSMNYAiYwEJF4l5KoNa7v2gtsUr7b3VbQe+4TzQ4KE1N4BHMKIe/tJ7ml2QNn3USyK5gpcKT9zYX75gazfkfg4G3fw9QeA=="
-	shortCode          = "3008814"
-	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
+	conumerKey         = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
+	conumerSecret      = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
+	c2bPassKey         = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
+	initiatorName      = "Collins"
+	securityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
+	shortCode          = "4041887"
+	callbackURL        = "https://webhook.site/cd090baa-4f28-4d75-ab5e-6f536c36de81"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"

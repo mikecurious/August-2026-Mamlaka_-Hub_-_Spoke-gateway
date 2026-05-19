@@ -28,6 +28,8 @@ type TransactionModel struct {
 	ResponseCode        string  `gorm:"column:responseCode" json:"responseCode"`
 	ResponseDescription string  `gorm:"column:responseDescription" json:"responseDescription"`
 	CallbackStatus      string  `gorm:"column:callbackStatus" json:"callbackStatus"`
+	// ProviderReference stores M-Pesa receipt (e.g. MpesaReceiptNumber / TransactionReceipt) on success.
+	ProviderReference string `gorm:"column:providerReference" json:"providerReference"`
 }
 
 func (TransactionModel) TableName() string {

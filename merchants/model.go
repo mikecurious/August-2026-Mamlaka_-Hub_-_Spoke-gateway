@@ -69,7 +69,7 @@ type MobilePaymentRequest struct {
 	ExternalID       string `json:"externalId" binding:"required"`
 	CallbackURL      string `json:"callbackUrl" binding:"required"`
 	OMOTP            string `json:"om_otp"`
-	// TestTransaction, when true, applies a 10 KES max for non-lipad merchants on shared paybill 4130455.
+	// TestTransaction, when true, applies a 10 KES max for non-lipad merchants on shared paybill 4130455 (default KES collection).
 	TestTransaction bool `json:"testTransaction"`
 }
 type CardPaymentRequest struct {

@@ -80,8 +80,8 @@ type CallbackResponse struct {
 	ExternalID        string `json:"externalId"`
 	Amount            int    `json:"amount"`
 	Currency          string `json:"currency"`
+	Reference         string `json:"reference,omitempty"`
 	Reason            string `json:"reason,omitempty"` // Only for failed
-	ProviderReference string `json:"providerReference,omitempty"`
 }
 
 // WestAfricaCallbackHandler handles airtime transaction callbacks
@@ -562,8 +562,7 @@ func MobilePaymentHandler(c *gin.Context) {
 			//use app c2b detail
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			// Lipad: full use of primary paybill 4130455 (no test-amount cap here).
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
 		} else {
 			// Default: shared paybill 4130455 — cap flagged test flows for other merchants.
 			if isMpesaSharedPaybillTestFlow(&req) && req.Amount > maxKesTestAmountSharedPaybill4130455 {
@@ -1011,7 +1010,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
-
+		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
 		} else {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.B2Cconsumerkey, mpesa.B2Cconsumersecret, mpesa.B2CPassword, mpesa.B2CBusinessShortCode, mpesa.InitiatorName)
 
@@ -2102,15 +2102,20 @@ func MobileCallbackHandler(c *gin.Context) {
 				}
 			}
 
+			providerRef := mpesaReceiptFromSTKMetadata(metadata)
+
 			// Update the transaction status to COMPLETE
+			updates := map[string]interface{}{
+				"transactionStatus":   "COMPLETE",
+				"callbackStatus":      "SENT",
+				"responseDescription": resultDesc,
+			}
+			if providerRef != "" {
+				updates["providerReference"] = providerRef
+			}
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
-				Updates(map[string]interface{}{
-					"transactionStatus":   "COMPLETE",
-					"callbackStatus":      "SENT",
-					"responseDescription": resultDesc, // Include the success reason
-
-				}).Error; err != nil {
+				Updates(updates).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
@@ -2133,20 +2138,13 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 			fmt.Println("finished .. collection balance ...")
 
-			// Process the callback response to match your required format
-			callbackResponse := map[string]interface{}{
-				"transactionStatus": "COMPLETE",
-				"transactionReport": "COMPLETE",
-				"currency":          "KES",              // Assuming KES is the default currency
-				"amount":            metadata["Amount"], // Extract the correct amount from metadata
-				"netAmount":         metadata["Amount"], // Assuming the net amount is same as amount
-				"secureId":          transaction.SecureID,
-				"report":            resultDesc,             // Include the success reason
-				"externalId":        transaction.ExternalID, // Get from DB, not callback
+			amount := metadataValueInt(metadata["Amount"], transaction.Amount)
+			if providerRef != "" {
+				transaction.ProviderReference = providerRef
 			}
+			callbackResponse := buildMpesaMerchantCallback(&transaction, "COMPLETE", resultDesc, amount, providerRef)
 			log.Println("callback response", callbackResponse)
 
-			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -2184,21 +2182,10 @@ func MobileCallbackHandler(c *gin.Context) {
 				}
 			}
 
-			// Process the callback response to match your required format
-			callbackResponse := map[string]interface{}{
-				"transactionStatus": "FAILED",
-				"transactionReport": resultDesc,
-				"currency":          "KES", // Default to KES, adjust if necessary
-				"amount":            transaction.Amount,
-				"netAmount":         transaction.Amount,
-				"secureId":          transaction.SecureID,
-				"report":            resultDesc,             // Include the success reason
-				"externalId":        transaction.ExternalID, // Get from DB, not callback
-			}
+			callbackResponse := buildMpesaMerchantCallback(&transaction, "FAILED", resultDesc, transaction.Amount, "")
 			fmt.Println(callbackResponse)
 			log.Println("call the callback", callbackResponse)
 
-			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -2298,40 +2285,29 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 
-			// Update the transaction status to COMPLETE
+			providerRef := mpesaReceiptFromB2CMetadata(metadata)
+			amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
+			updates := map[string]interface{}{
+				"transactionStatus":   "COMPLETE",
+				"callbackStatus":      "SENT",
+				"responseDescription": resultDesc,
+			}
+			if providerRef != "" {
+				updates["providerReference"] = providerRef
+			}
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
-				Updates(map[string]interface{}{
-					"transactionStatus": "COMPLETE",
-					"callbackStatus":    "SENT",
-				}).Error; err != nil {
+				Updates(updates).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
 				return
 			}
-			/*
-			 {"amount":10,"currency":"KES",
-			 "externalId":"ImpadlTdest25",
-			 "netAmount":10,"secureId":"OgaEKPUnxToNfiTahW7uAw==",
-			 "transactionReport":"COMPLETE",
-			 "transactionStatus":"COMPLETE"}
-			*/
 
-			// Process the callback response to match your required format
-			callbackResponse := map[string]interface{}{
-				"transactionStatus":            "COMPLETE",
-				"transactionReport":            "COMPLETE",
-				"currency":                     "KES",                         // Assuming KES is the default currency
-				"amount":                       metadata["TransactionAmount"], // Extract the transaction amount
-				"netAmount":                    metadata["TransactionAmount"], // Assuming the net amount is same as amount
-				"transactionReceipt":           metadata["TransactionReceipt"],
-				"receiverPartyPublicName":      metadata["ReceiverPartyPublicName"],
-				"transactionCompletedDateTime": metadata["TransactionCompletedDateTime"],
-				"secureId":                     transaction.SecureID,   // Fetch from the database
-				"externalId":                   transaction.ExternalID, // Fetch from the database
+			if providerRef != "" {
+				transaction.ProviderReference = providerRef
 			}
+			callbackResponse := buildMpesaMerchantCallback(&transaction, "COMPLETE", resultDesc, amount, providerRef)
 			log.Println("callback response", callbackResponse)
 
-			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -2355,23 +2331,10 @@ func MobileCallbackHandler(c *gin.Context) {
 				return
 			}
 
-			// Process the callback response for a failed withdrawal
-			callbackResponse := map[string]interface{}{
-				"transactionStatus":            "FAILED",
-				"transactionReport":            "FAILED",
-				"currency":                     "KES",
-				"amount":                       metadata["TransactionAmount"],
-				"netAmount":                    metadata["TransactionAmount"],
-				"transactionReceipt":           metadata["TransactionReceipt"],
-				"receiverPartyPublicName":      metadata["ReceiverPartyPublicName"],
-				"transactionCompletedDateTime": metadata["TransactionCompletedDateTime"],
-				"errorMessage":                 resultDesc,             // Include the failure reason
-				"secureId":                     transaction.SecureID,   // Fetch from the database
-				"externalId":                   transaction.ExternalID, // Fetch from the database
-			}
+			amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
+			callbackResponse := buildMpesaMerchantCallback(&transaction, "FAILED", resultDesc, amount, "")
 			log.Println("callback response", callbackResponse)
 
-			// Call the SendCallback function to send the callback response to the merchant
 			if err := SendCallback(transaction.ID, callbackResponse); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send callback", "details": err.Error()})
 				return
@@ -2499,11 +2462,15 @@ func B2CCallbackHandler(c *gin.Context) {
 		// Store original transaction status for balance deduction check
 		originalStatus := transaction.TransactionStatus
 
-		// Step 2: Update transaction status to COMPLETE (before sending callback)
+		providerRef := mpesaReceiptFromB2CMetadata(metadata)
+		amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
+
 		updates := map[string]interface{}{
 			"transactionStatus":   "COMPLETE",
 			"responseDescription": resultDesc,
-			// Don't set callbackStatus to SENT yet - we'll do that after callback is sent
+		}
+		if providerRef != "" {
+			updates["providerReference"] = providerRef
 		}
 
 		if err := db.Model(&transactions.TransactionModel{}).
@@ -2514,22 +2481,10 @@ func B2CCallbackHandler(c *gin.Context) {
 			return
 		}
 
-		// Step 3: Get transaction amount from metadata or use transaction amount
-		amount := transaction.Amount
-		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
-			amount = int(transactionAmount)
+		if providerRef != "" {
+			transaction.ProviderReference = providerRef
 		}
-
-		// Step 4: Prepare and send callback to merchant
-		callbackResponse := map[string]interface{}{
-			"amount":            amount,
-			"currency":          transaction.Currency,
-			"externalId":        transaction.ExternalID,
-			"netAmount":         amount,
-			"secureId":          transaction.SecureID,
-			"transactionReport": resultDesc, // Use ResultDesc as transactionReport
-			"transactionStatus": "COMPLETE",
-		}
+		callbackResponse := buildMpesaMerchantCallback(&transaction, "COMPLETE", resultDesc, amount, providerRef)
 
 		log.Printf("📤 Sending callback to merchant: %+v", callbackResponse)
 
@@ -2588,22 +2543,8 @@ func B2CCallbackHandler(c *gin.Context) {
 			return
 		}
 
-		// Step 2: Get transaction amount
-		amount := transaction.Amount
-		if transactionAmount, ok := metadata["TransactionAmount"].(float64); ok {
-			amount = int(transactionAmount)
-		}
-
-		// Step 3: Prepare and send callback to merchant
-		callbackResponse := map[string]interface{}{
-			"amount":            amount,
-			"currency":          transaction.Currency,
-			"externalId":        transaction.ExternalID,
-			"netAmount":         amount,
-			"secureId":          transaction.SecureID,
-			"transactionReport": resultDesc, // Use ResultDesc as transactionReport
-			"transactionStatus": "FAILED",
-		}
+		amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
+		callbackResponse := buildMpesaMerchantCallback(&transaction, "FAILED", resultDesc, amount, "")
 
 		log.Printf("📤 Sending failed callback to merchant: %+v", callbackResponse)
 
@@ -2676,17 +2617,26 @@ func MobileCallbackHandler2(c *gin.Context) {
 		return
 	}
 
-	// Determine transaction status
 	transactionStatus := "FAILED"
+	providerRef := ""
+	metadata := make(map[string]interface{})
+	for _, item := range callbackBody.Body.StkCallback.CallbackMetadata.Items {
+		if item.Value != nil {
+			metadata[item.Name] = item.Value
+		}
+	}
 	if resultCode == 0 {
-		transactionStatus = "COMPLETED"
+		transactionStatus = "COMPLETE"
+		providerRef = mpesaReceiptFromSTKMetadata(metadata)
 	}
 
-	// Prepare update data for database
 	updateData := map[string]interface{}{
 		"transactionStatus":   transactionStatus,
 		"responseDescription": resultDesc,
 		"callbackStatus":      "SENT",
+	}
+	if providerRef != "" {
+		updateData["providerReference"] = providerRef
 	}
 
 	if err := db.Model(&transactions.TransactionModel{}).
@@ -2696,26 +2646,11 @@ func MobileCallbackHandler2(c *gin.Context) {
 		return
 	}
 
-	// Extract additional metadata (Amount)
-	var amount float64
-	for _, item := range callbackBody.Body.StkCallback.CallbackMetadata.Items {
-		if item.Name == "Amount" {
-			if val, ok := item.Value.(float64); ok {
-				amount = val
-			}
-		}
+	amount := metadataValueInt(metadata["Amount"], transaction.Amount)
+	if providerRef != "" {
+		transaction.ProviderReference = providerRef
 	}
-
-	// Construct callback response (externalId comes from the database)
-	callbackResponse := map[string]interface{}{
-		"transactionStatus": transactionStatus,
-		"transactionReport": resultDesc,
-		"currency":          transaction.Currency,
-		"amount":            amount,
-		"netAmount":         transaction.NetAmount,
-		"secureId":          transaction.SecureID,
-		"externalId":        transaction.ExternalID, // Get from DB, not callback
-	}
+	callbackResponse := buildMpesaMerchantCallback(&transaction, transactionStatus, resultDesc, amount, providerRef)
 
 	// Debugging: Print outgoing response
 	fmt.Println("Sending callback:", callbackResponse)
