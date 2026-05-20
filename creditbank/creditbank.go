@@ -15,8 +15,8 @@ const (
 	baseURL             = "https://konnectapigateway.creditbank.co.ke/b2b-tills"
 	pesalinkToAccountURL = "https://konnectapigateway.creditbank.co.ke/pesalink-to-account"
 	pesalinkStatusURL    = "https://konnectapigateway.creditbank.co.ke/pesalink-payment-status-check"
-	apiKey              = "cbapi_production_960ea099c6df4125b5dfcd8d9747b0a9"
-	appID               = "c4921d47-1bbb-4236-a221-5d8c760576d8"
+	apiKey              = "cbapi_production_498d8e02839f4584a70e186865af3cb1"
+	appID               = "c40393bd-be12-49cc-9c60-d04a0ac58fef"
 )
 
 type TillDestinationRequest struct {

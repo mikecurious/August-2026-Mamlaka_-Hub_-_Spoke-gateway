@@ -318,13 +318,13 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main00() {
+func main() {
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
-	stkResponse, err := StkPush("254768899729", 2, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
-	if err != nil {
-		log.Fatal("Error initiating STK push:", err)
-	}
-	fmt.Println("STK Push Response:", stkResponse)
+	// stkResponse, err := StkPush("254768899729", 2, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	// if err != nil {
+	// 	log.Fatal("Error initiating STK push:", err)
+	// }
+	// fmt.Println("STK Push Response:", stkResponse)
 
 	// r := gin.Default()
 
@@ -342,13 +342,13 @@ func main00() {
 
 	// fmt.Println("B2C Payment Response:", resp)
 
-	// resp2, err1 := checkBalance()
+	resp2, err1 := checkBalance()
 
-	// if err1 != nil {
-	// 	fmt.Println("Error checking balance:", err1)
-	// }
+	if err1 != nil {
+		fmt.Println("Error checking balance:", err1)
+	}
 
-	// fmt.Println("Balance Check Response:", resp2)
+	fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -394,23 +394,17 @@ func main00() {
 /*
 
 
-	conumerKey         = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-	conumerSecret      = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-	initiatorName      = "Collins"
-	securityCredential = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
-	shortCode          = "3008818"
-	callbackURL        = "https://webhook.site/7fe72d42-5ae6-493d-8187-e7013699257d"
-	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
-	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
-	transactionURL     = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
+	LipadC2BConsumerKey          = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
+	LipadC2BConsumerSecret       = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
+	LipadC2BBusinessShortCode    = "4041887"
+	LipadC2BInitiatorName      = "Collins"
+	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
+	LipadC2BSecurityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
+
 
 
 */
 
-// CrayC2BConsumerKey       = "v1PsGtti6d1GaS1JYV9Txo2S5dEI3Ea3V6SdCQ9B98HVuXW5"
-// CrayC2BConsumerSecret    = "3JP0v5g0AJm2GEUAVDOD9sbxp1XPpQwNhAoAqZFBbBTt0JMXDHGIs46X7NkrVQAo"
-// CrayC2BBusinessShortCode = "4041603"
 // )
 
 const (

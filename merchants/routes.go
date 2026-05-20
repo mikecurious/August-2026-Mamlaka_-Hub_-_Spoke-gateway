@@ -419,6 +419,27 @@ func normalizeSenegalProvider(input string) string {
 	}
 }
 
+func isBurkinaMSISDN(digits string) bool {
+	if len(digits) < 2 {
+		return false
+	}
+	if payaza.DetectCountryCode(digits) == "BF" || strings.HasPrefix(digits, "226") {
+		return true
+	}
+	// Burkina Faso local numbers are typically 8 digits (e.g. 56675953).
+	return len(digits) == 8
+}
+
+func normalizeBurkinaProvider(input string) string {
+	sp := strings.ToUpper(strings.TrimSpace(input))
+	switch sp {
+	case "167", "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+		return "ORANGE_MONEY"
+	default:
+		return sp
+	}
+}
+
 func isCameroonMSISDN(digits string) bool {
 	if len(digits) < 2 {
 		return false
@@ -458,6 +479,12 @@ func resolveXOFPayoutServiceID(rawSP, recipientDigits string) int {
 	}
 	if isBeninMSISDN(recipientDigits) && sp == "MTN" {
 		return westafrica.ServiceIDBeninMTNPayout
+	}
+	if isBurkinaMSISDN(recipientDigits) {
+		switch sp {
+		case "ORANGE", "ORANGE_MONEY", "ORANGE-MONEY", "OM":
+			return westafrica.ServiceIDBurkinaOrangePayout
+		}
 	}
 	return 0
 }
@@ -710,6 +737,70 @@ func MobilePaymentHandler(c *gin.Context) {
 				responseDescription = "Payment request pending"
 			}
 			responseCode = "0"
+			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
+			errror_stk = nil
+		} else if req.Currency == "XOF" && isBurkinaMSISDN(payerDigits) {
+			provider := normalizeBurkinaProvider(req.MobileMoneySP)
+			if provider != "ORANGE_MONEY" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "UNSUPPORTED_NETWORK",
+					"message": "Only ORANGE-MONEY is supported for Burkina Faso",
+				})
+				return
+			}
+
+			ipnURL := westafrica.ResolveIPNURL()
+			apiKey := westafrica.ResolvePixelAPIKey()
+			if apiKey == "" {
+				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			}
+
+			omOTP := strings.TrimSpace(req.OMOTP)
+			if omOTP == "" {
+				omOTP = strings.TrimSpace(c.Query("om_otp"))
+			}
+			if omOTP == "" {
+				omOTP = strings.TrimSpace(c.GetHeader("X-OM-OTP"))
+			}
+			if omOTP == "" {
+				omOTP = strings.TrimSpace(c.GetHeader("om_otp"))
+			}
+
+			dest := westafrica.NormalizeBurkinaMSISDN(req.PayerPhone)
+			msisdnStored = dest
+			client := westafrica.NewAirtimeClient()
+			westReq := &westafrica.AirtimeRequest{
+				Amount:      req.Amount,
+				Destination: dest,
+				APIKey:      apiKey,
+				IPNUrl:      ipnURL,
+				ServiceID:   westafrica.ServiceIDBurkinaOrangePayin,
+				OMOTP:       omOTP,
+				CustomData:  secureID,
+			}
+
+			log.Printf("[Burkina Orange collection] Pixel outbound amount=%d destination=%s service_id=%d ipn_url=%s secureId=%s merchant=%s",
+				req.Amount, dest, westafrica.ServiceIDBurkinaOrangePayin, ipnURL, secureID, req.ImpalaMerchantId)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+
+			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
+			if errWa != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				return
+			}
+
+			merchantRequestID = waResp.Data.TransactionID
+			checkoutRequestID = waResp.Data.Response
+			responseDescription = waResp.Message
+			if strings.TrimSpace(responseDescription) == "" {
+				responseDescription = "Payment request pending"
+			}
+			responseCode = "0"
+			if waResp.Data.Benefice > 0 {
+				netAmount = float64(waResp.Data.Benefice)
+			}
 			redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
 			errror_stk = nil
 		} else if req.Currency == "XAF" && isCameroonMSISDN(payerDigits) {
@@ -1191,12 +1282,19 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			})
 			return
 		}
+		if isBurkinaMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDBurkinaOrangePayout {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_SERVICE",
+				"message": "Burkina Faso payouts support mobileMoneySP \"ORANGE-MONEY\" (166)",
+			})
+			return
+		}
 
 		// Ensure there’s enough balance before proceeding
 
 		// Define known cash-in and cash-out service IDs
-		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 166, 168, 164, 50, 148, westafrica.ServiceIDBeninMTNPayout}
-		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 167, 169, 165, 49, 149}
+		cashinIDs := []int{170, 174, 172, 8, 152, 150, 154, 162, 168, 164, 50, 148, westafrica.ServiceIDBeninMTNPayout, westafrica.ServiceIDBurkinaOrangePayout}
+		cashoutIDs := []int{171, 175, 173, 7, 153, 151, 155, 163, 169, 165, 49, 149, westafrica.ServiceIDBurkinaOrangePayin}
 
 		var transactionReport string
 
@@ -1244,6 +1342,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			destPhone = westafrica.NormalizeBeninMSISDN(req.RecipientPhone)
 		} else if serviceId == westafrica.ServiceIDSenegalWavePayout || serviceId == westafrica.ServiceIDSenegalOrangePayout {
 			destPhone = westafrica.NormalizeSenegalMSISDN(req.RecipientPhone)
+		} else if serviceId == westafrica.ServiceIDBurkinaOrangePayout {
+			destPhone = westafrica.NormalizeBurkinaMSISDN(req.RecipientPhone)
 		}
 
 		apiKey := westafrica.ResolvePixelAPIKey()

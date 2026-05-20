@@ -26,6 +26,8 @@ const (
 	ServiceIDCameroonMtnPayin   = 339
 	ServiceIDCameroonOMPayout   = 336
 	ServiceIDCameroonMtnPayout  = 338
+	ServiceIDBurkinaOrangePayin = 167
+	ServiceIDBurkinaOrangePayout = 166
 )
 
 var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)
@@ -73,6 +75,17 @@ func NormalizeSenegalMSISDN(phone string) string {
 	s = strings.TrimPrefix(s, "+")
 	s = strings.ReplaceAll(s, " ", "")
 	if strings.HasPrefix(s, "221") {
+		s = s[3:]
+	}
+	return s
+}
+
+// NormalizeBurkinaMSISDN accepts +226/226/local numbers and returns local Burkina Faso format (8 digits).
+func NormalizeBurkinaMSISDN(phone string) string {
+	s := strings.TrimSpace(phone)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.ReplaceAll(s, " ", "")
+	if strings.HasPrefix(s, "226") {
 		s = s[3:]
 	}
 	return s
