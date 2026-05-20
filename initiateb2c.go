@@ -318,7 +318,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main() {
+func main900() {
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
 	// stkResponse, err := StkPush("254768899729", 2, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
 	// if err != nil {
