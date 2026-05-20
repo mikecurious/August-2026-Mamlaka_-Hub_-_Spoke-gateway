@@ -25,6 +25,8 @@ Service IDs (Pixel):
 
 ### Request
 
+`om_otp` is **required** for Orange Money collection (same as Senegal).
+
 ```json
 {
   "impalaMerchantId": "your-merchant-id",
@@ -32,6 +34,7 @@ Service IDs (Pixel):
   "amount": 200,
   "payerPhone": "56675953",
   "mobileMoneySP": "ORANGE-MONEY",
+  "om_otp": "434593",
   "externalId": "BF-IN-001",
   "callbackUrl": "https://your-domain.com/merchant-callback"
 }

@@ -36,6 +36,56 @@ func redactAPIKeyInJSON(b []byte) string {
 	return pixelOutboundAPIKeyPattern.ReplaceAllString(string(b), `"api_key":"***"`)
 }
 
+// pixelErrorMessage extracts a human-readable message from a Pixel JSON body.
+func pixelErrorMessage(body []byte) string {
+	var resp AirtimeResponse
+	if err := json.Unmarshal(body, &resp); err == nil {
+		if resp.Data.Error != nil {
+			if msg := strings.TrimSpace(*resp.Data.Error); msg != "" {
+				return msg
+			}
+		}
+		if msg := strings.TrimSpace(resp.Message); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
+// providerHTTPError builds a client-safe error from a non-2xx Pixel response.
+func providerHTTPError(statusCode int, body []byte) error {
+	if msg := pixelErrorMessage(body); msg != "" {
+		return fmt.Errorf("%s", msg)
+	}
+	return fmt.Errorf("payment provider error (HTTP %d)", statusCode)
+}
+
+// PublicError extracts a provider message for internal use; may return empty if unsafe to expose.
+func PublicError(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := redactAPIKeyInJSON([]byte(err.Error()))
+
+	if idx := strings.Index(s, " - {"); idx >= 0 {
+		if msg := pixelErrorMessage([]byte(s[idx+3:])); msg != "" {
+			return msg
+		}
+		return ""
+	}
+	if strings.HasPrefix(s, "API statut_code") {
+		if colon := strings.Index(s, ": "); colon >= 0 {
+			return strings.TrimSpace(s[colon+2:])
+		}
+		return ""
+	}
+	lower := strings.ToLower(s)
+	if strings.Contains(lower, "{") || strings.Contains(lower, "api_key") || strings.HasPrefix(lower, "http error") {
+		return ""
+	}
+	return s
+}
+
 // HardcodedIPNURL is the ipn_url sent to Pixel for collections/payouts (must be publicly reachable HTTPS).
 const HardcodedIPNURL = "https://payments.mam-laka.com/api/v1/west-africa/callback"
 
@@ -50,6 +100,15 @@ func ResolveIPNURL() string {
 // ResolvePixelAPIKey returns PIXEL_CORE_API_KEY trimmed; empty if unset.
 func ResolvePixelAPIKey() string {
 	return strings.TrimSpace(os.Getenv("PIXEL_CORE_API_KEY"))
+}
+
+// RequirePixelAPIKey returns the configured key or an error (never use hardcoded fallbacks in production).
+func RequirePixelAPIKey() (string, error) {
+	k := ResolvePixelAPIKey()
+	if k == "" {
+		return "", fmt.Errorf("PIXEL_CORE_API_KEY is not configured")
+	}
+	return k, nil
 }
 
 // NormalizeBeninMSISDN converts +229 / 229-prefixed numbers to local format with a leading 0 (e.g. 0190760023).
@@ -211,9 +270,9 @@ func (c *AirtimeClient) SendAirtimeTransaction(ctx context.Context, req *Airtime
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Check HTTP status code
+	// Check HTTP status code (never include raw body in errors — Pixel may echo api_key).
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %d - %s", resp.StatusCode, string(body))
+		return nil, providerHTTPError(resp.StatusCode, body)
 	}
 
 	// Parse response
@@ -223,12 +282,21 @@ func (c *AirtimeClient) SendAirtimeTransaction(ctx context.Context, req *Airtime
 	}
 
 	if airtimeResp.StatusCode != 0 && airtimeResp.StatusCode != http.StatusOK {
-		return &airtimeResp, fmt.Errorf("API statut_code %d: %s", airtimeResp.StatusCode, airtimeResp.Message)
+		msg := strings.TrimSpace(airtimeResp.Message)
+		if airtimeResp.Data.Error != nil {
+			if em := strings.TrimSpace(*airtimeResp.Data.Error); em != "" {
+				msg = em
+			}
+		}
+		if msg == "" {
+			msg = fmt.Sprintf("payment provider error (code %d)", airtimeResp.StatusCode)
+		}
+		return &airtimeResp, fmt.Errorf("%s", msg)
 	}
 
 	// Check if API returned an error
 	if airtimeResp.Data.Error != nil && *airtimeResp.Data.Error != "" {
-		return &airtimeResp, fmt.Errorf("API error: %s", *airtimeResp.Data.Error)
+		return &airtimeResp, fmt.Errorf("%s", strings.TrimSpace(*airtimeResp.Data.Error))
 	}
 
 	return &airtimeResp, nil

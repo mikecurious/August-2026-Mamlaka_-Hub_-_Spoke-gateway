@@ -358,6 +358,19 @@ func RemovePlusPrefix(phone string) string {
 	return phone
 }
 
+func respondPixelPaymentFailed(c *gin.Context, err error) {
+	respondPaymentFailed(c, "pixel collection", err)
+}
+
+func pixelAPIKeyOrUnavailable(c *gin.Context) (string, bool) {
+	apiKey, err := westafrica.RequirePixelAPIKey()
+	if err != nil {
+		respondServiceUnavailable(c, "pixel api key", err)
+		return "", false
+	}
+	return apiKey, true
+}
+
 func normalizeFlutterwaveMobileMoneyBank(sp string) string {
 	normalized := strings.TrimSpace(sp)
 	up := strings.ToUpper(normalized)
@@ -624,9 +637,9 @@ func MobilePaymentHandler(c *gin.Context) {
 		// Benin MTN (XOF): Pixel core API — collection service 305; other XOF/UGX routes stay on Payaza.
 		if req.Currency == "XOF" && countryCode == "BJ" && strings.EqualFold(strings.TrimSpace(req.MobileMoneySP), "MTN") {
 			ipnURL := westafrica.ResolveIPNURL()
-			apiKey := westafrica.ResolvePixelAPIKey()
-			if apiKey == "" {
-				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			apiKey, ok := pixelAPIKeyOrUnavailable(c)
+			if !ok {
+				return
 			}
 
 			dest := westafrica.NormalizeBeninMSISDN(req.PayerPhone)
@@ -649,7 +662,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
 			if errWa != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				respondPixelPaymentFailed(c, errWa)
 				return
 			}
 
@@ -667,9 +680,9 @@ func MobilePaymentHandler(c *gin.Context) {
 			errror_stk = nil
 		} else if req.Currency == "XOF" && isSenegalMSISDN(payerDigits) {
 			ipnURL := westafrica.ResolveIPNURL()
-			apiKey := westafrica.ResolvePixelAPIKey()
-			if apiKey == "" {
-				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			apiKey, ok := pixelAPIKeyOrUnavailable(c)
+			if !ok {
+				return
 			}
 
 			provider := normalizeSenegalProvider(req.MobileMoneySP)
@@ -726,7 +739,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
 			if errWa != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				respondPixelPaymentFailed(c, errWa)
 				return
 			}
 
@@ -750,9 +763,9 @@ func MobilePaymentHandler(c *gin.Context) {
 			}
 
 			ipnURL := westafrica.ResolveIPNURL()
-			apiKey := westafrica.ResolvePixelAPIKey()
-			if apiKey == "" {
-				apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+			apiKey, ok := pixelAPIKeyOrUnavailable(c)
+			if !ok {
+				return
 			}
 
 			omOTP := strings.TrimSpace(req.OMOTP)
@@ -764,6 +777,13 @@ func MobilePaymentHandler(c *gin.Context) {
 			}
 			if omOTP == "" {
 				omOTP = strings.TrimSpace(c.GetHeader("om_otp"))
+			}
+			if omOTP == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "MISSING_OM_OTP",
+					"message": "om_otp is required for ORANGE-MONEY Burkina Faso payin",
+				})
+				return
 			}
 
 			dest := westafrica.NormalizeBurkinaMSISDN(req.PayerPhone)
@@ -787,7 +807,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
 			if errWa != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				respondPixelPaymentFailed(c, errWa)
 				return
 			}
 
@@ -805,9 +825,9 @@ func MobilePaymentHandler(c *gin.Context) {
 			errror_stk = nil
 		} else if req.Currency == "XAF" && isCameroonMSISDN(payerDigits) {
 			ipnURL := westafrica.ResolveIPNURL()
-			apiKey := westafrica.ResolvePixelAPIKey()
-			if apiKey == "" {
-				apiKey = "PIX_489fb29b-d56e-43cd-99f7-1db09afc175e"
+			apiKey, ok := pixelAPIKeyOrUnavailable(c)
+			if !ok {
+				return
 			}
 
 			provider := normalizeCameroonProvider(req.MobileMoneySP)
@@ -845,7 +865,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 			waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
 			if errWa != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errWa.Error()})
+				respondPixelPaymentFailed(c, errWa)
 				return
 			}
 
@@ -882,7 +902,7 @@ func MobilePaymentHandler(c *gin.Context) {
 			payazaResp, errPayaza := payaza.SendPayazaRequest(payload)
 			errror_stk = errPayaza
 			if errPayaza != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Payment initiation failed", "details": payazaResp})
+				respondPaymentFailed(c, "payaza collection", errPayaza)
 				return
 			}
 
@@ -905,12 +925,12 @@ func MobilePaymentHandler(c *gin.Context) {
 		accountBank := normalizeFlutterwaveMobileMoneyBank(req.MobileMoneySP)
 		flutterwaveResp, errFw := flutterwave.InitiateZMWCollection(accountBank, RemovePlusPrefix(req.PayerPhone), req.Amount, secureID)
 		if errFw != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errFw.Error()})
+			respondPaymentFailed(c, "flutterwave zmw collection", errFw)
 			return
 		}
 		status, _ := flutterwaveResp["status"].(string)
 		if strings.ToLower(status) != "success" {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": flutterwaveResp})
+			respondPaymentFailed(c, "flutterwave zmw collection", fmt.Errorf("provider status: %s", status))
 			return
 		}
 		merchantRequestID = secureID
@@ -928,12 +948,12 @@ func MobilePaymentHandler(c *gin.Context) {
 		accountBank := normalizeFlutterwaveMobileMoneyBank(req.MobileMoneySP)
 		flutterwaveResp, errFw := flutterwave.InitiateRWFCollection(accountBank, RemovePlusPrefix(req.PayerPhone), req.Amount, secureID)
 		if errFw != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": errFw.Error()})
+			respondPaymentFailed(c, "flutterwave rwf collection", errFw)
 			return
 		}
 		status, _ := flutterwaveResp["status"].(string)
 		if strings.ToLower(status) != "success" {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Payment initiation failed", "details": flutterwaveResp})
+			respondPaymentFailed(c, "flutterwave rwf collection", fmt.Errorf("provider status: %s", status))
 			return
 		}
 		merchantRequestID = secureID
@@ -953,7 +973,7 @@ func MobilePaymentHandler(c *gin.Context) {
 	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
 
 	if errror_stk != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initiate payment", "details": errror_stk})
+		respondPaymentFailed(c, "mobile collection", errror_stk)
 		return
 	}
 	// Create the transaction record in the database
@@ -1315,10 +1335,10 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			// Deduct balance only for withdrawals
 			err := balances.DeductXOFBalance(req.ImpalaMerchantId, float64(req.Amount))
 			if err != nil {
+				log.Printf("XOF balance deduction failed merchant=%s: %v", req.ImpalaMerchantId, err)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "BALANCE_DEDUCTION_FAILED",
 					"message": "Failed to deduct amount from balance",
-					"details": err.Error(),
 				})
 				return
 			}
@@ -1346,9 +1366,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			destPhone = westafrica.NormalizeBurkinaMSISDN(req.RecipientPhone)
 		}
 
-		apiKey := westafrica.ResolvePixelAPIKey()
-		if apiKey == "" {
-			apiKey = "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28"
+		apiKey, ok := pixelAPIKeyOrUnavailable(c)
+		if !ok {
+			return
 		}
 		ipnWithdraw := westafrica.ResolveIPNURL()
 
@@ -1361,7 +1381,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				return serviceId
 			}(),
 			OMOTP:      omOTP,
-			CustomData: "your_custom_data",
+			CustomData: secureID,
 		}
 
 		if serviceId == westafrica.ServiceIDBeninMTNPayout {
@@ -1385,16 +1405,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		if err != nil {
-			details := ""
-			if response != nil {
-				details = response.Message
-			}
-
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error":   "Payment initiation failed",
-				"message": details,
-				"details": err.Error(),
-			})
+			respondPaymentFailed(c, "pixel payout", err)
 			return
 		}
 
@@ -1430,7 +1441,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			log.Printf("Failed to save transaction: %v", dbErr)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to record transaction",
-				"details": dbErr.Error(),
+				"message": MsgInternalError,
 			})
 			return
 		}
@@ -1495,9 +1506,9 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			destPhone = westafrica.NormalizeCameroonMSISDN(req.RecipientPhone)
 		}
 
-		apiKey := westafrica.ResolvePixelAPIKey()
-		if apiKey == "" {
-			apiKey = "PIX_489fb29b-d56e-43cd-99f7-1db09afc175e"
+		apiKey, ok := pixelAPIKeyOrUnavailable(c)
+		if !ok {
+			return
 		}
 		ipnWithdraw := westafrica.ResolveIPNURL()
 
@@ -1507,7 +1518,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			APIKey:      apiKey,
 			IPNUrl:      ipnWithdraw,
 			ServiceID:   serviceId,
-			CustomData:  "your_custom_data",
+			CustomData:  secureID,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1515,15 +1526,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
 		if err != nil {
-			details := ""
-			if response != nil {
-				details = response.Message
-			}
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error":   "Payment initiation failed",
-				"message": details,
-				"details": err.Error(),
-			})
+			respondPaymentFailed(c, "pixel cameroon payout", err)
 			return
 		}
 
