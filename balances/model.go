@@ -25,6 +25,7 @@ type MerchantBalance struct {
 	XAFBalance       float64 `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
 	NGNBalance       float64 `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	ZMWBalance       float64 `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
+	GMDBalance       float64 `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -33,10 +34,15 @@ func (MerchantBalance) TableName() string {
 	return "merchant_balances"
 }
 
-// func AutoMigrate() {
-// 	db := database.GetConnection()
-// 	db.AutoMigrate(&ListingModel{})
-// }
+// AutoMigrate ensures payout and collection wallet tables exist and adds new columns (e.g. gmdBalance).
+func AutoMigrate() {
+	db := database.GetConnection()
+	if err := db.AutoMigrate(&MerchantBalance{}, &MerchantCollectionBalance{}); err != nil {
+		fmt.Printf("balances AutoMigrate warning: %v\n", err)
+		return
+	}
+	fmt.Println("balances: migrated merchant_balances + merchant_collection_balance (gmdBalance, etc.)")
+}
 
 type ForexRate struct {
 	CurrencyCode   string  `gorm:"column:currencyCode" json:"currencyCode"`
@@ -101,6 +107,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"XAF":  balance.XAFBalance,
 		"NGN":  balance.NGNBalance,
 		"ZMW":  balance.ZMWBalance,
+		"GMD":  balance.GMDBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -131,6 +138,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"zmwBalance":   balance.ZMWBalance,
 		"totalBalance": totalBalance,
 		"xafBalance":   balance.XAFBalance,
+		"gmdBalance":   balance.GMDBalance,
 		"baseCurrency": baseCurrency,
 		"merchantId":   balance.ImpalaMerchantID,
 	}
@@ -329,6 +337,8 @@ func AddBalance(impalaMerchantID string, currency string, amount float64) error 
 		balance.NGNBalance += amount
 	case "ZMW":
 		balance.ZMWBalance += amount
+	case "GMD":
+		balance.GMDBalance += amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -417,6 +427,11 @@ func DeductBalance(impalaMerchantID string, currency string, amount float64) err
 			return fmt.Errorf("insufficient ZMW balance: available %.2f, required %.2f", balance.ZMWBalance, amount)
 		}
 		balance.ZMWBalance -= amount
+	case "GMD":
+		if balance.GMDBalance < amount {
+			return fmt.Errorf("insufficient GMD balance: available %.2f, required %.2f", balance.GMDBalance, amount)
+		}
+		balance.GMDBalance -= amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -470,6 +485,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		originBalance = &balance.UGXBalance
 	case "ZMW":
 		originBalance = &balance.ZMWBalance
+	case "GMD":
+		originBalance = &balance.GMDBalance
 	default:
 		return fmt.Errorf("invalid origin currency: %s", originCurrency)
 	}
@@ -498,6 +515,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		destinationBalance = &balance.UGXBalance
 	case "ZMW":
 		destinationBalance = &balance.ZMWBalance
+	case "GMD":
+		destinationBalance = &balance.GMDBalance
 	default:
 		return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
 	}
@@ -665,6 +684,44 @@ func AddNGNPayoutBalance(impalaMerchantID string, amount float64) error {
 	}
 
 	return nil
+}
+
+// AddGMDBalance credits the merchant collection wallet (payins).
+func AddGMDBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantCollectionBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant collection balance: %w", err)
+	}
+	balance.GMDBalance += amount
+	return db.Save(&balance).Error
+}
+
+// DeductGMDBalance debits the merchant payout wallet (payouts).
+func DeductGMDBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+	if balance.GMDBalance < amount {
+		return fmt.Errorf("insufficient GMD balance: available %.2f, required %.2f", balance.GMDBalance, amount)
+	}
+	balance.GMDBalance -= amount
+	balance.LastUpdated = time.Now().Unix()
+	return db.Save(&balance).Error
+}
+
+// RefundGMDBalance returns GMD to the payout wallet after a failed disbursement.
+func RefundGMDBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+	balance.GMDBalance += amount
+	balance.LastUpdated = time.Now().Unix()
+	return db.Save(&balance).Error
 }
 
 // DEDUCT XAF BALACNE

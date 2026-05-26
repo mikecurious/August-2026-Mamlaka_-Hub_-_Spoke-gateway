@@ -265,7 +265,18 @@ func handlePayinBalanceUpdate(db *gorm.DB, transaction *transactions.Transaction
 	log.Printf("Updating merchant collection balance for payin - MerchantID: %s, Currency: %s, credit: %.2f",
 		transaction.ImpalaMerchantID, currency, credit)
 
-	if err := balances.AddBalance(transaction.ImpalaMerchantID, currency, credit); err != nil {
+	var err error
+	switch currency {
+	case "GMD":
+		err = balances.AddGMDBalance(transaction.ImpalaMerchantID, credit)
+	case "XOF":
+		err = balances.AddXOFBalance(transaction.ImpalaMerchantID, credit)
+	case "XAF":
+		err = balances.AddXAFBalance(transaction.ImpalaMerchantID, credit)
+	default:
+		err = balances.AddBalance(transaction.ImpalaMerchantID, currency, credit)
+	}
+	if err != nil {
 		return fmt.Errorf("failed to update merchant collection balance: %w", err)
 	}
 
@@ -286,8 +297,16 @@ func handlePayoutBalanceUpdate(db *gorm.DB, transaction *transactions.Transactio
 	log.Printf("Reversing payout balance for failed transaction - MerchantID: %s, Currency: %s, Amount: %d",
 		transaction.ImpalaMerchantID, currency, transaction.Amount)
 
-	// For failed payout, reverse the deduction by adding back the original amount.
-	if err := balances.AddBalance(transaction.ImpalaMerchantID, currency, float64(transaction.Amount)); err != nil {
+	var err error
+	switch currency {
+	case "GMD":
+		err = balances.RefundGMDBalance(transaction.ImpalaMerchantID, float64(transaction.Amount))
+	case "XOF":
+		err = balances.AddBalance(transaction.ImpalaMerchantID, "IMPA", float64(transaction.Amount))
+	default:
+		err = balances.AddBalance(transaction.ImpalaMerchantID, currency, float64(transaction.Amount))
+	}
+	if err != nil {
 		return fmt.Errorf("failed to reverse payout balance: %w", err)
 	}
 
@@ -369,6 +388,29 @@ func pixelAPIKeyOrUnavailable(c *gin.Context) (string, bool) {
 		return "", false
 	}
 	return apiKey, true
+}
+
+func pixelGambiaAPIKeyOrUnavailable(c *gin.Context) (string, bool) {
+	apiKey, err := westafrica.RequirePixelGambiaAPIKey()
+	if err != nil {
+		respondServiceUnavailable(c, "pixel gambia api key", err)
+		return "", false
+	}
+	return apiKey, true
+}
+
+func collectPixelOMOTP(c *gin.Context, req MobilePaymentRequest) string {
+	omOTP := strings.TrimSpace(req.OMOTP)
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.Query("om_otp"))
+	}
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.GetHeader("X-OM-OTP"))
+	}
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.GetHeader("om_otp"))
+	}
+	return omOTP
 }
 
 func normalizeFlutterwaveMobileMoneyBank(sp string) string {
@@ -474,6 +516,47 @@ func normalizeCameroonProvider(input string) string {
 	default:
 		return sp
 	}
+}
+
+func isGambiaMSISDN(digits string) bool {
+	if len(digits) < 2 {
+		return false
+	}
+	if payaza.DetectCountryCode(digits) == "GM" || strings.HasPrefix(digits, "220") {
+		return true
+	}
+	// Gambia local numbers are typically 7 digits (e.g. 3655332, 7215283).
+	return len(digits) == 7
+}
+
+func normalizeGambiaProvider(input string) string {
+	sp := strings.ToUpper(strings.TrimSpace(input))
+	sp = strings.ReplaceAll(sp, "-", "")
+	sp = strings.ReplaceAll(sp, "_", "")
+	switch sp {
+	case "331", "QMONEY":
+		return "QMONEY"
+	case "375", "AFRIMONEY":
+		return "AFRIMONEY"
+	default:
+		return sp
+	}
+}
+
+func resolveGMDPayoutServiceID(rawSP, recipientDigits string) int {
+	if id, err := strconv.Atoi(strings.TrimSpace(rawSP)); err == nil {
+		return id
+	}
+	if !isGambiaMSISDN(recipientDigits) {
+		return 0
+	}
+	switch normalizeGambiaProvider(rawSP) {
+	case "QMONEY":
+		return westafrica.ServiceIDGambiaQMoneyPayout
+	case "AFRIMONEY":
+		return westafrica.ServiceIDGambiaAfriMoneyPayout
+	}
+	return 0
 }
 
 func resolveXOFPayoutServiceID(rawSP, recipientDigits string) int {
@@ -620,6 +703,75 @@ func MobilePaymentHandler(c *gin.Context) {
 		checkoutRequestID = stkResponse.CheckoutRequestID
 		responseDescription = stkResponse.ResponseDescription
 		responseCode = stkResponse.ResponseCode
+
+	} else if req.Currency == "GMD" {
+		payerDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.PayerPhone), " ", ""))
+		if !isGambiaMSISDN(payerDigits) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_MSISDN",
+				"message": "Phone number does not appear to be a valid Gambia number",
+			})
+			return
+		}
+
+		provider := normalizeGambiaProvider(req.MobileMoneySP)
+		serviceID := 0
+		switch provider {
+		case "QMONEY":
+			serviceID = westafrica.ServiceIDGambiaQMoneyPayin
+		case "AFRIMONEY":
+			serviceID = westafrica.ServiceIDGambiaAfriMoneyPayin
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_NETWORK",
+				"message": "Gambia collection supports mobileMoneySP \"QMONEY\" or \"AFRIMONEY\"",
+			})
+			return
+		}
+
+		ipnURL := westafrica.ResolveIPNURL()
+		apiKey, ok := pixelGambiaAPIKeyOrUnavailable(c)
+		if !ok {
+			return
+		}
+
+		dest := westafrica.NormalizeGambiaMSISDN(req.PayerPhone)
+		msisdnStored = dest
+		client := westafrica.NewAirtimeClient()
+		westReq := &westafrica.AirtimeRequest{
+			Amount:      req.Amount,
+			Destination: dest,
+			APIKey:      apiKey,
+			IPNUrl:      ipnURL,
+			ServiceID:   serviceID,
+			OMOTP:       collectPixelOMOTP(c, req),
+			CustomData:  secureID,
+		}
+
+		log.Printf("[Gambia collection] Pixel outbound amount=%d destination=%s service_id=%d provider=%s secureId=%s merchant=%s",
+			req.Amount, dest, serviceID, provider, secureID, req.ImpalaMerchantId)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+
+		waResp, errWa := client.SendAirtimeTransaction(ctx, westReq)
+		if errWa != nil {
+			respondPixelPaymentFailed(c, errWa)
+			return
+		}
+
+		merchantRequestID = waResp.Data.TransactionID
+		checkoutRequestID = waResp.Data.Response
+		responseDescription = waResp.Message
+		if strings.TrimSpace(responseDescription) == "" {
+			responseDescription = "Payment request pending"
+		}
+		responseCode = "0"
+		if waResp.Data.Benefice > 0 {
+			netAmount = float64(waResp.Data.Benefice)
+		}
+		redirectURL = strings.TrimSpace(waResp.Data.SMSLink)
+		errror_stk = nil
 
 	} else if req.Currency == "XOF" || req.Currency == "UGX" || req.Currency == "XAF" {
 
@@ -1282,6 +1434,129 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			log.Printf("Failed to send callback for transaction %d: %v", transactionID, callbackErr)
 			// Don't return error to client since the main transaction processing is complete
 		}
+	case "GMD":
+		gmdBalance := balance.GMDBalance
+		recipientDigits := RemovePlusPrefix(strings.ReplaceAll(strings.TrimSpace(req.RecipientPhone), " ", ""))
+		serviceId := resolveGMDPayoutServiceID(req.MobileMoneySP, recipientDigits)
+		if isGambiaMSISDN(recipientDigits) && serviceId != westafrica.ServiceIDGambiaQMoneyPayout && serviceId != westafrica.ServiceIDGambiaAfriMoneyPayout {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNSUPPORTED_SERVICE",
+				"message": "Gambia payouts support mobileMoneySP \"QMONEY\" (330) or \"AFRIMONEY\" (374)",
+			})
+			return
+		}
+
+		cashinIDs := []int{westafrica.ServiceIDGambiaQMoneyPayout, westafrica.ServiceIDGambiaAfriMoneyPayout}
+		cashoutIDs := []int{westafrica.ServiceIDGambiaQMoneyPayin, westafrica.ServiceIDGambiaAfriMoneyPayin}
+
+		var transactionReport string
+		if IsInList(serviceId, cashoutIDs) {
+			transactionReport = "deposit"
+		} else if IsInList(serviceId, cashinIDs) {
+			transactionReport = "withdraw"
+			if gmdBalance < float64(req.Amount) {
+				c.JSON(http.StatusOK, gin.H{
+					"status":  "FAILED",
+					"error":   "INSUFFICIENT_BALANCE",
+					"message": fmt.Sprintf("Insufficient balance. Available: %.2f GMD, Required: %.2f GMD", gmdBalance, float64(req.Amount)),
+				})
+				return
+			}
+			if err := balances.DeductGMDBalance(req.ImpalaMerchantId, float64(req.Amount)); err != nil {
+				log.Printf("GMD balance deduction failed merchant=%s: %v", req.ImpalaMerchantId, err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "BALANCE_DEDUCTION_FAILED",
+					"message": "Failed to deduct amount from balance",
+				})
+				return
+			}
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "UNKNOWN_SERVICE_ID",
+				"message": "Unknown service ID. Please verify and try again.",
+			})
+			return
+		}
+
+		client := westafrica.NewAirtimeClient()
+		redirectURL := ""
+		destPhone := westafrica.NormalizeGambiaMSISDN(req.RecipientPhone)
+
+		apiKey, ok := pixelGambiaAPIKeyOrUnavailable(c)
+		if !ok {
+			return
+		}
+		ipnWithdraw := westafrica.ResolveIPNURL()
+
+		omOTP := ""
+		if req.OMOTP > 0 {
+			omOTP = strconv.Itoa(req.OMOTP)
+		}
+
+		westAfricaRequest := &westafrica.AirtimeRequest{
+			Amount:      int(req.Amount),
+			Destination: destPhone,
+			APIKey:      apiKey,
+			IPNUrl:      ipnWithdraw,
+			ServiceID:   serviceId,
+			OMOTP:       omOTP,
+			CustomData:  secureID,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
+		if err != nil {
+			respondPaymentFailed(c, "pixel gambia payout", err)
+			return
+		}
+
+		transactionStatus := "PENDING"
+		redirectURL = strings.TrimSpace(response.Data.SMSLink)
+		checkoutRef := response.Data.Response
+		if checkoutRef == "" {
+			checkoutRef = response.Data.TransactionID
+		}
+
+		newTransaction := &transactions.TransactionModel{
+			ImpalaMerchantID:    req.ImpalaMerchantId,
+			MerchantRequestID:   response.Data.TransactionID,
+			CheckoutRequestID:   checkoutRef,
+			ResponseDescription: response.Message,
+			ResponseCode:        response.Data.State,
+			Currency:            req.Currency,
+			Amount:              int(req.Amount),
+			Msisdn:              req.RecipientPhone,
+			NetAmount:           float64(req.Amount),
+			SecureID:            secureID,
+			SourceOfFunds:       req.MobileMoneySP,
+			ExternalID:          req.ExternalID,
+			CallbackURL:         req.CallbackURL,
+			DateAdded:           dateAdded,
+			TransactionReport:   transactionReport,
+			TransactionStatus:   transactionStatus,
+		}
+
+		db := database.GetConnection()
+		if dbErr := db.Create(newTransaction).Error; dbErr != nil {
+			log.Printf("Failed to save transaction: %v", dbErr)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to record transaction",
+				"message": MsgInternalError,
+			})
+			return
+		}
+
+		responsePayload := gin.H{
+			"message":    "Payment initiation successful",
+			"externalId": req.ExternalID,
+			"secureId":   secureID,
+		}
+		if redirectURL != "" {
+			responsePayload["redirectUrl"] = redirectURL
+		}
+		c.JSON(http.StatusOK, responsePayload)
 	case "XOF":
 		// ugxBalance := balance.UGXBalance
 		XOFBalance := balance.ImpaBalance
@@ -6451,6 +6726,10 @@ func TransferHandler(c *gin.Context) {
 		availableBalance = collectionBalance.XAFBalance
 		collectionField = "xafBalance"
 		merchantField = "xafBalance"
+	case "GMD":
+		availableBalance = collectionBalance.GMDBalance
+		collectionField = "gmdBalance"
+		merchantField = "gmdBalance"
 	default:
 		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported currency"})

@@ -25,6 +25,7 @@ type MerchantCollectionBalance struct {
 	XAFBalance       float64   `gorm:"column:xafBalance;type:float(100,2)" json:"xafBalance"`
 	NGNBalance       float64   `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	ZMWBalance       float64   `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
+	GMDBalance       float64   `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -32,13 +33,6 @@ type MerchantCollectionBalance struct {
 func (MerchantCollectionBalance) TableName() string {
 	return "merchant_collection_balance"
 }
-func AutoMigrate() {
-	db := database.GetConnection()
-	// Ensure both payout and collection wallets have the latest fields.
-	db.AutoMigrate(&MerchantBalance{})
-	db.AutoMigrate(&MerchantCollectionBalance{})
-}
-
 // GetMerchantCollectionBalance retrieves a merchant's collection balance by their ImpalaMerchantID.
 func GetMerchantCollectionBalance(impalaMerchantID string) (MerchantCollectionBalance, error) {
     db := database.GetConnection()
@@ -86,6 +80,8 @@ func ConvertCollectionBalance(impalaMerchantID, originCurrency, destinationCurre
         originBalance = &balance.XAFBalance
     case "ZMW":
         originBalance = &balance.ZMWBalance
+    case "GMD":
+        originBalance = &balance.GMDBalance
     default:
         return fmt.Errorf("invalid origin currency: %s", originCurrency)
     }
@@ -115,6 +111,8 @@ func ConvertCollectionBalance(impalaMerchantID, originCurrency, destinationCurre
         destinationBalance = &balance.XAFBalance
     case "ZMW":
         destinationBalance = &balance.ZMWBalance
+    case "GMD":
+        destinationBalance = &balance.GMDBalance
     default:
         return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
     }
@@ -183,6 +181,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"XAF":  balance.XAFBalance,
 		"NGN":  balance.NGNBalance,
 		"ZMW":  balance.ZMWBalance,
+		"GMD":  balance.GMDBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -211,6 +210,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"ugxBalance":   balance.UGXBalance,
 		"ngnBalance":   balance.NGNBalance,
 		"zmwBalance":   balance.ZMWBalance,
+		"gmdBalance":   balance.GMDBalance,
 		"totalBalance": totalBalance,
 		"baseCurrency": baseCurrency,
 		"xafBalance":   balance.XAFBalance,

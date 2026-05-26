@@ -318,7 +318,15 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main900() {
+func main() {
+
+	//call transaction query
+	resp, err := checkTransactionStatus("UEIEP4MNLG")
+	if err != nil {
+		fmt.Println("Error checking transaction status:", err)
+	}
+	fmt.Println("Transaction Status Response:", resp)
+
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
 	// stkResponse, err := StkPush("254768899729", 2, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
 	// if err != nil {
@@ -342,13 +350,13 @@ func main900() {
 
 	// fmt.Println("B2C Payment Response:", resp)
 
-	resp2, err1 := checkBalance()
+	// resp2, err1 := checkBalance()
 
-	if err1 != nil {
-		fmt.Println("Error checking balance:", err1)
-	}
+	// if err1 != nil {
+	// 	fmt.Println("Error checking balance:", err1)
+	// }
 
-	fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -393,8 +401,7 @@ func main900() {
 
 /*
 
-
-	LipadC2BConsumerKey          = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
+LipadC2BConsumerKey          = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
 	LipadC2BConsumerSecret       = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
 	LipadC2BBusinessShortCode    = "4041887"
 	LipadC2BInitiatorName      = "Collins"
@@ -412,8 +419,9 @@ const (
 	conumerSecret      = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
 	c2bPassKey         = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 	initiatorName      = "Collins"
-	securityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
+	businessShortCode  = "4041887"
 	shortCode          = "4041887"
+	securityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
 	callbackURL        = "https://webhook.site/cd090baa-4f28-4d75-ab5e-6f536c36de81"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"

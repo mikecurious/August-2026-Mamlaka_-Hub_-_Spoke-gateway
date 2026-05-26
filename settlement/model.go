@@ -62,6 +62,8 @@ func currencyColumn(currency string) (string, bool) {
 		return "ngnBalance", true
 	case "ZMW":
 		return "zmwBalance", true
+	case "GMD":
+		return "gmdBalance", true
 	default:
 		return "", false
 	}

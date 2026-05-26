@@ -28,6 +28,10 @@ const (
 	ServiceIDCameroonMtnPayout  = 338
 	ServiceIDBurkinaOrangePayin = 167
 	ServiceIDBurkinaOrangePayout = 166
+	ServiceIDGambiaQMoneyPayin    = 331
+	ServiceIDGambiaQMoneyPayout   = 330
+	ServiceIDGambiaAfriMoneyPayin = 375
+	ServiceIDGambiaAfriMoneyPayout = 374
 )
 
 var pixelOutboundAPIKeyPattern = regexp.MustCompile(`"api_key"\s*:\s*"[^"]*"`)
@@ -109,6 +113,31 @@ func RequirePixelAPIKey() (string, error) {
 		return "", fmt.Errorf("PIXEL_CORE_API_KEY is not configured")
 	}
 	return k, nil
+}
+
+// ResolvePixelGambiaAPIKey returns PIXEL_GMD_API_KEY trimmed; empty if unset.
+func ResolvePixelGambiaAPIKey() string {
+	return strings.TrimSpace(os.Getenv("PIXEL_GMD_API_KEY"))
+}
+
+// RequirePixelGambiaAPIKey returns the Gambia Pixel key or an error.
+func RequirePixelGambiaAPIKey() (string, error) {
+	k := ResolvePixelGambiaAPIKey()
+	if k == "" {
+		return "", fmt.Errorf("PIXEL_GMD_API_KEY is not configured")
+	}
+	return k, nil
+}
+
+// NormalizeGambiaMSISDN accepts +220/220/local numbers and returns local Gambia format.
+func NormalizeGambiaMSISDN(phone string) string {
+	s := strings.TrimSpace(phone)
+	s = strings.TrimPrefix(s, "+")
+	s = strings.ReplaceAll(s, " ", "")
+	if strings.HasPrefix(s, "220") {
+		s = s[3:]
+	}
+	return s
 }
 
 // NormalizeBeninMSISDN converts +229 / 229-prefixed numbers to local format with a leading 0 (e.g. 0190760023).
