@@ -6957,6 +6957,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("till/callback", TillCallbackHandler)
 	router.POST("till/error-callback", TillCallbackHandler)
 	router.POST("bank/pesalink/sync", SyncPesalinkPayoutsNowHandler) // Public trigger endpoint (for external schedulers)
+	router.POST("west-africa/sync-pending", SyncPendingPixelTransactionsHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)

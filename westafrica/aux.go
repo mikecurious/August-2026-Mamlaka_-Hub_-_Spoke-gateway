@@ -225,6 +225,7 @@ type AirtimeResponse struct {
 		PNewWalletAmount   *int    `json:"p_new_wallet_amount"`
 		CreatedAt          string  `json:"created_at"`
 		UpdatedAt          string  `json:"updated_at"`
+		Currency           string  `json:"currency"`
 	} `json:"data"`
 	Message    string `json:"message"`
 	StatusCode int    `json:"statut_code"`
