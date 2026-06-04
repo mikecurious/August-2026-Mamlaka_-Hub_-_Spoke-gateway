@@ -26,6 +26,7 @@ type MerchantBalance struct {
 	NGNBalance       float64 `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	ZMWBalance       float64 `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
 	GMDBalance       float64 `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
+	RWFBalance       float64 `gorm:"column:rwfBalance;type:float(100,2)" json:"rwfBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -41,7 +42,7 @@ func AutoMigrate() {
 		fmt.Printf("balances AutoMigrate warning: %v\n", err)
 		return
 	}
-	fmt.Println("balances: migrated merchant_balances + merchant_collection_balance (gmdBalance, etc.)")
+	fmt.Println("balances: migrated merchant_balances + merchant_collection_balance (rwfBalance, gmdBalance, etc.)")
 }
 
 type ForexRate struct {
@@ -108,6 +109,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"NGN":  balance.NGNBalance,
 		"ZMW":  balance.ZMWBalance,
 		"GMD":  balance.GMDBalance,
+		"RWF":  balance.RWFBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -139,6 +141,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"totalBalance": totalBalance,
 		"xafBalance":   balance.XAFBalance,
 		"gmdBalance":   balance.GMDBalance,
+		"rwfBalance":   balance.RWFBalance,
 		"baseCurrency": baseCurrency,
 		"merchantId":   balance.ImpalaMerchantID,
 	}
@@ -339,6 +342,8 @@ func AddBalance(impalaMerchantID string, currency string, amount float64) error 
 		balance.ZMWBalance += amount
 	case "GMD":
 		balance.GMDBalance += amount
+	case "RWF":
+		balance.RWFBalance += amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -432,6 +437,11 @@ func DeductBalance(impalaMerchantID string, currency string, amount float64) err
 			return fmt.Errorf("insufficient GMD balance: available %.2f, required %.2f", balance.GMDBalance, amount)
 		}
 		balance.GMDBalance -= amount
+	case "RWF":
+		if balance.RWFBalance < amount {
+			return fmt.Errorf("insufficient RWF balance: available %.2f, required %.2f", balance.RWFBalance, amount)
+		}
+		balance.RWFBalance -= amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -487,6 +497,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		originBalance = &balance.ZMWBalance
 	case "GMD":
 		originBalance = &balance.GMDBalance
+	case "RWF":
+		originBalance = &balance.RWFBalance
 	default:
 		return fmt.Errorf("invalid origin currency: %s", originCurrency)
 	}
@@ -517,6 +529,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		destinationBalance = &balance.ZMWBalance
 	case "GMD":
 		destinationBalance = &balance.GMDBalance
+	case "RWF":
+		destinationBalance = &balance.RWFBalance
 	default:
 		return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
 	}
@@ -720,6 +734,44 @@ func RefundGMDBalance(impalaMerchantID string, amount float64) error {
 		return fmt.Errorf("could not find merchant balance: %w", err)
 	}
 	balance.GMDBalance += amount
+	balance.LastUpdated = time.Now().Unix()
+	return db.Save(&balance).Error
+}
+
+// AddRWFBalance credits the merchant collection wallet (payins).
+func AddRWFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantCollectionBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant collection balance: %w", err)
+	}
+	balance.RWFBalance += amount
+	return db.Save(&balance).Error
+}
+
+// DeductRWFBalance debits the merchant payout wallet (payouts).
+func DeductRWFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+	if balance.RWFBalance < amount {
+		return fmt.Errorf("insufficient RWF balance: available %.2f, required %.2f", balance.RWFBalance, amount)
+	}
+	balance.RWFBalance -= amount
+	balance.LastUpdated = time.Now().Unix()
+	return db.Save(&balance).Error
+}
+
+// RefundRWFBalance returns RWF to the payout wallet after a failed disbursement.
+func RefundRWFBalance(impalaMerchantID string, amount float64) error {
+	db := database.GetConnection()
+	var balance MerchantBalance
+	if err := db.Where("impalaMerchantId = ?", impalaMerchantID).First(&balance).Error; err != nil {
+		return fmt.Errorf("could not find merchant balance: %w", err)
+	}
+	balance.RWFBalance += amount
 	balance.LastUpdated = time.Now().Unix()
 	return db.Save(&balance).Error
 }

@@ -16,8 +16,142 @@ var ErrPixelTransactionNotFound = errors.New("pixel transaction not found")
 
 // TransactionStatusRequest is the Pixel status query payload.
 type TransactionStatusRequest struct {
-	APIKey          string `json:"api_key"`
-	TransactionIDs  string `json:"transaction_ids"`
+	APIKey         string `json:"api_key"`
+	TransactionIDs string `json:"transaction_ids"`
+}
+
+// pixelStatusEnvelope handles Pixel status API where data may be an object or an array.
+type pixelStatusEnvelope struct {
+	Data       json.RawMessage `json:"data"`
+	Message    string          `json:"message"`
+	StatusCode int             `json:"statut_code"`
+}
+
+// pixelTxnData mirrors transaction fields returned by Pixel status/airtime APIs.
+type pixelTxnData struct {
+	TransactionID      string  `json:"transaction_id"`
+	Amount             int     `json:"amount"`
+	Benefice           int     `json:"benefice"`
+	Commission         float32 `json:"comission"`
+	Destination        string  `json:"destination"`
+	Fee                float32 `json:"fee"`
+	Response           string  `json:"response"`
+	Error              *string `json:"error"`
+	ServiceID          int     `json:"service_id"`
+	CustomerName       string  `json:"customer_name"`
+	State              string  `json:"state"`
+	CustomData         string  `json:"custom_data"`
+	IPNUrl             string  `json:"ipn_url"`
+	TransactionChannel *string `json:"transaction_channel"`
+	ProviderID         string  `json:"provider_id"`
+	SMSLink            string  `json:"sms_link"`
+	PID                int     `json:"p_id"`
+	PLastWalletAmount  int     `json:"p_last_wallet_amount"`
+	PNewWalletAmount   *int    `json:"p_new_wallet_amount"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+	Currency           string  `json:"currency"`
+}
+
+func (d pixelTxnData) toAirtimeResponse(msg string, statusCode int) *AirtimeResponse {
+	var resp AirtimeResponse
+	resp.Message = msg
+	resp.StatusCode = statusCode
+	resp.Data.TransactionID = d.TransactionID
+	resp.Data.Amount = d.Amount
+	resp.Data.Benefice = d.Benefice
+	resp.Data.Commission = d.Commission
+	resp.Data.Destination = d.Destination
+	resp.Data.Fee = d.Fee
+	resp.Data.Response = d.Response
+	resp.Data.Error = d.Error
+	resp.Data.ServiceID = d.ServiceID
+	resp.Data.CustomerName = d.CustomerName
+	resp.Data.State = d.State
+	resp.Data.CustomData = d.CustomData
+	resp.Data.IPNUrl = d.IPNUrl
+	resp.Data.TransactionChannel = d.TransactionChannel
+	resp.Data.ProviderID = d.ProviderID
+	resp.Data.SMSLink = d.SMSLink
+	resp.Data.PID = d.PID
+	resp.Data.PLastWalletAmount = d.PLastWalletAmount
+	resp.Data.PNewWalletAmount = d.PNewWalletAmount
+	resp.Data.CreatedAt = d.CreatedAt
+	resp.Data.UpdatedAt = d.UpdatedAt
+	resp.Data.Currency = d.Currency
+	return &resp
+}
+
+func parsePixelStatusBody(body []byte, requestedID string) (*AirtimeResponse, error) {
+	var env pixelStatusEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("parse status response: %w", err)
+	}
+
+	msgLower := strings.ToLower(strings.TrimSpace(env.Message))
+	if env.StatusCode == http.StatusNotFound || strings.Contains(msgLower, "transaction not found") {
+		return nil, ErrPixelTransactionNotFound
+	}
+
+	raw := bytes.TrimSpace(env.Data)
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("empty transaction data from provider")
+	}
+
+	var txn pixelTxnData
+	var err error
+
+	switch raw[0] {
+	case '{':
+		err = json.Unmarshal(raw, &txn)
+	case '[':
+		txn, err = parsePixelStatusDataArray(raw, requestedID)
+	default:
+		return nil, fmt.Errorf("unexpected data type from provider")
+	}
+	if err != nil {
+		if errors.Is(err, ErrPixelTransactionNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("parse status data: %w", err)
+	}
+
+	if strings.TrimSpace(txn.TransactionID) == "" {
+		return nil, fmt.Errorf("empty transaction data from provider")
+	}
+
+	return txn.toAirtimeResponse(env.Message, env.StatusCode), nil
+}
+
+// parsePixelStatusDataArray handles data as []string (not found) or []transaction object.
+func parsePixelStatusDataArray(raw []byte, requestedID string) (pixelTxnData, error) {
+	var strIDs []string
+	if err := json.Unmarshal(raw, &strIDs); err == nil {
+		if len(strIDs) == 0 || strings.TrimSpace(strIDs[0]) == "" {
+			return pixelTxnData{}, ErrPixelTransactionNotFound
+		}
+		// Pixel returns e.g. data: ["PIX_22827809"] when the id is unknown for this api_key.
+		return pixelTxnData{}, ErrPixelTransactionNotFound
+	}
+
+	var list []pixelTxnData
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return pixelTxnData{}, err
+	}
+	if len(list) == 0 {
+		return pixelTxnData{}, ErrPixelTransactionNotFound
+	}
+
+	req := strings.TrimSpace(requestedID)
+	if req != "" {
+		for _, item := range list {
+			if strings.EqualFold(strings.TrimSpace(item.TransactionID), req) {
+				return item, nil
+			}
+		}
+	}
+
+	return list[0], nil
 }
 
 // QueryTransactionStatus fetches a single Pixel transaction by provider id (e.g. PIX_37068773).
@@ -57,32 +191,26 @@ func (c *AirtimeClient) QueryTransactionStatus(ctx context.Context, apiKey, tran
 		return nil, fmt.Errorf("read status response: %w", err)
 	}
 
-	var envelope AirtimeResponse
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("parse status response: %w", err)
+	parsed, err := parsePixelStatusBody(body, transactionID)
+	if err != nil {
+		if resp.StatusCode != http.StatusOK && !errors.Is(err, ErrPixelTransactionNotFound) {
+			return nil, providerHTTPError(resp.StatusCode, body)
+		}
+		return nil, err
 	}
 
-	if envelope.StatusCode == http.StatusNotFound {
-		return nil, ErrPixelTransactionNotFound
-	}
-	if strings.Contains(strings.ToLower(envelope.Message), "transaction not found") {
-		return nil, ErrPixelTransactionNotFound
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, providerHTTPError(resp.StatusCode, body)
 	}
-	if envelope.StatusCode != 0 && envelope.StatusCode != http.StatusOK {
-		msg := strings.TrimSpace(envelope.Message)
+	if parsed.StatusCode != 0 && parsed.StatusCode != http.StatusOK {
+		msg := strings.TrimSpace(parsed.Message)
 		if msg == "" {
-			msg = fmt.Sprintf("payment provider error (code %d)", envelope.StatusCode)
+			msg = fmt.Sprintf("payment provider error (code %d)", parsed.StatusCode)
 		}
 		return nil, fmt.Errorf("%s", msg)
 	}
-	if strings.TrimSpace(envelope.Data.TransactionID) == "" {
-		return nil, fmt.Errorf("empty transaction data from provider")
-	}
 
-	return &envelope, nil
+	return parsed, nil
 }
 
 // PixelAPIKeysForCurrency returns API keys to try, in order, for a wallet currency.

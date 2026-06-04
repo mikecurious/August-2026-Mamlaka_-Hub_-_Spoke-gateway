@@ -8,7 +8,7 @@ This document covers the latest transaction API updates focused on pagination co
 
 - `GET /api/v1/transactions`
 - `GET /api/v1/transactions/search`
-- `GET /api/v1/transaction?merchant=<merchantId>&secureId=<secureId>` (single transaction lookup, unchanged)
+- `GET /api/v1/transaction?merchant=<merchantId>&reference=<secureId|externalId|PIX_*>` (single lookup; also accepts `secureId` or `externalId` query params)
 
 ## Pagination Parameters
 

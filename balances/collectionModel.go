@@ -26,6 +26,7 @@ type MerchantCollectionBalance struct {
 	NGNBalance       float64   `gorm:"column:ngnBalance;type:float(100,2)" json:"ngnBalance"`
 	ZMWBalance       float64   `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
 	GMDBalance       float64   `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
+	RWFBalance       float64   `gorm:"column:rwfBalance;type:float(100,2)" json:"rwfBalance"`
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -82,6 +83,8 @@ func ConvertCollectionBalance(impalaMerchantID, originCurrency, destinationCurre
         originBalance = &balance.ZMWBalance
     case "GMD":
         originBalance = &balance.GMDBalance
+    case "RWF":
+        originBalance = &balance.RWFBalance
     default:
         return fmt.Errorf("invalid origin currency: %s", originCurrency)
     }
@@ -113,6 +116,8 @@ func ConvertCollectionBalance(impalaMerchantID, originCurrency, destinationCurre
         destinationBalance = &balance.ZMWBalance
     case "GMD":
         destinationBalance = &balance.GMDBalance
+    case "RWF":
+        destinationBalance = &balance.RWFBalance
     default:
         return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
     }
@@ -182,6 +187,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"NGN":  balance.NGNBalance,
 		"ZMW":  balance.ZMWBalance,
 		"GMD":  balance.GMDBalance,
+		"RWF":  balance.RWFBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -211,6 +217,7 @@ func GetTotalCollectionBalance(merchantId string, baseCurrency string) (map[stri
 		"ngnBalance":   balance.NGNBalance,
 		"zmwBalance":   balance.ZMWBalance,
 		"gmdBalance":   balance.GMDBalance,
+		"rwfBalance":   balance.RWFBalance,
 		"totalBalance": totalBalance,
 		"baseCurrency": baseCurrency,
 		"xafBalance":   balance.XAFBalance,

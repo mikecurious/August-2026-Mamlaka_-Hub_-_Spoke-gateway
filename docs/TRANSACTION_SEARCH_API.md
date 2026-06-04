@@ -30,8 +30,9 @@ All parameters are optional. You can combine multiple filters to narrow down you
 | `currency` | string | Filter by currency code (KES, USD, XOF, UGX, etc.). | `KES` |
 | `status` | string | Filter by transaction status (PENDING, COMPLETE, FAILED, processing, etc.). | `COMPLETE` |
 | `report` | string | Filter by transaction report type (collection, withdraw, deposit). | `collection` |
-| `externalId` | string | Search by exact external ID. | `ImpadlTdest25` |
-| `secureId` | string | Search by exact secure ID. | `6S4mi15UgO2xYkjjyqH4gA==` |
+| `reference` | string | Search by **secureId**, **externalId**, or provider ref (`PIX_*`, `merchantRequestID`, `checkoutRequestID`). Preferred when the caller has one id and is unsure which field it is. | `GGG09IE1CBV7` or `QdjOObT7kNkvY3ECYOUzqw==` |
+| `externalId` | string | Search by exact external ID (ignored if `reference` is set). | `ImpadlTdest25` |
+| `secureId` | string | Search by exact secure ID (ignored if `reference` is set). | `6S4mi15UgO2xYkjjyqH4gA==` |
 | `sourceOfFunds` | string | Filter by source of funds (MPESA, CARD, CRYPTO, korapay, flutterwave, etc.). | `MPESA` |
 | `startDate` | integer | Filter transactions from this Unix timestamp (inclusive). | `1704067200` |
 | `endDate` | integer | Filter transactions up to this Unix timestamp (inclusive). | `1704153600` |

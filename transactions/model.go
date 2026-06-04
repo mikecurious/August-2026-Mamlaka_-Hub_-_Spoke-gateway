@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"com.mam-laka/database"
 )
@@ -208,6 +209,33 @@ func GetTransactionByMerchantIDAndSecureID(merchantID, secureID string) (Transac
 	return transaction, nil
 }
 
+// GetTransactionByMerchantIDAndExternalID finds a transaction by merchant and externalId.
+func GetTransactionByMerchantIDAndExternalID(merchantID, externalID string) (TransactionModel, error) {
+	db := database.GetConnection()
+	var transaction TransactionModel
+	err := db.Where("impalaMerchantId = ? AND externalId = ?", merchantID, externalID).First(&transaction).Error
+	return transaction, err
+}
+
+// GetTransactionByMerchantIDAndReference finds a transaction by secureId, externalId, or provider ref.
+func GetTransactionByMerchantIDAndReference(merchantID, reference string) (TransactionModel, error) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return TransactionModel{}, fmt.Errorf("reference is required")
+	}
+	db := database.GetConnection()
+	var transaction TransactionModel
+	q := db.Where(
+		"secureId = ? OR externalId = ? OR merchantRequestID = ? OR checkoutRequestID = ?",
+		reference, reference, reference, reference,
+	)
+	if strings.TrimSpace(merchantID) != "" {
+		q = q.Where("impalaMerchantId = ?", merchantID)
+	}
+	err := q.Order("id DESC").First(&transaction).Error
+	return transaction, err
+}
+
 // Helper function to generate a secure random string
 func GenerateSecureID() string {
 	b := make([]byte, 16) // Generate 16 random bytes
@@ -295,6 +323,7 @@ type SearchTransactionsParams struct {
 	TransactionReport string
 	ExternalID        string
 	SecureID          string
+	Reference         string // matches secureId, externalId, or provider ref (PIX_*, etc.)
 	SourceOfFunds     string
 	StartDate         *int64
 	EndDate           *int64
@@ -344,12 +373,18 @@ func SearchTransactions(params SearchTransactionsParams) ([]TransactionModel, in
 		query = query.Where("transactionReport = ?", params.TransactionReport)
 	}
 
-	if params.ExternalID != "" {
-		query = query.Where("externalId = ?", params.ExternalID)
-	}
-
-	if params.SecureID != "" {
-		query = query.Where("secureId = ?", params.SecureID)
+	if ref := strings.TrimSpace(params.Reference); ref != "" {
+		query = query.Where(
+			"secureId = ? OR externalId = ? OR merchantRequestID = ? OR checkoutRequestID = ?",
+			ref, ref, ref, ref,
+		)
+	} else {
+		if params.ExternalID != "" {
+			query = query.Where("externalId = ?", params.ExternalID)
+		}
+		if params.SecureID != "" {
+			query = query.Where("secureId = ?", params.SecureID)
+		}
 	}
 
 	if params.SourceOfFunds != "" {

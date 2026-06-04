@@ -44,7 +44,23 @@ The merchant-facing API format remains the same as other channels.
 
 ---
 
-## 4) Merchant Callback Format (Our API -> Merchant)
+## Wallets
+
+| Wallet | Table | Column |
+|--------|-------|--------|
+| Collection (payins) | `merchant_collection_balance` | `rwfBalance` |
+| Payout (disbursements) | `merchant_balances` | `rwfBalance` |
+
+Balance APIs:
+
+- `GET /api/v1/read/payins/balance` — includes `rwfBalance`
+- `GET /api/v1/read/payouts/balance` — includes `rwfBalance`
+
+Payout (`POST /api/v1/mobile/transfer`) is not enabled yet; collection payins credit `rwfBalance` on successful Flutterwave callback.
+
+---
+
+## 2) Merchant Callback Format (Our API -> Merchant)
 
 We preserve the same callback structure used in other channels.
 

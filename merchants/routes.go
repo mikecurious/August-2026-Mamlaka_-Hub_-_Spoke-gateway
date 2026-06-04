@@ -269,6 +269,8 @@ func handlePayinBalanceUpdate(db *gorm.DB, transaction *transactions.Transaction
 	switch currency {
 	case "GMD":
 		err = balances.AddGMDBalance(transaction.ImpalaMerchantID, credit)
+	case "RWF":
+		err = balances.AddRWFBalance(transaction.ImpalaMerchantID, credit)
 	case "XOF":
 		err = balances.AddXOFBalance(transaction.ImpalaMerchantID, credit)
 	case "XAF":
@@ -301,6 +303,8 @@ func handlePayoutBalanceUpdate(db *gorm.DB, transaction *transactions.Transactio
 	switch currency {
 	case "GMD":
 		err = balances.RefundGMDBalance(transaction.ImpalaMerchantID, float64(transaction.Amount))
+	case "RWF":
+		err = balances.RefundRWFBalance(transaction.ImpalaMerchantID, float64(transaction.Amount))
 	case "XOF":
 		err = balances.AddBalance(transaction.ImpalaMerchantID, "IMPA", float64(transaction.Amount))
 	default:
@@ -3402,14 +3406,33 @@ func TagsHandler(c *gin.Context) {
 }
 
 func GetTransactionHandler(c *gin.Context) {
-	// Extract query parameters
-	merchantID := c.Query("merchant")
-	secureID := c.Query("secureId") // Ensure the key matches the actual query parameter
+	merchantID := strings.TrimSpace(c.Query("merchant"))
+	if merchantID == "" {
+		if mid, ok := c.Get("merchantID"); ok {
+			if s, ok := mid.(string); ok {
+				merchantID = strings.TrimSpace(s)
+			}
+		}
+	}
 
-	// Retrieve transaction
-	transaction, err := transactions.GetTransactionByMerchantIDAndSecureID(merchantID, secureID)
+	reference := strings.TrimSpace(c.Query("reference"))
+	if reference == "" {
+		reference = strings.TrimSpace(c.Query("secureId"))
+	}
+	if reference == "" {
+		reference = strings.TrimSpace(c.Query("externalId"))
+	}
+	if reference == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "MISSING_REFERENCE",
+			"message": "Provide reference, secureId, or externalId",
+		})
+		return
+	}
+
+	transaction, err := transactions.GetTransactionByMerchantIDAndReference(merchantID, reference)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve transaction", "details": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transaction not found", "details": err.Error()})
 		return
 	}
 
@@ -3464,12 +3487,15 @@ func SearchTransactionsHandler(c *gin.Context) {
 		params.TransactionReport = report
 	}
 
-	if externalID := c.Query("externalId"); externalID != "" {
-		params.ExternalID = externalID
-	}
-
-	if secureID := c.Query("secureId"); secureID != "" {
-		params.SecureID = secureID
+	if reference := strings.TrimSpace(c.Query("reference")); reference != "" {
+		params.Reference = reference
+	} else {
+		if externalID := c.Query("externalId"); externalID != "" {
+			params.ExternalID = externalID
+		}
+		if secureID := c.Query("secureId"); secureID != "" {
+			params.SecureID = secureID
+		}
 	}
 
 	if sourceOfFunds := c.Query("sourceOfFunds"); sourceOfFunds != "" {
@@ -5178,6 +5204,8 @@ func KorapayCallbackHandler(c *gin.Context) {
 				coll.NGNBalance += float64(callbackReq.Data.Amount)
 			case "ZMW":
 				coll.ZMWBalance += float64(callbackReq.Data.Amount)
+			case "RWF":
+				coll.RWFBalance += float64(callbackReq.Data.Amount)
 			default:
 				log.Printf("Unsupported currency for collection balance update: %s", callbackReq.Data.Currency)
 			}
@@ -6276,6 +6304,8 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 				switch callbackReq.Data.Currency {
 				case "ZMW":
 					coll.ZMWBalance += float64(callbackReq.Data.Amount)
+				case "RWF":
+					coll.RWFBalance += float64(callbackReq.Data.Amount)
 				case "KES":
 					coll.KESBalance += float64(callbackReq.Data.Amount)
 				}
@@ -6730,6 +6760,10 @@ func TransferHandler(c *gin.Context) {
 		availableBalance = collectionBalance.GMDBalance
 		collectionField = "gmdBalance"
 		merchantField = "gmdBalance"
+	case "RWF":
+		availableBalance = collectionBalance.RWFBalance
+		collectionField = "rwfBalance"
+		merchantField = "rwfBalance"
 	default:
 		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported currency"})
