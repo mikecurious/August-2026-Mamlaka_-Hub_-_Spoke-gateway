@@ -318,7 +318,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main() {
+func main101() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
