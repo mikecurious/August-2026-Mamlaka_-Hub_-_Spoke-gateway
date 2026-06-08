@@ -7021,6 +7021,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/bank/payout", KorapayPayoutHandler)
 	protected.POST("/bank/pesalink/payout", PesalinkPayoutHandler)
 	protected.POST("/till/payment", TillPaymentHandler)
+	protected.POST("/mpesa/verify", MpesaIdentifierVerifyHandler)
 	// virtualcard endpoins
 
 	// migrate the virtual careds

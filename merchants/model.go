@@ -220,6 +220,14 @@ type KorapayPayoutRequest struct {
 	CallbackURL    string `json:"callbackUrl" binding:"required"`
 }
 
+// MpesaIdentifierVerifyRequest looks up a Safaricom till or paybill (SFC verify).
+type MpesaIdentifierVerifyRequest struct {
+	Type         string `json:"type" binding:"required"`         // till | paybill
+	Identifier   string `json:"identifier" binding:"required"` // till or paybill number
+	ExternalID   string `json:"externalId" binding:"required"`
+	CallbackURL  string `json:"callbackUrl"`
+}
+
 // TillPaymentRequest is the request body for CreditBank till payment.
 type TillPaymentRequest struct {
 	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
