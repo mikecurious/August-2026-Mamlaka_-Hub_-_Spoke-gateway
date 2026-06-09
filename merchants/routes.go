@@ -6030,6 +6030,7 @@ func TillPaymentHandler(c *gin.Context) {
 }
 
 func PaybillPaymentHandler(c *gin.Context) {
+	fmt.Println("Received PaybillPayment request")
 	merchantID, ok := c.Get("merchantID")
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
@@ -6083,11 +6084,13 @@ func PaybillPaymentHandler(c *gin.Context) {
 		// narration = "Till payment"
 	}
 
+
 	resp, err := creditbank.InitiatePaybillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Till payment initiation failed", "details": err.Error()})
 		return
 	}
+	// log the response
 
 	amountInt := int(amountFloat)
 	transaction := &transactions.TransactionModel{
@@ -6097,9 +6100,9 @@ func PaybillPaymentHandler(c *gin.Context) {
 		Currency:            req.Currency,
 		Amount:              amountInt,
 		NetAmount:           float64(amountInt),
-		Msisdn:              "TILL-" + req.CreditAccount, // Save till account label in phone field for transaction views
+		Msisdn:              "PAYBILL-" + req.CreditAccount, // Save till account label in phone field for transaction views
 		SecureID:            internalRef,
-		SourceOfFunds:       "till",
+		SourceOfFunds:       "PAYBILL",
 		ExternalID:          req.ExternalID,
 		CallbackURL:         req.CallbackURL,
 		DateAdded:           time.Now().Unix(),

@@ -17,7 +17,7 @@ const (
 	pesalinkStatusURL    = "https://konnectapigateway.creditbank.co.ke/pesalink-payment-status-check"
 	apiKey               = "cbapi_production_498d8e02839f4584a70e186865af3cb1"
 	appID                = "c40393bd-be12-49cc-9c60-d04a0ac58fef"
-	paybillURL           = "https://konnectapigateway.creditbank.co.ke/p2b"
+	paybillURL           = "https://konnectapigateway.creditbank.co.ke/b2b"
 )
 
 type TillDestinationRequest struct {
@@ -196,7 +196,7 @@ func InitiatePaybillPayment(creditAccount, narration, amount, callbackURL, trans
 	if err != nil {
 		return nil, err
 	}
-	raw, err := postWithTLSFallback(baseURL, body)
+	raw, err := postWithTLSFallback(paybillURL, body)
 	if err != nil {
 		return nil, err
 	}
