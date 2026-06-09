@@ -126,7 +126,7 @@ func postWithTLSFallback(url string, body []byte) ([]byte, error) {
 			strings.Contains(errMsg, "x509: certificate signed by unknown authority") ||
 			strings.Contains(errMsg, "x509: certificate has expired or is not yet valid") {
 			insecureClient := &http.Client{
-				Timeout: 30 * time.Second,
+				Timeout: 100 * time.Second,
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				},
