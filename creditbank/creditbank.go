@@ -12,23 +12,49 @@ import (
 )
 
 const (
-	baseURL             = "https://konnectapigateway.creditbank.co.ke/b2b-tills"
+	baseURL              = "https://konnectapigateway.creditbank.co.ke/b2b-tills"
 	pesalinkToAccountURL = "https://konnectapigateway.creditbank.co.ke/pesalink-to-account"
 	pesalinkStatusURL    = "https://konnectapigateway.creditbank.co.ke/pesalink-payment-status-check"
-	apiKey              = "cbapi_production_498d8e02839f4584a70e186865af3cb1"
-	appID               = "c40393bd-be12-49cc-9c60-d04a0ac58fef"
+	apiKey               = "cbapi_production_498d8e02839f4584a70e186865af3cb1"
+	appID                = "c40393bd-be12-49cc-9c60-d04a0ac58fef"
+	paybillURL           = "https://konnectapigateway.creditbank.co.ke/p2b"
 )
 
 type TillDestinationRequest struct {
-	TransactionType    string `json:"transactionType"`
-	CreditAccount      string `json:"creditAccount"`
-	Narration          string `json:"narration"`
-	RecieverPhone      string `json:"recieverPhoneNumber"`
-	Amount             string `json:"amount"`
-	Timestamp          string `json:"timestamp"`
-	ErrorCallBackURL   string `json:"errorCallBackUrl"`
-	CallBackURL        string `json:"callBackUrl"`
-	TransactionRef     string `json:"transactionReference"`
+	TransactionType  string `json:"transactionType"`
+	CreditAccount    string `json:"creditAccount"`
+	Narration        string `json:"narration"`
+	RecieverPhone    string `json:"recieverPhoneNumber"`
+	Amount           string `json:"amount"`
+	Timestamp        string `json:"timestamp"`
+	ErrorCallBackURL string `json:"errorCallBackUrl"`
+	CallBackURL      string `json:"callBackUrl"`
+	TransactionRef   string `json:"transactionReference"`
+}
+
+/*.
+"transactionType": "MPESAB2B_PAYBILL",
+   "creditAccount": "4136433",
+
+   "narration": "92997",
+   "recieverPhoneNumber": "254711354342",
+   "amount": "1",
+   "timestamp": "2021-01-29T00:54:08+03:00",
+   "errorCallBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
+   "callBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
+   "transactionReference": "J21E23KAJ129"
+*/
+
+type PaybillDestinationRequest struct {
+	TransactionType  string `json:"transactionType"`
+	CreditAccount    string `json:"creditAccount"`
+	Narration        string `json:"narration"`
+	RecieverPhone    string `json:"recieverPhoneNumber"`
+	Amount           string `json:"amount"`
+	Timestamp        string `json:"timestamp"`
+	ErrorCallBackURL string `json:"errorCallBackUrl"`
+	CallBackURL      string `json:"callBackUrl"`
+	TransactionRef   string `json:"transactionReference"`
 }
 
 type TillAPIResponse struct {
@@ -59,22 +85,22 @@ type PesalinkPayoutRequest struct {
 type PesalinkPayoutResponse struct {
 	RequestID    string `json:"RequestID"`
 	ResponseData struct {
-		RequestID          string `json:"requestID"`
-		OriginalRequestID  string `json:"originalRequestID"`
-		Status             string `json:"status"`
-		StatusCode         string `json:"statusCode"`
-		StatusDescription  string `json:"statusDescription"`
-		StatusMessage      string `json:"statusMessage"`
-		ErrorCode          string `json:"errorCode"`
-		ErrorDesc          string `json:"errorDesc"`
-		EndToEndID         string `json:"endToEndID"`
+		RequestID         string `json:"requestID"`
+		OriginalRequestID string `json:"originalRequestID"`
+		Status            string `json:"status"`
+		StatusCode        string `json:"statusCode"`
+		StatusDescription string `json:"statusDescription"`
+		StatusMessage     string `json:"statusMessage"`
+		ErrorCode         string `json:"errorCode"`
+		ErrorDesc         string `json:"errorDesc"`
+		EndToEndID        string `json:"endToEndID"`
 	} `json:"ResponseData"`
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Status   int    `json:"status"`
-	Detail   string `json:"detail"`
-	Message  string `json:"message"`
-	Path     string `json:"path"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Status  int    `json:"status"`
+	Detail  string `json:"detail"`
+	Message string `json:"message"`
+	Path    string `json:"path"`
 }
 
 type PesalinkStatusRequest struct {
@@ -152,6 +178,36 @@ func InitiateTillPayment(creditAccount, narration, amount, callbackURL, transact
 	return &out, nil
 }
 
+// initiatePaybillPayment sends B2B paybill request to CreditBank gateway.
+func InitiatePaybillPayment(creditAccount, narration, amount, callbackURL, transactionReference string) (*TillAPIResponse, error) {
+	payload := TillDestinationRequest{
+		TransactionType:  "MPESAB2B_PAYBILL",
+		CreditAccount:    creditAccount,
+		Narration:        narration,
+		RecieverPhone:    "254768899729",
+		Amount:           amount,
+		Timestamp:        time.Now().Format(time.RFC3339),
+		ErrorCallBackURL: callbackURL,
+		CallBackURL:      callbackURL,
+		TransactionRef:   transactionReference,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := postWithTLSFallback(baseURL, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var out TillAPIResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &out, nil
+}
+
 func InitiatePesalinkPayout(bankCode, creditAccount, amount, currency, narration, txRef string) (*PesalinkPayoutResponse, error) {
 	payload := PesalinkPayoutRequest{
 		Amount:               amount,
@@ -196,4 +252,3 @@ func CheckPesalinkPayoutStatus(originalRequestID string) (*PesalinkPayoutRespons
 	}
 	return &out, nil
 }
-

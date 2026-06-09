@@ -6029,6 +6029,99 @@ func TillPaymentHandler(c *gin.Context) {
 	})
 }
 
+func PaybillPaymentHandler(c *gin.Context) {
+	merchantID, ok := c.Get("merchantID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication"})
+		return
+	}
+	mid := merchantID.(string)
+
+	var req PaybillPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	exists, err := transactions.ExternalIDExists(mid, req.ExternalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "DUPLICATE_EXTERNAL_ID", "message": "A transaction with this externalId already exists"})
+		return
+	}
+
+	amountFloat, err := strconv.ParseFloat(req.Amount, 64)
+	if err != nil || amountFloat <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
+		return
+	}
+
+	// Check KES payout balance before initiating till payment.
+	if req.Currency == "KES" {
+		payoutBalance, err := balances.GetMerchantBalance(mid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+			return
+		}
+		if payoutBalance.KESBalance < amountFloat {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "INSUFFICIENT_KES_BALANCE",
+				"message": "Insufficient payout balance. Please top up your KES wallet.",
+			})
+			return
+		}
+	}
+
+	internalRef := generateRef12()
+	internalCallback := "https://payments.mam-laka.com/api/v1/till/callback"
+	narration := req.Narration
+	if narration == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_NARRATION", "message": "narration must be provided for paybill payments"})
+		// narration = "Till payment"
+	}
+
+	resp, err := creditbank.InitiatePaybillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Till payment initiation failed", "details": err.Error()})
+		return
+	}
+
+	amountInt := int(amountFloat)
+	transaction := &transactions.TransactionModel{
+		ImpalaMerchantID:    mid,
+		TransactionStatus:   "pending",
+		TransactionReport:   "withdraw",
+		Currency:            req.Currency,
+		Amount:              amountInt,
+		NetAmount:           float64(amountInt),
+		Msisdn:              "TILL-" + req.CreditAccount, // Save till account label in phone field for transaction views
+		SecureID:            internalRef,
+		SourceOfFunds:       "till",
+		ExternalID:          req.ExternalID,
+		CallbackURL:         req.CallbackURL,
+		DateAdded:           time.Now().Unix(),
+		MerchantRequestID:   resp.Data.OriginatorConversationID,
+		CheckoutRequestID:   resp.Data.ConversationID,
+		ResponseCode:        resp.Data.ResponseCode,
+		ResponseDescription: resp.Data.ResponseDescription,
+		CallbackStatus:      "PENDING",
+	}
+	if err := transactions.SaveTransaction(transaction); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Till payment initiated successfully. Await callback for final status.",
+		"secureId":   internalRef,
+		"externalId": req.ExternalID,
+		"status":     "pending",
+	})
+}
+
 // TillCallbackHandler processes CreditBank till callback and forwards final callback to merchant.
 func TillCallbackHandler(c *gin.Context) {
 	var payload struct {
@@ -7021,6 +7114,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/bank/payout", KorapayPayoutHandler)
 	protected.POST("/bank/pesalink/payout", PesalinkPayoutHandler)
 	protected.POST("/till/payment", TillPaymentHandler)
+	protected.POST("/paybill/payment", PaybillPaymentHandler)
 	protected.POST("/mpesa/verify", MpesaIdentifierVerifyHandler)
 	// virtualcard endpoins
 

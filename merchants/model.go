@@ -198,38 +198,49 @@ type KorapayCallbackData struct {
 
 // KorapayBankPayinRequest is the request body for initiating a Korapay bank-transfer (payin).
 type KorapayBankPayinRequest struct {
-	ExternalID   string `json:"externalId" binding:"required"`
-	Amount       int    `json:"amount" binding:"required,gt=0"`
-	Currency     string `json:"currency" binding:"required"`
-	AccountName  string `json:"accountName"` // Optional; displayed to payer (e.g. "Demo account")
-	CallbackURL  string `json:"callbackUrl" binding:"required"`
-	CustomerName string `json:"customerName" binding:"required"`
+	ExternalID    string `json:"externalId" binding:"required"`
+	Amount        int    `json:"amount" binding:"required,gt=0"`
+	Currency      string `json:"currency" binding:"required"`
+	AccountName   string `json:"accountName"` // Optional; displayed to payer (e.g. "Demo account")
+	CallbackURL   string `json:"callbackUrl" binding:"required"`
+	CustomerName  string `json:"customerName" binding:"required"`
 	CustomerEmail string `json:"customerEmail" binding:"required,email"`
 }
 
 // KorapayPayoutRequest is the request body for Korapay bank payout (disburse).
 type KorapayPayoutRequest struct {
-	ExternalID     string `json:"externalId" binding:"required"`
-	Amount         string `json:"amount" binding:"required"`
-	Currency       string `json:"currency" binding:"required"`
-	Narration      string `json:"narration"`
-	BankCode       string `json:"bankCode" binding:"required"`
-	AccountNumber  string `json:"accountNumber" binding:"required"`
-	CustomerName   string `json:"customerName" binding:"required"`
-	CustomerEmail  string `json:"customerEmail" binding:"required,email"`
-	CallbackURL    string `json:"callbackUrl" binding:"required"`
+	ExternalID    string `json:"externalId" binding:"required"`
+	Amount        string `json:"amount" binding:"required"`
+	Currency      string `json:"currency" binding:"required"`
+	Narration     string `json:"narration"`
+	BankCode      string `json:"bankCode" binding:"required"`
+	AccountNumber string `json:"accountNumber" binding:"required"`
+	CustomerName  string `json:"customerName" binding:"required"`
+	CustomerEmail string `json:"customerEmail" binding:"required,email"`
+	CallbackURL   string `json:"callbackUrl" binding:"required"`
 }
 
 // MpesaIdentifierVerifyRequest looks up a Safaricom till or paybill (SFC verify).
 type MpesaIdentifierVerifyRequest struct {
-	Type         string `json:"type" binding:"required"`         // till | paybill
-	Identifier   string `json:"identifier" binding:"required"` // till or paybill number
-	ExternalID   string `json:"externalId" binding:"required"`
-	CallbackURL  string `json:"callbackUrl"`
+	Type        string `json:"type" binding:"required"`       // till | paybill
+	Identifier  string `json:"identifier" binding:"required"` // till or paybill number
+	ExternalID  string `json:"externalId" binding:"required"`
+	CallbackURL string `json:"callbackUrl"`
 }
 
 // TillPaymentRequest is the request body for CreditBank till payment.
 type TillPaymentRequest struct {
+	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
+	Currency         string `json:"currency" binding:"required"`
+	Amount           string `json:"amount" binding:"required"`
+	CreditAccount    string `json:"creditAccount" binding:"required"`
+	Narration        string `json:"narration"`
+	ExternalID       string `json:"externalId" binding:"required"`
+	CallbackURL      string `json:"callbackUrl" binding:"required"`
+}
+
+// PaybillPaymentRequest is the request body for CreditBank paybill payment.
+type PaybillPaymentRequest struct {
 	ImpalaMerchantId string `json:"impalaMerchantId" binding:"required"`
 	Currency         string `json:"currency" binding:"required"`
 	Amount           string `json:"amount" binding:"required"`
