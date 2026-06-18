@@ -56,16 +56,18 @@ type TokenResponse struct {
 // )
 
 type B2CRequest struct {
-	InitiatorName      string `json:"InitiatorName"`
-	SecurityCredential string `json:"SecurityCredential"`
-	CommandID          string `json:"CommandID"`
-	Amount             string `json:"Amount"`
-	PartyA             string `json:"PartyA"`
-	PartyB             string `json:"PartyB"`
-	Remarks            string `json:"Remarks"`
-	QueueTimeOutURL    string `json:"QueueTimeOutURL"`
-	ResultURL          string `json:"ResultURL"`
-	Occasion           string `json:"Occasion"`
+	InitiatorName          string `json:"InitiatorName"`
+	SecurityCredential     string `json:"SecurityCredential"`
+	CommandID              string `json:"CommandID"`
+	Amount                 string `json:"Amount"`
+	PartyA                 string `json:"PartyA"`
+	PartyB                 string `json:"PartyB"`
+	Remarks                string `json:"Remarks"`
+	QueueTimeOutURL        string `json:"QueueTimeOutURL"`
+	ResultURL              string `json:"ResultURL"`
+	Occasion               string `json:"Occasion"`
+	ReceiverIdentifierType string `json:"RecieverIdentifierType"`
+	SenderIdentifierType   string `json:"SenderIdentifierType"`
 }
 
 type AccessTokenResponse struct {
@@ -115,13 +117,56 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/587af8f6-bf1a-40af-9439-fe72170f5b5c",
-		ResultURL:          "https://webhook.site/587af8f6-bf1a-40af-9439-fe72170f5b5c",
+		QueueTimeOutURL:    "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
+		ResultURL:          "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
 		Occasion:           "Withdrawal",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
 	req, _ := http.NewRequest("POST", b2cURL, bytes.NewBuffer(payloadBytes))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("B2C request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var pretty map[string]interface{}
+	if err := json.Unmarshal(body, &pretty); err == nil {
+		return pretty, nil
+	}
+	return map[string]interface{}{"raw_response": string(body)}, nil
+}
+
+func sendB2BPayment(phone string, amount string) (map[string]interface{}, error) {
+	log.Println("Sending B2C payment to:", phone, "Amount:", amount)
+	token, err := getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %v", err)
+	}
+
+	payload := B2CRequest{
+		InitiatorName:          "Collins",
+		SecurityCredential:     securityCredential,
+		CommandID:              "BusinessPayBill",
+		ReceiverIdentifierType: "4",
+		SenderIdentifierType:   "4",
+		Amount:                 amount,
+		PartyA:                 shortCode,
+		PartyB:                 phone,
+		Remarks:                "B2B Payment",
+		QueueTimeOutURL:        "https://webhook.site/527f5b37-cd59-422a-a9eb-bd2e398e5eca",
+		ResultURL:              "https://webhook.site/527f5b37-cd59-422a-a9eb-bd2e398e5eca",
+		Occasion:               "Withdrawal",
+	}
+
+	payloadBytes, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", b2bURL, bytes.NewBuffer(payloadBytes))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -155,8 +200,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    "https://webhook.site/b9192474-77f3-44b2-a481-e7912d6c8daf",
-		"ResultURL":          "https://webhook.site/b9192474-77f3-44b2-a481-e7912d6c8daf",
+		"QueueTimeOutURL":    "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
+		"ResultURL":          "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -328,11 +373,11 @@ func main101() {
 	// fmt.Println("Transaction Status Response:", resp)
 
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
-	stkResponse, err := StkPush("254701150055", 1, callbackURL, "TestPayment", conumerKey, conumerSecret, shortCode, c2bPassKey)
-	if err != nil {
-		log.Fatal("Error initiating STK push:", err)
-	}
-	fmt.Println("STK Push Response:", stkResponse)
+	// stkResponse, err := StkPush("254768899729", 1, callbackURL, "VUKAPAY", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	// if err != nil {
+	// 	log.Fatal("Error initiating STK push:", err)
+	// }
+	// fmt.Println("STK Push Response:", stkResponse)
 
 	// r := gin.Default()
 
@@ -349,6 +394,15 @@ func main101() {
 	// }
 
 	// fmt.Println("B2C Payment Response:", resp)
+
+	// resp2, err1 := checkBalance()
+
+	resp, err := sendB2BPayment("", "10")
+	if err != nil {
+		fmt.Println("Error sending B2B payment:", err)
+	}
+
+	fmt.Println("B2B Payment Response:", resp)
 
 	// resp2, err1 := checkBalance()
 
@@ -400,25 +454,25 @@ func main101() {
 }
 
 /*
-VukaC2BConsumerKey       = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
-	VukaC2BConsumerSecret    = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
-	VukaC2BBusinessShortCode = "4041587"
-	VukaC2BPassKey           = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
-
+	AppC2BConsumerKey       = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
+	AppC2BConsumerSecret    = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
+	AppC2BBusinessShortCode = "4041529"
+	AppC2BPassKey           = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
 
 */
 
 // )
 
 const (
-	conumerKey         = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
-	conumerSecret      = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
-	initiatorName      = "collins"
-	shortCode          = "4041587"
-	c2bPassKey         = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
-	securityCredential = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	callbackURL        = "https://webhook.site/527f5b37-cd59-422a-a9eb-bd2e398e5eca"
+	conumerKey         = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
+	conumerSecret      = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
+	initiatorName      = "Collins"
+	shortCode          = "4041529"
+	c2bPassKey         = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
+	securityCredential = "altOb4fW/VVr7ob0sAfqvNF/DZ0eduf9NDVAVMvGMRs1UwKpSpqQyT2cqLyk27LVuqwPn2ATRzuwBgwtDGhpLpSr3oQjIqBIEXdhfa035FtnWqD37Z7LOiJmWl3qgnT2jQ9/cd3sn3/mrJj5PUwwN6hPwOI5pVrYumy+8BK1NHtvbJlxqWJ/uACDTuLm12HbpXWtNbWwS1gyGiQw1Q8J2UNI7a7jrz80+T2lq5VqgDP9RKn7iiK4ToAVVbnEYW5uoG+Op27GwS1bI4e7UMb2xm3sDnuqMID5q8cGxWW1D5xNgGbw9LzKzySB6Wks816LM70wPfbxIvivaRkRTImd7A=="
+	callbackURL        = "https://webhook.site/ed938f51-a252-4624-8572-5985f7111733"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
+	b2bURL             = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
 	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
 	transactionURL     = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"

@@ -69,6 +69,24 @@ const (
 	AppPayB2CShortCode      = "3008818"
 )
 
+// Shiling-Bet m-pesa kenya
+const (
+
+	// 4904594
+	ShilingiBetC2BConsumerKey       = "zhBLJbYmeE81THXKjOOQQld8V5HbxHwwKIGTZQAGlbhG6NK5"
+	ShilingiBetC2BConsumerSecret    = "VD4MDNHkVT7kCcpcADD8rgrtmE4AJighFTHeNIywE4Cw39P36ptyIkJPSMqudEHp"
+	ShilingiBetC2BBusinessShortCode = "4040811"
+	ShilingiBetC2BPassKey           = "a8a2389145fe5219018b2c06d41971334f1806fb7a330800c253ecb49770c3ff"
+
+	// b2c ...
+
+	ShilingiBetB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
+	ShilingiBetB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
+	ShilingiBetB2CInitiatorName  = "Collins"
+	ShilingiBetB2CPassword       = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
+	ShilingiBetB2CShortCode      = "3008818"
+)
+
 // technology@crayfinance.com
 const (
 	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
@@ -102,9 +120,9 @@ const (
 // Lipad — Kenya M-Pesa
 const (
 	// Collection (C2B / STK paybill 4041887)
-	LipadC2BConsumerKey          = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
-	LipadC2BConsumerSecret       = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
-	LipadC2BBusinessShortCode    = "4041887"
+	LipadC2BConsumerKey        = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
+	LipadC2BConsumerSecret     = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
+	LipadC2BBusinessShortCode  = "4041887"
 	LipadC2BInitiatorName      = "Collins"
 	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 	LipadC2BSecurityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
@@ -212,7 +230,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 		PhoneNumber:       phoneNumber,
 		CallBackURL:       "https://payments.mam-laka.com/api/v1/mobile/callback",
 		AccountReference:  accountReference,
-		TransactionDesc:   "Payment",
+		TransactionDesc:   accountReference,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -357,7 +375,7 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		Amount:                   amount,
 		PartyA:                   businessShortCode,
 		PartyB:                   phoneNumberStr,
-		Remarks:                  "payments done",
+		Remarks:                  identifier,
 		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
 		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
 

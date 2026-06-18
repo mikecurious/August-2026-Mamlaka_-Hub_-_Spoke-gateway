@@ -616,6 +616,10 @@ func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 	return len(ext) >= 4 && strings.HasPrefix(ext, "test")
 }
 
+func mpesaMerchantReference(merchantID, secureID string) string {
+	return strings.TrimSpace(merchantID) + "*" + strings.TrimSpace(secureID)
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
 	// Authrorization already dont on anothr page before this handler is called
@@ -658,6 +662,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
+	mpesaRef := mpesaMerchantReference(req.ImpalaMerchantId, secureID)
 
 	dateAdded := time.Now().Unix()
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
@@ -675,21 +680,23 @@ func MobilePaymentHandler(c *gin.Context) {
 	if req.Currency == "KES" {
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
 		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
 
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
 			// log the paybill being used
 			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
 		} else if req.ImpalaMerchantId == "app" {
 			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
+		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
 		} else {
 			// Default: shared paybill 4130455 — cap flagged test flows for other merchants.
 			if isMpesaSharedPaybillTestFlow(&req) && req.Amount > maxKesTestAmountSharedPaybill4130455 {
@@ -699,8 +706,17 @@ func MobilePaymentHandler(c *gin.Context) {
 				})
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
 
+		}
+
+		if errror_stk != nil {
+			respondPaymentFailed(c, "mobile collection", errror_stk)
+			return
+		}
+		if stkResponse == nil {
+			respondPaymentFailed(c, "mobile collection", fmt.Errorf("empty STK response"))
+			return
 		}
 
 		merchantRequestID = stkResponse.MerchantRequestID
@@ -1125,9 +1141,6 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 	}
 
-	// Replace with actual logic for initiating the M-Pesa request
-	// StkPush(phoneNumber string, amount int, callbackURL, accountReference string) (*StkPushResponse, error) {
-
 	if errror_stk != nil {
 		respondPaymentFailed(c, "mobile collection", errror_stk)
 		return
@@ -1232,6 +1245,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 	// Generate secureId
 	secureID := mpesa.GenerateSecureID()
+	mpesaRef := mpesaMerchantReference(req.ImpalaMerchantId, secureID)
 	dateAdded := time.Now().Unix()
 
 	// Check merchant's balance FIRST before initiating any payout
@@ -1264,23 +1278,25 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// Initiate payment via M-Pesa
 		// GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName string) (*B2BResponse, error) {
-		// b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
+		// b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
 		var b2bResponse *mpesa.B2BResponse
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
 		} else if req.ImpalaMerchantId == "app" { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "transactworld" { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
+		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.ShilingiBetB2CConsumerKey, mpesa.ShilingiBetB2CConsumerSecret, mpesa.ShilingiBetB2CPassword, mpesa.ShilingiBetB2CShortCode, mpesa.ShilingiBetB2CInitiatorName)
 		} else {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, user.Name, mpesa.B2Cconsumerkey, mpesa.B2Cconsumersecret, mpesa.B2CPassword, mpesa.B2CBusinessShortCode, mpesa.InitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.B2Cconsumerkey, mpesa.B2Cconsumersecret, mpesa.B2CPassword, mpesa.B2CBusinessShortCode, mpesa.InitiatorName)
 
 		}
 
@@ -6083,7 +6099,6 @@ func PaybillPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_NARRATION", "message": "narration must be provided for paybill payments"})
 		// narration = "Till payment"
 	}
-
 
 	resp, err := creditbank.InitiatePaybillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
 	if err != nil {

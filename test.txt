@@ -1,98 +1,16 @@
-SanctionsQMS API — curl Reference
-Replace YOUR_API_KEY with the full key shown when you created it (format: sqms_XXXXX...).
-
-1. Health Check (no auth required)
-
-curl -s https://sanctionsqms-api.sendire.com/api/health
-2. Screen a Payment Transaction (async — recommended)
-
-curl -s -X POST https://sanctionsqms-api.sendire.com/ingest/transaction \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: sqms_hEIuEaGyf_2BnTuV0YL3-4InGRhVTskD62HkRSSCqu4" \
-  -d '{
-    "message_id":      "TXN-2026-009",
-    "ordering_party":  "John Kamau Mwangi",
-    "beneficiary":     "Osama Bin Laden",
-    "sender_bic":      "KCBLKENX",
-    "receiver_bic":    "CITIKENA",
-    "amount":          50000.00,
-    "currency":        "KES",
-    "value_date":      "2026-06-06",
-    "remittance_info": "Payment for goods",
-    "channel":         "API",
-    "product_code":    "EFT"
-  }'
-Returns: {"job_id": "...", "status": "QUEUED"} in under 10ms.
-
-3. Poll for Result
-
-curl -s http://127.0.0.1/api/ingest/jobs/JOB_ID_HERE \
-  -H "X-API-Key: YOUR_API_KEY"
-4. Screen Synchronously (small volume — waits for result)
-
-curl -s -X POST "https://sanctionsqms-api.sendire.com/ingest/transaction?sync=true" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: sqms_8MIij6Gm5dcU4RGrv8boFVq5D-o4jFKVL1px9N9Gb4Q" \
-  -d '{
-    "message_id":     "TXN-2026-009",
-    "ordering_party": "Alex Maina",
-    "beneficiary":    "Mohammed Osama",
-    "amount":         12000.00,
-    "currency":       "KES",
-    "channel":        "API"
-  }'
-5. Single Entity Screening
-
-curl -s -X POST http://127.0.0.1/api/screen/single \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "name":        "Ali Hassan Mohamed",
-    "entity_type": "INDIVIDUAL"
-  }'
-Notes:
-
-All requests go through nginx on port 80 (http://127.0.0.1)
-On your production VPS use your domain: https://yourdomain.com
-The API key scope must include ingest:transaction for transaction screening and screen:single for single screening
-Rate limits are set per key (visible in the API Keys admin pane
-
-
-
-curl -s -X POST https://sanctionsqms-api.sendire.com/ingest/transaction \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: sqms_-4viTRFuPB2Zb8MHRikVTiyF8hGrxpKS1LTxmJW8rTk" \
-  -d '{
-    "message_id":      "TXN-2026-live-0180",
-    "ordering_party":  "Mohammed Osama",
-    "beneficiary":     "Acme Trading Ltd",
-    "sender_bic":      "KCBLKENX",
-    "receiver_bic":    "CITIKENA",
-    "amount":          100.00,
-    "currency":        "",
-    "value_date":      "2026-06-06",
-    "remittance_info": "Payment for goods",
-    "channel":         "API",
-    "product_code":    "EFT"
-  }'
-
-
-
-  until curl -s http://127.0.0.1/api/health | grep -q "ok"; do sleep 2; done
-
-curl -s -X POST "https://sanctionsqms-api.sendire.com/ingest/transaction?sync=true" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: sqms_8MIij6Gm5dcU4RGrv8boFVq5D-o4jFKVL1px9N9Gb4Q" \
-  -d '{
-    "message_id":      "TXN-2027-205",
-    "ordering_party":  "KHALIL AHMED HAQQANI",
-    "beneficiary":     "Acme Trading Ltd",
-    "sender_bic":      "KCBLKENX",
-    "receiver_bic":    "CITIKENA",
-    "amount":          450.00,
-    "currency":        "USD",
-    "value_date":      "2026-06-06",
-    "remittance_info": "Payment for goods",
-    "channel":         "API",
-    "product_code":    "EFT"
-  }' 
+curl -k  --location 'https://konnectapigateway.creditbank.co.ke/b2b' \
+--header 'x-api-key: cbapi_production_498d8e02839f4584a70e186865af3cb1' \
+--header 'x-app-id: c40393bd-be12-49cc-9c60-d04a0ac58fef' \
+--header 'Content-Type: application/json' \
+--data '{
+    "transactionType": "MPESAB2B_PAYBILL",
+    "creditAccount": "714888",
+    
+    "narration": "200845",
+    "recieverPhoneNumber": "254711354342",
+    "amount": "1",
+    "timestamp": "2021-01-29T00:54:08+03:00",
+    "errorCallBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
+    "callBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
+    "transactionReference": "B21E23KAJ129"
+}'
