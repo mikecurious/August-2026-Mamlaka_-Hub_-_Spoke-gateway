@@ -112,7 +112,7 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 	payload := B2CRequest{
 		InitiatorName:      initiatorName,
 		SecurityCredential: securityCredential,
-		CommandID:          "BusinessPayment",
+		CommandID:          "BusinessPayment*shilingibet",
 		Amount:             amount,
 		PartyA:             shortCode,
 		PartyB:             phone,
@@ -363,7 +363,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main000() {
+func main() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")

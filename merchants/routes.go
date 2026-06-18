@@ -2681,18 +2681,6 @@ func MobileCallbackHandler(c *gin.Context) {
 		if resultCode == 0 { // Success
 			log.Println("Withdrawal successful")
 
-			// Deduct merchant float NOW (after Safaricom confirms success)
-			if err := balances.DeductKESBalance(transaction.ImpalaMerchantID, float64(transaction.Amount)); err != nil {
-				// If deduction fails due to insufficient float, return error code 101 and do NOT mark SUCCESS
-				log.Printf("Float deduction failed for merchant %s: %v", transaction.ImpalaMerchantID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":   "INTERNAL_ERROR",
-					"message": "Insufficient float, please try again",
-					"code":    101,
-				})
-				return
-			}
-
 			providerRef := mpesaReceiptFromB2CMetadata(metadata)
 			amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
 			updates := map[string]interface{}{
@@ -2703,10 +2691,40 @@ func MobileCallbackHandler(c *gin.Context) {
 			if providerRef != "" {
 				updates["providerReference"] = providerRef
 			}
-			if err := db.Model(&transactions.TransactionModel{}).
-				Where("id = ?", transaction.ID).
-				Updates(updates).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+
+			err = db.Transaction(func(tx *gorm.DB) error {
+				result := tx.Model(&transactions.TransactionModel{}).
+					Where("id = ? AND transactionStatus <> ? AND COALESCE(callbackStatus, '') <> ?", transaction.ID, "COMPLETE", "SENT").
+					Updates(updates)
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected == 0 {
+					return errMpesaCallbackAlreadyProcessed
+				}
+
+				deductResult := tx.Model(&balances.MerchantBalance{}).
+					Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+					Updates(map[string]interface{}{
+						"kesBalance":  gorm.Expr("kesBalance - ?", float64(transaction.Amount)),
+						"lastUpdated": time.Now().Unix(),
+					})
+				if deductResult.Error != nil {
+					return deductResult.Error
+				}
+				if deductResult.RowsAffected == 0 {
+					return fmt.Errorf("merchant payout balance not found for %s", transaction.ImpalaMerchantID)
+				}
+				return nil
+			})
+			if errors.Is(err, errMpesaCallbackAlreadyProcessed) {
+				log.Printf("Duplicate withdrawal callback skipped for transaction ID=%d originatorConversationID=%s status=%s callbackStatus=%s",
+					transaction.ID, originatorConversationID, transaction.TransactionStatus, transaction.CallbackStatus)
+				c.JSON(http.StatusOK, gin.H{"message": "Callback already processed"})
+				return
+			}
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction and deduct balance", "details": err.Error()})
 				return
 			}
 
@@ -2881,7 +2899,7 @@ func B2CCallbackHandler(c *gin.Context) {
 			}
 
 			deductResult := tx.Model(&balances.MerchantBalance{}).
-				Where("impalaMerchantId = ? AND kesBalance >= ?", transaction.ImpalaMerchantID, float64(transaction.Amount)).
+				Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
 				Updates(map[string]interface{}{
 					"kesBalance":  gorm.Expr("kesBalance - ?", float64(transaction.Amount)),
 					"lastUpdated": time.Now().Unix(),
@@ -2890,8 +2908,7 @@ func B2CCallbackHandler(c *gin.Context) {
 				return deductResult.Error
 			}
 			if deductResult.RowsAffected == 0 {
-				log.Printf("⚠️ Insufficient KES balance for merchant %s while processing B2C callback; Safaricom already processed payment",
-					transaction.ImpalaMerchantID)
+				return fmt.Errorf("merchant payout balance not found for %s", transaction.ImpalaMerchantID)
 			} else {
 				log.Printf("✅ Successfully deducted balance for merchant %s: %.2f KES", transaction.ImpalaMerchantID, float64(transaction.Amount))
 			}
