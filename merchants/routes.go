@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -619,6 +620,8 @@ func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 func mpesaMerchantReference(merchantID, secureID string) string {
 	return strings.TrimSpace(merchantID) + "*" + strings.TrimSpace(secureID)
 }
+
+var errMpesaCallbackAlreadyProcessed = errors.New("mpesa callback already processed")
 
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
@@ -2502,7 +2505,6 @@ func MobileCallbackHandler(c *gin.Context) {
 
 			providerRef := mpesaReceiptFromSTKMetadata(metadata)
 
-			// Update the transaction status to COMPLETE
 			updates := map[string]interface{}{
 				"transactionStatus":   "COMPLETE",
 				"callbackStatus":      "SENT",
@@ -2511,25 +2513,33 @@ func MobileCallbackHandler(c *gin.Context) {
 			if providerRef != "" {
 				updates["providerReference"] = providerRef
 			}
-			if err := db.Model(&transactions.TransactionModel{}).
-				Where("id = ?", transaction.ID).
-				Updates(updates).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
+
+			err = db.Transaction(func(tx *gorm.DB) error {
+				result := tx.Model(&transactions.TransactionModel{}).
+					Where("id = ? AND transactionStatus <> ? AND COALESCE(callbackStatus, '') <> ?", transaction.ID, "COMPLETE", "SENT").
+					Updates(updates)
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected == 0 {
+					return errMpesaCallbackAlreadyProcessed
+				}
+
+				fmt.Println("Updating collection balance ...")
+				if err := tx.Model(&balances.MerchantCollectionBalance{}).
+					Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
+					Update("kesBalance", gorm.Expr("kesBalance + ?", transaction.Amount)).Error; err != nil {
+					return err
+				}
+				return nil
+			})
+			if errors.Is(err, errMpesaCallbackAlreadyProcessed) {
+				log.Printf("Duplicate STK callback skipped for transaction ID=%d merchantRequestID=%s status=%s callbackStatus=%s",
+					transaction.ID, merchantRequestID, transaction.TransactionStatus, transaction.CallbackStatus)
+				c.JSON(http.StatusOK, gin.H{"message": "Callback already processed"})
 				return
 			}
-			//update them amounts
-			// // 2. Retrieve the updated transaction to get impalaMerchantId and amount
-			// var updatedTx transactions.TransactionModel
-			// if err := db.First(&updatedTx, transaction.ID).Error; err != nil {
-			// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch updated transaction", "details": err.Error()})
-			// 	return
-			// }
-
-			// 3. Update merchant collection balance
-			fmt.Println("Updating collection balance ...")
-			if err := db.Model(&balances.MerchantCollectionBalance{}).
-				Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).
-				Update("kesBalance", gorm.Expr("kesBalance + ?", transaction.Amount)).Error; err != nil {
+			if err != nil {
 				fmt.Println("error updating the balance")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update merchant balance", "details": err.Error()})
 				return
