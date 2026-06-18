@@ -160,8 +160,8 @@ func sendB2BPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:                 shortCode,
 		PartyB:                 phone,
 		Remarks:                "B2B Payment",
-		QueueTimeOutURL:        "https://webhook.site/527f5b37-cd59-422a-a9eb-bd2e398e5eca",
-		ResultURL:              "https://webhook.site/527f5b37-cd59-422a-a9eb-bd2e398e5eca",
+		QueueTimeOutURL:        "https://webhook.site/3ca38fcd-84e7-46ec-be9a-d3e100a889bf",
+		ResultURL:              "https://webhook.site/3ca38fcd-84e7-46ec-be9a-d3e100a889bf",
 		Occasion:               "Withdrawal",
 	}
 
@@ -363,7 +363,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main101() {
+func main() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
@@ -388,21 +388,21 @@ func main101() {
 	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	// 		return
 	// 	}
-	// resp, err := sendB2CPayment("254768899729", "10")
-	// if err != nil {
-	// 	fmt.Println("Error sending B2C payment:", err)
-	// }
+	resp, err := sendB2CPayment("254768899729", "10")
+	if err != nil {
+		fmt.Println("Error sending B2C payment:", err)
+	}
 
-	// fmt.Println("B2C Payment Response:", resp)
+	fmt.Println("B2C Payment Response:", resp)
 
 	// resp2, err1 := checkBalance()
 
-	resp, err := sendB2BPayment("", "10")
-	if err != nil {
-		fmt.Println("Error sending B2B payment:", err)
-	}
+	// resp, err := sendB2BPayment("", "10")
+	// if err != nil {
+	// 	fmt.Println("Error sending B2B payment:", err)
+	// }
 
-	fmt.Println("B2B Payment Response:", resp)
+	// fmt.Println("B2B Payment Response:", resp)
 
 	// resp2, err1 := checkBalance()
 
@@ -454,22 +454,23 @@ func main101() {
 }
 
 /*
-	AppC2BConsumerKey       = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
-	AppC2BConsumerSecret    = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
-	AppC2BBusinessShortCode = "4041529"
-	AppC2BPassKey           = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
-
+	ShilingiBetB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
+	ShilingiBetB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
+	ShilingiBetB2CInitiatorName  = "Collins"
+	ShilingiBetB2CPassword       = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
+	ShilingiBetB2CShortCode      = "3008818"
+)
 */
 
 // )
 
 const (
-	conumerKey         = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
-	conumerSecret      = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
+	conumerKey         = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
+	conumerSecret      = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
 	initiatorName      = "Collins"
-	shortCode          = "4041529"
+	shortCode          = "3008818"
 	c2bPassKey         = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
-	securityCredential = "altOb4fW/VVr7ob0sAfqvNF/DZ0eduf9NDVAVMvGMRs1UwKpSpqQyT2cqLyk27LVuqwPn2ATRzuwBgwtDGhpLpSr3oQjIqBIEXdhfa035FtnWqD37Z7LOiJmWl3qgnT2jQ9/cd3sn3/mrJj5PUwwN6hPwOI5pVrYumy+8BK1NHtvbJlxqWJ/uACDTuLm12HbpXWtNbWwS1gyGiQw1Q8J2UNI7a7jrz80+T2lq5VqgDP9RKn7iiK4ToAVVbnEYW5uoG+Op27GwS1bI4e7UMb2xm3sDnuqMID5q8cGxWW1D5xNgGbw9LzKzySB6Wks816LM70wPfbxIvivaRkRTImd7A=="
+	securityCredential = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
 	callbackURL        = "https://webhook.site/ed938f51-a252-4624-8572-5985f7111733"
 	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	b2bURL             = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"

@@ -343,8 +343,15 @@ func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) 
 }
 
 func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName string) (*B2BResponse, error) {
+	return GenerateB2CRequestWithCommand(phoneNumber, amount, callbackURL, externalID, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName, "PromotionPayment")
+}
+
+func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName, commandID string) (*B2BResponse, error) {
 	// consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
 	// consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
+	if commandID == "" {
+		commandID = "PromotionPayment"
+	}
 
 	// consumerKey1 := "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
 	// consumerSecret1 := "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
@@ -371,7 +378,7 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 		OriginatorConversationID: identifier,
 		InitiatorName:            initiatorName,
 		SecurityCredential:       password,
-		CommandID:                "PromotionPayment",
+		CommandID:                commandID,
 		Amount:                   amount,
 		PartyA:                   businessShortCode,
 		PartyB:                   phoneNumberStr,

@@ -22,7 +22,7 @@ func Migration(database *gorm.DB) {
 	settlement.AutoMigrate()
 }
 
-func main() {
+func main0000() {
 	//load the env
 	err := godotenv.Load()
 	if err != nil {
