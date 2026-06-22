@@ -24,6 +24,6 @@ func ResolveC2BCredentials(merchantID string) C2BCredentials {
 	case strings.EqualFold(merchantID, "shilingibet"):
 		return C2BCredentials{ShilingiBetC2BConsumerKey, ShilingiBetC2BConsumerSecret}
 	default:
-		return C2BCredentials{ConsumerKey, ConsumerSecret}
+		return C2BCredentials{AppC2BConsumerKey, AppC2BConsumerSecret}
 	}
 }

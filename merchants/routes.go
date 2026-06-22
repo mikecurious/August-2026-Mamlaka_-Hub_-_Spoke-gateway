@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -607,7 +608,15 @@ func resolveXAFPayoutServiceID(rawSP, recipientDigits string) int {
 	return 0
 }
 
-const maxKesTestAmountSharedPaybill4130455 = 10
+const (
+	maxDefaultKESCollectionAmount = 1
+	maxDefaultKESPayoutAmount     = 10
+	appMerchantID                 = "app"
+	testSuccessMSISDN             = "0710000000"
+	testFailedMSISDN              = "0720000000"
+	testSuccessIdentifier         = "888888"
+	testFailedIdentifier          = "999999"
+)
 
 func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 	if req.TestTransaction {
@@ -623,9 +632,105 @@ func mpesaMerchantReference(merchantID, secureID string) string {
 
 var errMpesaCallbackAlreadyProcessed = errors.New("mpesa callback already processed")
 
+func rejectAmountLimit(c *gin.Context, amount interface{}, limit int, scope string) {
+	c.JSON(http.StatusBadRequest, gin.H{
+		"error":   "AMOUNT_LIMIT_EXCEEDED",
+		"message": fmt.Sprintf("%s amount cannot exceed KES %d", scope, limit),
+		"amount":  amount,
+		"limit":   limit,
+	})
+}
+
+func normalizeTestDigits(value string) string {
+	digits := regexp.MustCompile(`\D`).ReplaceAllString(strings.TrimSpace(value), "")
+	if len(digits) == 12 && strings.HasPrefix(digits, "254") {
+		return "0" + digits[3:]
+	}
+	return digits
+}
+
+func testMSISDNStatus(phone string) (string, bool) {
+	switch normalizeTestDigits(phone) {
+	case testSuccessMSISDN:
+		return "COMPLETE", true
+	case testFailedMSISDN:
+		return "FAILED", true
+	default:
+		return "", false
+	}
+}
+
+func testIdentifierStatus(identifier string) (string, bool) {
+	switch normalizeTestDigits(identifier) {
+	case testSuccessIdentifier:
+		return "COMPLETE", true
+	case testFailedIdentifier:
+		return "FAILED", true
+	default:
+		return "", false
+	}
+}
+
+func testTransactionPayload(tx *transactions.TransactionModel, status, reason string) gin.H {
+	return gin.H{
+		"amount":            tx.Amount,
+		"currency":          tx.Currency,
+		"externalId":        tx.ExternalID,
+		"reference":         tx.MerchantRequestID,
+		"reason":            reason,
+		"secureId":          tx.SecureID,
+		"transactionReport": "test transaction",
+		"transactionStatus": status,
+	}
+}
+
+func processTestTransaction(c *gin.Context, tx *transactions.TransactionModel, status string) bool {
+	reason := "test transaction"
+	tx.SecureID = "TEST-" + tx.SecureID
+	tx.MerchantRequestID = tx.SecureID
+	tx.CheckoutRequestID = tx.SecureID
+	tx.ResponseCode = "TEST"
+	tx.ResponseDescription = reason
+	tx.TransactionReport = "test transaction"
+	tx.TransactionStatus = status
+	tx.CallbackStatus = "PROCESSING"
+	tx.DateAdded = time.Now().Unix()
+
+	if err := transactions.SaveTransaction(tx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save test transaction", "details": err.Error()})
+		return true
+	}
+
+	callbackStatus := "SENT"
+	var callbackErr error
+	if strings.TrimSpace(tx.CallbackURL) == "" || strings.EqualFold(strings.TrimSpace(tx.CallbackURL), "NULL") {
+		callbackErr = fmt.Errorf("callback URL is missing")
+	} else {
+		callbackErr = SendCallback(tx.ID, testTransactionPayload(tx, status, reason))
+	}
+	if callbackErr != nil {
+		callbackStatus = "FAILED"
+	}
+	_ = database.GetConnection().Model(&transactions.TransactionModel{}).
+		Where("id = ?", tx.ID).
+		Update("callbackStatus", callbackStatus).Error
+
+	response := gin.H{
+		"callbackStatus": callbackStatus,
+		"externalId":     tx.ExternalID,
+		"message":        "Test transaction processed",
+		"secureId":       tx.SecureID,
+		"status":         status,
+	}
+	if callbackErr != nil {
+		response["callbackError"] = callbackErr.Error()
+	}
+	c.JSON(http.StatusOK, response)
+	return true
+}
+
 // MobilePaymentHandler to handle mobile payment initiation
 func MobilePaymentHandler(c *gin.Context) {
-	// Authrorization already dont on anothr page before this handler is called
 
 	// Parse the mobile payment request
 	var req MobilePaymentRequest
@@ -648,7 +753,7 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 	}
 
-	// Verify the merchant ID exists (or perform any business logic)
+	// Verify the merchant ID exists
 	userID, err := users.GetUserByMerchantId(req.ImpalaMerchantId)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
@@ -680,6 +785,22 @@ func MobilePaymentHandler(c *gin.Context) {
 	netAmount := float64(req.Amount)
 	msisdnStored := req.PayerPhone
 
+	if status, ok := testMSISDNStatus(req.PayerPhone); ok {
+		if processTestTransaction(c, &transactions.TransactionModel{
+			ImpalaMerchantID: req.ImpalaMerchantId,
+			Currency:         req.Currency,
+			Amount:           req.Amount,
+			Msisdn:           req.PayerPhone,
+			NetAmount:        float64(req.Amount),
+			SecureID:         secureID,
+			SourceOfFunds:    "TEST-" + req.MobileMoneySP,
+			ExternalID:       req.ExternalID,
+			CallbackURL:      req.CallbackURL,
+		}, status) {
+			return
+		}
+	}
+
 	if req.Currency == "KES" {
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
@@ -690,8 +811,12 @@ func MobilePaymentHandler(c *gin.Context) {
 			// log the paybill being used
 			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
-		} else if req.ImpalaMerchantId == "app" {
+		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) {
 			//use app c2b detail
+			if req.Amount > maxDefaultKESCollectionAmount {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
+				return
+			}
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
@@ -701,15 +826,12 @@ func MobilePaymentHandler(c *gin.Context) {
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
 		} else {
-			// Default: shared paybill 4130455 — cap flagged test flows for other merchants.
-			if isMpesaSharedPaybillTestFlow(&req) && req.Amount > maxKesTestAmountSharedPaybill4130455 {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":   "TEST_AMOUNT_LIMIT",
-					"message": "contact support for activation",
-				})
+			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
+			if req.Amount > maxDefaultKESCollectionAmount {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.BusinessShortCode, mpesa.PassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 
 		}
 
@@ -1251,6 +1373,27 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	mpesaRef := mpesaMerchantReference(req.ImpalaMerchantId, secureID)
 	dateAdded := time.Now().Unix()
 
+	if status, ok := testMSISDNStatus(req.RecipientPhone); ok {
+		if processTestTransaction(c, &transactions.TransactionModel{
+			ImpalaMerchantID: req.ImpalaMerchantId,
+			Currency:         req.Currency,
+			Amount:           int(req.Amount),
+			Msisdn:           req.RecipientPhone,
+			NetAmount:        float64(req.Amount),
+			SecureID:         secureID,
+			SourceOfFunds:    "TEST-" + req.MobileMoneySP,
+			ExternalID:       req.ExternalID,
+			CallbackURL:      req.CallbackURL,
+		}, status) {
+			return
+		}
+	}
+
+	if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) && req.Amount > float32(maxDefaultKESPayoutAmount) {
+		rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "withdrawal")
+		return
+	}
+
 	// Check merchant's balance FIRST before initiating any payout
 	balance, err := balances.GetMerchantBalance(req.ImpalaMerchantId)
 	if err != nil {
@@ -1287,7 +1430,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
-		} else if req.ImpalaMerchantId == "app" { // use app paybill
+		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) { // use app paybill
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "transactworld" { // use app paybill
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
@@ -1296,10 +1439,12 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
-		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
-			b2bResponse, err = mpesa.GenerateB2CRequestWithCommand(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.ShilingiBetB2CConsumerKey, mpesa.ShilingiBetB2CConsumerSecret, mpesa.ShilingiBetB2CPassword, mpesa.ShilingiBetB2CShortCode, mpesa.ShilingiBetB2CInitiatorName, "BusinessPayment")
 		} else {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.B2Cconsumerkey, mpesa.B2Cconsumersecret, mpesa.B2CPassword, mpesa.B2CBusinessShortCode, mpesa.InitiatorName)
+			if req.Amount > float32(maxDefaultKESPayoutAmount) {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
+				return
+			}
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 
 		}
 
@@ -6019,6 +6164,21 @@ func TillPaymentHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
 		return
 	}
+	if status, ok := testIdentifierStatus(req.CreditAccount); ok {
+		if processTestTransaction(c, &transactions.TransactionModel{
+			ImpalaMerchantID: mid,
+			Currency:         req.Currency,
+			Amount:           int(amountFloat),
+			Msisdn:           "TILL-" + req.CreditAccount,
+			NetAmount:        amountFloat,
+			SecureID:         generateRef12(),
+			SourceOfFunds:    "TEST-till",
+			ExternalID:       req.ExternalID,
+			CallbackURL:      req.CallbackURL,
+		}, status) {
+			return
+		}
+	}
 
 	// Check KES payout balance before initiating till payment.
 	if req.Currency == "KES" {
@@ -6111,6 +6271,21 @@ func PaybillPaymentHandler(c *gin.Context) {
 	if err != nil || amountFloat <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a valid positive number"})
 		return
+	}
+	if status, ok := testIdentifierStatus(req.CreditAccount); ok {
+		if processTestTransaction(c, &transactions.TransactionModel{
+			ImpalaMerchantID: mid,
+			Currency:         req.Currency,
+			Amount:           int(amountFloat),
+			Msisdn:           "PAYBILL-" + req.CreditAccount,
+			NetAmount:        amountFloat,
+			SecureID:         generateRef12(),
+			SourceOfFunds:    "TEST-PAYBILL",
+			ExternalID:       req.ExternalID,
+			CallbackURL:      req.CallbackURL,
+		}, status) {
+			return
+		}
 	}
 
 	// Check KES payout balance before initiating till payment.
@@ -7121,6 +7296,125 @@ func PayazaCallbackHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Callback processed successfully", "status": callbackReq.Status})
 }
 
+func stalePendingFailurePayload(tx transactions.TransactionModel, reason string) map[string]interface{} {
+	payload := map[string]interface{}{
+		"amount":            tx.Amount,
+		"currency":          tx.Currency,
+		"externalId":        tx.ExternalID,
+		"secureId":          tx.SecureID,
+		"transactionReport": "FAILED",
+		"transactionStatus": "FAILED",
+		"reason":            reason,
+	}
+	if tx.ProviderReference != "" {
+		payload["reference"] = tx.ProviderReference
+	} else if tx.CheckoutRequestID != "" {
+		payload["reference"] = tx.CheckoutRequestID
+	} else if tx.MerchantRequestID != "" {
+		payload["reference"] = tx.MerchantRequestID
+	}
+	return payload
+}
+
+func FailStalePendingTransactionsHandler(c *gin.Context) {
+	db := database.GetConnection()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection failed"})
+		return
+	}
+
+	cutoff := time.Now().Add(-3 * time.Hour).Unix()
+	reason := "Transaction timed out after 3 hours"
+
+	var pending []transactions.TransactionModel
+	if err := db.Where("LOWER(transactionStatus) = ? AND dateAdded <= ?", "pending", cutoff).
+		Order("dateAdded ASC").
+		Find(&pending).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch stale pending transactions", "details": err.Error()})
+		return
+	}
+
+	type staleResult struct {
+		ID             uint   `json:"id"`
+		MerchantID     string `json:"merchantId"`
+		SecureID       string `json:"secureId"`
+		ExternalID     string `json:"externalId"`
+		CallbackStatus string `json:"callbackStatus"`
+		Error          string `json:"error,omitempty"`
+	}
+
+	results := make([]staleResult, 0, len(pending))
+	claimed := 0
+	callbackSent := 0
+	callbackFailed := 0
+
+	for _, tx := range pending {
+		claim := db.Model(&transactions.TransactionModel{}).
+			Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
+			Updates(map[string]interface{}{
+				"transactionStatus":   "FAILED",
+				"callbackStatus":      "PROCESSING",
+				"responseDescription": reason,
+			})
+		if claim.Error != nil {
+			callbackFailed++
+			results = append(results, staleResult{
+				ID:         tx.ID,
+				MerchantID: tx.ImpalaMerchantID,
+				SecureID:   tx.SecureID,
+				ExternalID: tx.ExternalID,
+				Error:      claim.Error.Error(),
+			})
+			continue
+		}
+		if claim.RowsAffected == 0 {
+			continue
+		}
+
+		claimed++
+		callbackStatus := "SENT"
+		var callbackErr error
+		if strings.TrimSpace(tx.CallbackURL) == "" || strings.EqualFold(strings.TrimSpace(tx.CallbackURL), "NULL") {
+			callbackErr = fmt.Errorf("callback URL is missing")
+		} else {
+			callbackErr = SendCallback(tx.ID, stalePendingFailurePayload(tx, reason))
+		}
+
+		result := staleResult{
+			ID:         tx.ID,
+			MerchantID: tx.ImpalaMerchantID,
+			SecureID:   tx.SecureID,
+			ExternalID: tx.ExternalID,
+		}
+		if callbackErr != nil {
+			callbackStatus = "FAILED"
+			callbackFailed++
+			result.Error = callbackErr.Error()
+		} else {
+			callbackSent++
+		}
+		result.CallbackStatus = callbackStatus
+
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ?", tx.ID).
+			Update("callbackStatus", callbackStatus).Error; err != nil {
+			result.Error = strings.TrimSpace(result.Error + " " + err.Error())
+		}
+
+		results = append(results, result)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "Stale pending transactions processed",
+		"cutoff":          cutoff,
+		"found":           len(pending),
+		"failed":          claimed,
+		"callbacksSent":   callbackSent,
+		"callbacksFailed": callbackFailed,
+		"transactions":    results,
+	})
+}
+
 func RegisterRoutes(router *gin.RouterGroup) {
 
 	router.GET("/", LoginHandler)
@@ -7140,6 +7434,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("till/error-callback", TillCallbackHandler)
 	router.POST("bank/pesalink/sync", SyncPesalinkPayoutsNowHandler) // Public trigger endpoint (for external schedulers)
 	router.POST("west-africa/sync-pending", SyncPendingPixelTransactionsHandler)
+	router.POST("transactions/fail-stale-pending", FailStalePendingTransactionsHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)
