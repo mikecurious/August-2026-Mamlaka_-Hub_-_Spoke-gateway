@@ -162,7 +162,7 @@ func processSuccessfulTransaction(db *gorm.DB, transaction *transactions.Transac
 
 	// Update transaction status
 	updates := map[string]interface{}{
-		"transactionStatus": "SUCCESSFUL",
+		"transactionStatus": "COMPLETE",
 		"callbackStatus":    "SENT",
 	}
 	if callback.Benefice > 0 {
@@ -1579,7 +1579,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// Prepare callback response
 		callbackStatus := "FAILED"
-		if transactionStatus == "SUCCESS" {
+		if transactionStatus == "COMPLETE" {
 			callbackStatus = "COMPLETE"
 		}
 
@@ -3290,7 +3290,7 @@ func CardCallbackHandler(c *gin.Context) {
 	transactionStatus := "FAILED"
 	callbackStatus := "SENT"
 	if callbackBody.TransactionStatus == "COMPLETED" {
-		transactionStatus = "SUCCESS"
+		transactionStatus = "COMPLETE"
 	}
 
 	// Update the transaction status in the database
@@ -3433,7 +3433,7 @@ func CryptoCallbackHandler(c *gin.Context) {
 	transactionStatus := "FAILED"
 	callbackStatus := "SENT"
 	if callbackBody.TransactionStatus == "COMPLETED" {
-		transactionStatus = "SUCCESS"
+		transactionStatus = "COMPLETE"
 	}
 
 	// Update the transaction status in the database
@@ -4658,7 +4658,7 @@ func CameroonXAFCallback(c *gin.Context) {
 		if err := db.Model(&transactions.TransactionModel{}).
 			Where("id = ?", transaction.ID).
 			Updates(map[string]interface{}{
-				"transactionStatus": "SUCCESS",
+				"transactionStatus": "COMPLETE",
 				"callbackStatus":    "SENT",
 			}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
@@ -4779,7 +4779,7 @@ func CameroonXAFDisburseCallback(c *gin.Context) {
 		if err := db.Model(&transactions.TransactionModel{}).
 			Where("id = ?", transaction.ID).
 			Updates(map[string]interface{}{
-				"transactionStatus": "SUCCESS",
+				"transactionStatus": "COMPLETE",
 				"callbackStatus":    "SENT",
 			}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
@@ -5092,7 +5092,7 @@ func ECitizenConfirmHandler(c *gin.Context) {
 
 	// Update transaction with confirmation details
 	updates := map[string]interface{}{
-		"transactionStatus":   "SUCCESS",
+		"transactionStatus":   "COMPLETE",
 		"callbackStatus":      "SENT",
 		"responseDescription": fmt.Sprintf("eCitizen payment confirmed - %s", req.CustomerName),
 		"merchantRequestID":   req.GatewayTransactionID,
@@ -5112,7 +5112,7 @@ func ECitizenConfirmHandler(c *gin.Context) {
 	// Send callback if callback URL is available
 	if transaction.CallbackURL != "" && transaction.CallbackURL != "NULL" {
 		callbackResponse := gin.H{
-			"transactionStatus":     "SUCCESS",
+			"transactionStatus":     "COMPLETE",
 			"transactionReport":     "collection",
 			"currency":              req.Currency,
 			"amount":                req.Amount,
@@ -5235,7 +5235,7 @@ func KorapayPaymentHandler(c *gin.Context) {
 		ImpalaMerchantID:  req.ImpalaMerchantId,
 		Amount:            req.Amount,
 		Currency:          req.Currency,
-		TransactionStatus: "processing",
+		TransactionStatus: "PENDING",
 		TransactionReport: "collection",
 		SourceOfFunds:     "korapay",
 		CallbackURL:       req.CallbackURL,
@@ -5261,7 +5261,7 @@ func KorapayPaymentHandler(c *gin.Context) {
 		"amount":            req.Amount,
 		"currency":          req.Currency,
 		"provider":          "korapay",
-		"transactionStatus": "processing",
+		"transactionStatus": "PENDING",
 	}
 
 	if korapayResponse.Data != nil {
@@ -5348,11 +5348,11 @@ func KorapayCallbackHandler(c *gin.Context) {
 
 	switch callbackReq.Event {
 	case "charge.success", "transfer.success":
-		newStatus = "success"
+		newStatus = "COMPLETE"
 		transactionStatus = "COMPLETE"
 		transactionReport = "COMPLETE"
 	case "charge.failed", "transfer.failed":
-		newStatus = "failed"
+		newStatus = "FAILED"
 		transactionStatus = "FAILED"
 		transactionReport = "FAILED"
 		// Extract failure reason from status or use default message
@@ -5545,7 +5545,7 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 		ImpalaMerchantID:  req.ImpalaMerchantId,
 		Amount:            req.Amount,
 		Currency:          req.Currency,
-		TransactionStatus: "processing",
+		TransactionStatus: "PENDING",
 		TransactionReport: "collection",
 		SourceOfFunds:     "flutterwave",
 		CallbackURL:       req.CallbackURL,
@@ -5569,7 +5569,7 @@ func FlutterwavePaymentHandler(c *gin.Context) {
 		"amount":            req.Amount,
 		"currency":          req.Currency,
 		"provider":          "flutterwave",
-		"transactionStatus": "processing",
+		"transactionStatus": "PENDING",
 	}
 
 	if flutterwaveResponse.Data != nil {
@@ -5664,7 +5664,7 @@ func KorapayBankPayinHandler(c *gin.Context) {
 		Currency:          req.Currency,
 		CallbackURL:       req.CallbackURL,
 		DateAdded:         dateAdded,
-		TransactionStatus: "pending",
+		TransactionStatus: "PENDING",
 		TransactionReport: "collection",
 		SourceOfFunds:     "korapay",
 		NetAmount:         float64(req.Amount),
@@ -5831,7 +5831,7 @@ func KorapayPayoutHandler(c *gin.Context) {
 		Currency:          req.Currency,
 		CallbackURL:       req.CallbackURL,
 		DateAdded:         dateAdded,
-		TransactionStatus: "pending",
+		TransactionStatus: "PENDING",
 		TransactionReport: "withdraw",
 		SourceOfFunds:     "korapay",
 		Amount:            amountInt,
@@ -5914,8 +5914,8 @@ func SyncPendingPesalinkPayoutsWithMeta(callerIP, requestPayload string) {
 
 	db := database.GetConnection()
 	var pending []transactions.TransactionModel
-	if err := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus = ?",
-		"pesalink_creditbank", "withdraw", "pending").Find(&pending).Error; err != nil {
+	if err := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus IN ?",
+		"pesalink_creditbank", "withdraw", []string{"PENDING", "pending"}).Find(&pending).Error; err != nil {
 		log.Printf("Pesalink sync query failed: %v", err)
 		logCBSync(callerIP, requestPayload, fmt.Sprintf("sync_query_failed error=%v", err), nil)
 		return
@@ -5943,7 +5943,7 @@ func SyncPendingPesalinkPayoutsWithMeta(callerIP, requestPayload string) {
 
 		if status == "SUCCESS" {
 			// Deduct only once when transaction completes.
-			if txn.TransactionStatus != "SUCCESS" && txn.Currency == "KES" {
+			if transactions.NormalizeTransactionState(txn.TransactionStatus) != "COMPLETE" && txn.Currency == "KES" {
 				if err := balances.DeductKESBalance(txn.ImpalaMerchantID, float64(txn.Amount)); err != nil {
 					log.Printf("KES deduction failed for %s: %v", txn.SecureID, err)
 					continue
@@ -5951,7 +5951,7 @@ func SyncPendingPesalinkPayoutsWithMeta(callerIP, requestPayload string) {
 			}
 
 			_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", txn.ID).Updates(map[string]interface{}{
-				"transactionStatus":   "SUCCESS",
+				"transactionStatus":   "COMPLETE",
 				"transactionReport":   "COMPLETE",
 				"callbackStatus":      "SENT",
 				"responseCode":        resp.ResponseData.StatusCode,
@@ -6089,7 +6089,7 @@ func PesalinkPayoutHandler(c *gin.Context) {
 
 	txn := &transactions.TransactionModel{
 		ImpalaMerchantID:    mid,
-		TransactionStatus:   "pending",
+		TransactionStatus:   "PENDING",
 		TransactionReport:   "withdraw",
 		Currency:            req.Currency,
 		Amount:              amountInt,
@@ -6198,7 +6198,7 @@ func TillPaymentHandler(c *gin.Context) {
 	internalCallback := "https://payments.mam-laka.com/api/v1/till/callback"
 	narration := req.Narration
 	if narration == "" {
-		narration = "Till payment"
+		narration = "Till payment withdrawal"
 	}
 
 	resp, err := creditbank.InitiateTillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
@@ -6210,21 +6210,21 @@ func TillPaymentHandler(c *gin.Context) {
 	amountInt := int(amountFloat)
 	transaction := &transactions.TransactionModel{
 		ImpalaMerchantID:    mid,
-		TransactionStatus:   "pending",
+		TransactionStatus:   "PENDING",
 		TransactionReport:   "withdraw",
 		Currency:            req.Currency,
 		Amount:              amountInt,
 		NetAmount:           float64(amountInt),
 		Msisdn:              "TILL-" + req.CreditAccount, // Save till account label in phone field for transaction views
 		SecureID:            internalRef,
-		SourceOfFunds:       "till",
+		SourceOfFunds:       "TILL",
 		ExternalID:          req.ExternalID,
 		CallbackURL:         req.CallbackURL,
 		DateAdded:           time.Now().Unix(),
 		MerchantRequestID:   resp.Data.OriginatorConversationID,
 		CheckoutRequestID:   resp.Data.ConversationID,
 		ResponseCode:        resp.Data.ResponseCode,
-		ResponseDescription: resp.Data.ResponseDescription,
+		ResponseDescription: narration,
 		CallbackStatus:      "PENDING",
 	}
 	if err := transactions.SaveTransaction(transaction); err != nil {
@@ -6233,10 +6233,12 @@ func TillPaymentHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Till payment initiated successfully. Await callback for final status.",
-		"secureId":   internalRef,
-		"externalId": req.ExternalID,
-		"status":     "pending",
+		"message":           "Till payment initiated successfully. Await callback for final status.",
+		"secureId":          internalRef,
+		"externalId":        req.ExternalID,
+		"status":            "PENDING",
+		"transactionReport": "withdraw",
+		"channel":           "TILL",
 	})
 }
 
@@ -6306,8 +6308,7 @@ func PaybillPaymentHandler(c *gin.Context) {
 	internalCallback := "https://payments.mam-laka.com/api/v1/till/callback"
 	narration := req.Narration
 	if narration == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_NARRATION", "message": "narration must be provided for paybill payments"})
-		// narration = "Till payment"
+		narration = "Paybill payment withdrawal"
 	}
 
 	resp, err := creditbank.InitiatePaybillPayment(req.CreditAccount, narration, req.Amount, internalCallback, internalRef)
@@ -6320,7 +6321,7 @@ func PaybillPaymentHandler(c *gin.Context) {
 	amountInt := int(amountFloat)
 	transaction := &transactions.TransactionModel{
 		ImpalaMerchantID:    mid,
-		TransactionStatus:   "pending",
+		TransactionStatus:   "PENDING",
 		TransactionReport:   "withdraw",
 		Currency:            req.Currency,
 		Amount:              amountInt,
@@ -6334,7 +6335,7 @@ func PaybillPaymentHandler(c *gin.Context) {
 		MerchantRequestID:   resp.Data.OriginatorConversationID,
 		CheckoutRequestID:   resp.Data.ConversationID,
 		ResponseCode:        resp.Data.ResponseCode,
-		ResponseDescription: resp.Data.ResponseDescription,
+		ResponseDescription: narration,
 		CallbackStatus:      "PENDING",
 	}
 	if err := transactions.SaveTransaction(transaction); err != nil {
@@ -6343,10 +6344,12 @@ func PaybillPaymentHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Till payment initiated successfully. Await callback for final status.",
-		"secureId":   internalRef,
-		"externalId": req.ExternalID,
-		"status":     "pending",
+		"message":           "Paybill payment initiated successfully. Await callback for final status.",
+		"secureId":          internalRef,
+		"externalId":        req.ExternalID,
+		"status":            "PENDING",
+		"transactionReport": "withdraw",
+		"channel":           "PAYBILL",
 	})
 }
 
@@ -6374,17 +6377,15 @@ func TillCallbackHandler(c *gin.Context) {
 
 	db := database.GetConnection()
 	status := "FAILED"
-	report := "FAILED"
 	callbackStatus := "FAILED"
 	deductedOnSuccess := false
 	if payload.ResultCode == 0 {
-		status = "SUCCESS"
-		report = "COMPLETE"
+		status = "COMPLETE"
 		callbackStatus = "SENT"
 
 		// Deduct payout balance only on successful callback (requested behavior).
 		// Protect against duplicate callbacks by skipping if already marked success.
-		if txn.TransactionStatus != "SUCCESS" {
+		if transactions.NormalizeTransactionState(txn.TransactionStatus) != "COMPLETE" {
 			switch txn.Currency {
 			case "KES":
 				if err := balances.DeductKESBalance(txn.ImpalaMerchantID, float64(txn.Amount)); err != nil {
@@ -6402,7 +6403,7 @@ func TillCallbackHandler(c *gin.Context) {
 		Where("id = ?", txn.ID).
 		Updates(map[string]interface{}{
 			"transactionStatus":   status,
-			"transactionReport":   report,
+			"transactionReport":   "withdraw",
 			"callbackStatus":      callbackStatus,
 			"responseDescription": payload.ResultDesc,
 			"responseCode":        strconv.Itoa(payload.ResultCode),
@@ -6413,14 +6414,15 @@ func TillCallbackHandler(c *gin.Context) {
 	}
 
 	callbackBody := gin.H{
-		"transactionStatus": report,
-		"transactionReport": report,
+		"transactionStatus": status,
+		"transactionReport": "withdraw",
+		"channel":           strings.ToUpper(txn.SourceOfFunds),
 		"currency":          txn.Currency,
 		"amount":            txn.Amount,
 		"secureId":          txn.SecureID,
 		"externalId":        txn.ExternalID,
 	}
-	if report == "FAILED" {
+	if status == "FAILED" {
 		callbackBody["reason"] = payload.ResultDesc
 	}
 	if err := SendCallback(txn.ID, callbackBody); err != nil {
@@ -6569,9 +6571,9 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 
 	if callbackReq.Event == "charge.completed" {
 		if callbackReq.Data.Status == "successful" {
-			newStatus = "COMPLETED"
-			transactionStatus = "COMPLETED"
-			transactionReport = "COMPLETED"
+			newStatus = "COMPLETE"
+			transactionStatus = "COMPLETE"
+			transactionReport = "COMPLETE"
 		} else if callbackReq.Data.Status == "failed" {
 			newStatus = "FAILED"
 			transactionStatus = "FAILED"
@@ -6588,9 +6590,9 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 		}
 	} else if callbackReq.Event == "transfer.completed" {
 		if strings.ToUpper(callbackReq.Data.Status) == "SUCCESSFUL" {
-			newStatus = "COMPLETED"
-			transactionStatus = "COMPLETED"
-			transactionReport = "COMPLETED"
+			newStatus = "COMPLETE"
+			transactionStatus = "COMPLETE"
+			transactionReport = "COMPLETE"
 		} else {
 			newStatus = "FAILED"
 			transactionStatus = "FAILED"
@@ -6617,7 +6619,7 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	// Balance handling on success:
 	// - collection: credit collection wallet
 	// - withdraw: deduct payout wallet
-	if newStatus == "COMPLETED" {
+	if newStatus == "COMPLETE" {
 		if transaction.TransactionReport == "collection" {
 			var coll balances.MerchantCollectionBalance
 			err = db.Where("impalaMerchantId = ?", transaction.ImpalaMerchantID).First(&coll).Error
@@ -6881,7 +6883,7 @@ func UnifiedPaymentHandler(c *gin.Context) {
 			ImpalaMerchantID:  req.ImpalaMerchantId,
 			Amount:            req.Amount,
 			Currency:          req.Currency,
-			TransactionStatus: "processing",
+			TransactionStatus: "PENDING",
 			TransactionReport: "collection",
 			SourceOfFunds:     "korapay",
 			CallbackURL:       req.CallbackURL,
@@ -6939,7 +6941,7 @@ func UnifiedPaymentHandler(c *gin.Context) {
 		ImpalaMerchantID:  req.ImpalaMerchantId,
 		Amount:            req.Amount,
 		Currency:          req.Currency,
-		TransactionStatus: "processing",
+		TransactionStatus: "PENDING",
 		TransactionReport: "collection",
 		SourceOfFunds:     "flutterwave",
 		CallbackURL:       req.CallbackURL,

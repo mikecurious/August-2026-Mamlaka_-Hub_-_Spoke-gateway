@@ -146,7 +146,7 @@ func updateTransactionStatus(db *gorm.DB, transactionID uint, status, callbackSt
 	return db.Model(&transactions.TransactionModel{}).
 		Where("id = ?", transactionID).
 		Updates(map[string]interface{}{
-			"transactionStatus": status,
+			"transactionStatus": transactions.NormalizeTransactionState(status),
 			"callbackStatus":    callbackStatus,
 		}).Error
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"com.mam-laka/database"
+	"gorm.io/gorm"
 )
 
 type TransactionModel struct {
@@ -33,12 +34,68 @@ type TransactionModel struct {
 	ProviderReference string `gorm:"column:providerReference" json:"providerReference"`
 }
 
+func NormalizeTransactionState(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "COMPLETE", "COMPLETED", "SUCCESS", "SUCCESSFUL":
+		return "COMPLETE"
+	case "FAILED", "FAIL", "FAILURE", "CANCELLED", "CANCELED":
+		return "FAILED"
+	case "PENDING", "PENDING1", "PROCESSING", "":
+		return "PENDING"
+	default:
+		return strings.ToUpper(strings.TrimSpace(status))
+	}
+}
+
+func NormalizeTransactionReport(report string) string {
+	if strings.TrimSpace(report) == "" {
+		return ""
+	}
+
+	normalized := NormalizeTransactionState(report)
+	switch normalized {
+	case "COMPLETE", "PENDING", "FAILED":
+		return normalized
+	default:
+		return report
+	}
+}
+
+func NormalizeTransactionUpdateMap(updates map[string]interface{}) {
+	if v, ok := updates["transactionStatus"]; ok {
+		if s, ok := v.(string); ok {
+			updates["transactionStatus"] = NormalizeTransactionState(s)
+		}
+	}
+	if v, ok := updates["transactionReport"]; ok {
+		if s, ok := v.(string); ok {
+			updates["transactionReport"] = NormalizeTransactionReport(s)
+		}
+	}
+}
+
+func (t *TransactionModel) normalizeStates() {
+	t.TransactionStatus = NormalizeTransactionState(t.TransactionStatus)
+	t.TransactionReport = NormalizeTransactionReport(t.TransactionReport)
+}
+
+func (t *TransactionModel) BeforeSave(tx *gorm.DB) error {
+	t.normalizeStates()
+	return nil
+}
+
+func (t *TransactionModel) BeforeUpdate(tx *gorm.DB) error {
+	t.normalizeStates()
+	return nil
+}
+
 func (TransactionModel) TableName() string {
 	return "merchant_transactions"
 }
 
 func SaveTransaction(data *TransactionModel) error {
 	db := database.GetConnection()
+	data.normalizeStates()
 	return db.Create(data).Error
 }
 
@@ -57,7 +114,7 @@ func GetTransactionsByStatusAndDate(merchantId string, startDate, endDate int64,
 	var transactions []TransactionModel
 
 	err := db.Where("impalaMerchantId = ? AND transactionStatus = ? AND dateAdded BETWEEN ? AND ?",
-		merchantId, transction_status, startDate, endDate).
+		merchantId, NormalizeTransactionState(transction_status), startDate, endDate).
 		Find(&transactions).Error
 
 	if err != nil {
@@ -93,6 +150,7 @@ func GetAllTransactions() ([]TransactionModel, error) {
 // UpdateTransaction updates an existing fund transfer based on its ID.
 func UpdateTransaction(id uint, updatedData map[string]interface{}) error {
 	db := database.GetConnection()
+	NormalizeTransactionUpdateMap(updatedData)
 	return db.Model(&TransactionModel{}).Where("id = ?", id).Updates(updatedData).Error
 }
 
@@ -120,6 +178,7 @@ func GetTransactionByID(id uint) (TransactionModel, error) {
 // UpdateTransactionByReference updates a fund transfer by its reference.
 func UpdateTransactionByReference(reference string, updatedData map[string]interface{}) error {
 	db := database.GetConnection()
+	NormalizeTransactionUpdateMap(updatedData)
 	return db.Model(&TransactionModel{}).Where("transaction_reference = ?", reference).Updates(updatedData).Error
 }
 
@@ -366,11 +425,11 @@ func SearchTransactions(params SearchTransactionsParams) ([]TransactionModel, in
 	}
 
 	if params.TransactionStatus != "" {
-		query = query.Where("transactionStatus = ?", params.TransactionStatus)
+		query = query.Where("transactionStatus = ?", NormalizeTransactionState(params.TransactionStatus))
 	}
 
 	if params.TransactionReport != "" {
-		query = query.Where("transactionReport = ?", params.TransactionReport)
+		query = query.Where("transactionReport = ?", NormalizeTransactionReport(params.TransactionReport))
 	}
 
 	if ref := strings.TrimSpace(params.Reference); ref != "" {

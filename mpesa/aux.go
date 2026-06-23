@@ -36,7 +36,6 @@ const (
 	B2CPassword          = "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 )
 
-
 // vuka creds
 const (
 	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
@@ -53,9 +52,6 @@ const (
 	VukaPayB2CShortCode      = "3008816"
 )
 
-
-
-
 const (
 
 	// 4904594
@@ -69,7 +65,7 @@ const (
 	AppPayB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
 	AppPayB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
 	AppPayB2CInitiatorName  = "Collins"
-	AppPayB2CPassword       = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
+	AppPayB2CPassword       = "fIbuUntzyiHE0Xb04RiDodF8paXQ2ujiZrG1uGtk7Mf5zEkE4h+Uqi9fYw2TscAZv0yCFL4bp83FtzRGOa5zJfPCMS5yojhOtg5hl4PL5FwHFW6kaeEqSK2rR0wZICUR9kQSQ+YAHxZkjiK33BF2Kh5AvIS1lmcp6rsQasQaCPF2o+YtXouiHTMPDHd3QpkywidN687/DKMIfIzA1K+bmBRXIb6kjd+Mu6dIpHBu78nzFHA6mUKtHNRAiOX+xTl7SdeLlmld/HLWbx10DBP1hozt6dx/4DCbX1nIef/4WtfWq8tKLCpTXVuuzTGc175baUhB2EcYJjeBPHoKnY5cLA=="
 	AppPayB2CShortCode      = "3008818"
 )
 

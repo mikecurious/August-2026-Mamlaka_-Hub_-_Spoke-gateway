@@ -1,9 +1,6 @@
 package transactions
 
-import (
-	"github.com/gin-gonic/gin"
-	"strings"
-)
+import "github.com/gin-gonic/gin"
 
 type TransactionSerializer struct {
 	c           *gin.Context
@@ -15,24 +12,21 @@ func NewTransactionSerializer(c *gin.Context, transaction TransactionModel) *Tra
 }
 
 func (s *TransactionSerializer) Response() map[string]interface{} {
-	status := s.Transaction.TransactionStatus
-	normalizedStatus := strings.ToUpper(strings.TrimSpace(status))
-	if normalizedStatus == "SUCCESS" || normalizedStatus == "COMPLETE" {
-		status = "COMPLETED"
-	}
+	status := NormalizeTransactionState(s.Transaction.TransactionStatus)
+	report := NormalizeTransactionReport(s.Transaction.TransactionReport)
 
 	return map[string]interface{}{
 		// "id":               s.Transaction.ID,
-		"impalaMerchantId": s.Transaction.ImpalaMerchantID,
+		"impalaMerchantId":   s.Transaction.ImpalaMerchantID,
 		"transaction_status": status,
-		"transaction_report": s.Transaction.TransactionReport,
+		"transaction_report": report,
 		"currency":           s.Transaction.Currency,
 		"amount":             s.Transaction.Amount,
 		// "msisdn":               s.Transaction.Msisdn,
 		// "net_amount":           s.Transaction.NetAmount,
-		"secure_id":       s.Transaction.SecureID,
-		"external_id":     s.Transaction.ExternalID,
-		"callback_url":    s.Transaction.CallbackURL,
+		"secure_id":    s.Transaction.SecureID,
+		"external_id":  s.Transaction.ExternalID,
+		"callback_url": s.Transaction.CallbackURL,
 		// "redirect_url":         s.Transaction.RedirectURL,
 		"date_added": s.Transaction.DateAdded,
 		// "merchant_request_id": s.Transaction.MerchantRequestID,
