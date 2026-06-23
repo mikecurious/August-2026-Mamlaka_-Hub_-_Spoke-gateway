@@ -716,11 +716,9 @@ func processTestTransaction(c *gin.Context, tx *transactions.TransactionModel, s
 		Update("callbackStatus", callbackStatus).Error
 
 	response := gin.H{
-		"callbackStatus": callbackStatus,
-		"externalId":     tx.ExternalID,
-		"message":        "Test transaction processed",
-		"secureId":       tx.SecureID,
-		"status":         status,
+		"externalId": tx.ExternalID,
+		"message":    "Payment initiation successful",
+		"secureId":   tx.SecureID,
 	}
 	if callbackErr != nil {
 		response["callbackError"] = callbackErr.Error()
@@ -7325,10 +7323,23 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 
 	cutoff := time.Now().Add(-3 * time.Hour).Unix()
 	reason := "Transaction timed out after 3 hours"
+	limit := 20
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil || parsedLimit < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_LIMIT", "message": "limit must be a positive integer"})
+			return
+		}
+		limit = parsedLimit
+	}
+	if limit > 100 {
+		limit = 100
+	}
 
 	var pending []transactions.TransactionModel
 	if err := db.Where("LOWER(transactionStatus) = ? AND dateAdded <= ?", "pending", cutoff).
 		Order("dateAdded ASC").
+		Limit(limit).
 		Find(&pending).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch stale pending transactions", "details": err.Error()})
 		return
@@ -7407,6 +7418,7 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":         "Stale pending transactions processed",
 		"cutoff":          cutoff,
+		"limit":           limit,
 		"found":           len(pending),
 		"failed":          claimed,
 		"callbacksSent":   callbackSent,

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"com.mam-laka/transactions"
 	"github.com/gin-gonic/gin"
@@ -102,7 +103,8 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 5: Send the raw response body to the CallbackURL
 	//send
 	log.Println("send  raw response body to the CallbackURL", transaction.CallbackURL)
-	resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
 	if err != nil {
 		return fmt.Errorf("failed to send callback: %v", err)
 	}
