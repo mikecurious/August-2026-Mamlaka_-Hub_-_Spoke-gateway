@@ -200,8 +200,8 @@ func checkBalance() (map[string]interface{}, error) {
 		"PartyA":             shortCode,
 		"IdentifierType":     "4",
 		"Remarks":            "Balance Check",
-		"QueueTimeOutURL":    "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
-		"ResultURL":          "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
+		"QueueTimeOutURL":    "https://webhook.site/91ee5dd4-1347-4576-a397-862c05e176fd",
+		"ResultURL":          "https://webhook.site/91ee5dd4-1347-4576-a397-862c05e176fd",
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -363,7 +363,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main000() {
+func main102() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
@@ -388,12 +388,12 @@ func main000() {
 	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	// 		return
 	// 	}
-	resp, err := sendB2CPayment("254768899729", "10")
-	if err != nil {
-		fmt.Println("Error sending B2C payment:", err)
-	}
+	// resp, err := sendB2CPayment("254768899729", "10")
+	// if err != nil {
+	// 	fmt.Println("Error sending B2C payment:", err)
+	// }
 
-	fmt.Println("B2C Payment Response:", resp)
+	// fmt.Println("B2C Payment Response:", resp)
 
 	// resp2, err1 := checkBalance()
 
@@ -404,13 +404,13 @@ func main000() {
 
 	// fmt.Println("B2B Payment Response:", resp)
 
-	// resp2, err1 := checkBalance()
+	resp2, err1 := checkBalance()
 
-	// if err1 != nil {
-	// 	fmt.Println("Error checking balance:", err1)
-	// }
+	if err1 != nil {
+		fmt.Println("Error checking balance:", err1)
+	}
 
-	// fmt.Println("Balance Check Response:", resp2)
+	fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -465,16 +465,16 @@ func main000() {
 // )
 
 const (
-	conumerKey         = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-	conumerSecret      = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-	initiatorName      = "Collins"
-	shortCode          = "3008818"
-	c2bPassKey         = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
-	securityCredential = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
-	callbackURL        = "https://webhook.site/ed938f51-a252-4624-8572-5985f7111733"
-	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
-	b2bURL             = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
-	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
-	transactionURL     = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
+	conumerKey         = "NfAquJ6uJGrGVEZKl7w3bgOdf8fat40j540E3xnfZTnZ9zSH"
+	conumerSecret      = "zv4mdYZ0RJ6sGu2jVAKIMVih4HAhbso2LVyCWvsFOr5FlbYL5wFciuHrm8NzwgkU"
+	initiatorName      = "collins"
+	securityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+	shortCode          = "3008816"
+
+	callbackURL    = "https://webhook.site/ed938f51-a252-4624-8572-5985f7111733"
+	b2cURL         = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
+	b2bURL         = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
+	tokenURL       = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+	balanceURL     = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
+	transactionURL = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
 )

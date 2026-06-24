@@ -611,6 +611,8 @@ func resolveXAFPayoutServiceID(rawSP, recipientDigits string) int {
 const (
 	maxDefaultKESCollectionAmount = 1
 	maxDefaultKESPayoutAmount     = 10
+	maxAppKESCollectionAmount     = 1000
+	maxAppKESPayoutAmount         = 1000
 	appMerchantID                 = "app"
 	testSuccessMSISDN             = "0710000000"
 	testFailedMSISDN              = "0720000000"
@@ -811,8 +813,8 @@ func MobilePaymentHandler(c *gin.Context) {
 
 		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) {
 			//use app c2b detail
-			if req.Amount > maxDefaultKESCollectionAmount {
-				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
+			if req.Amount > maxAppKESCollectionAmount {
+				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
 				return
 			}
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
@@ -1387,8 +1389,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 	}
 
-	if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) && req.Amount > float32(maxDefaultKESPayoutAmount) {
-		rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "withdrawal")
+	if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) && req.Currency == "KES" && req.Amount > float32(maxAppKESPayoutAmount) {
+		rejectAmountLimit(c, req.Amount, maxAppKESPayoutAmount, "withdrawal")
 		return
 	}
 
@@ -6046,6 +6048,11 @@ func PesalinkPayoutHandler(c *gin.Context) {
 
 	// Check KES balance before initiating payout.
 	if strings.ToUpper(req.Currency) == "KES" {
+		if strings.EqualFold(mid, appMerchantID) && amountFloat > float64(maxAppKESPayoutAmount) {
+			rejectAmountLimit(c, amountFloat, maxAppKESPayoutAmount, "KES withdrawal")
+			return
+		}
+
 		payoutBalance, err := balances.GetMerchantBalance(mid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
@@ -6180,6 +6187,11 @@ func TillPaymentHandler(c *gin.Context) {
 
 	// Check KES payout balance before initiating till payment.
 	if req.Currency == "KES" {
+		if strings.EqualFold(mid, appMerchantID) && amountFloat > float64(maxAppKESPayoutAmount) {
+			rejectAmountLimit(c, amountFloat, maxAppKESPayoutAmount, "KES withdrawal")
+			return
+		}
+
 		payoutBalance, err := balances.GetMerchantBalance(mid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
@@ -6290,6 +6302,11 @@ func PaybillPaymentHandler(c *gin.Context) {
 
 	// Check KES payout balance before initiating till payment.
 	if req.Currency == "KES" {
+		if strings.EqualFold(mid, appMerchantID) && amountFloat > float64(maxAppKESPayoutAmount) {
+			rejectAmountLimit(c, amountFloat, maxAppKESPayoutAmount, "KES withdrawal")
+			return
+		}
+
 		payoutBalance, err := balances.GetMerchantBalance(mid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
