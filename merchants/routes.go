@@ -1439,6 +1439,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
+		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else {
 			if req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
