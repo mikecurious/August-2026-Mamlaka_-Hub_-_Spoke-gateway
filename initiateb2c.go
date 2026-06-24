@@ -112,13 +112,13 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 	payload := B2CRequest{
 		InitiatorName:      initiatorName,
 		SecurityCredential: securityCredential,
-		CommandID:          "BusinessPayment*shilingibet",
+		CommandID:          "BusinessPayment",
 		Amount:             amount,
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
-		ResultURL:          "https://webhook.site/f65efb8d-7154-491a-a7aa-17c69da72ae9",
+		QueueTimeOutURL:    "https://webhook.site/91ee5dd4-1347-4576-a397-862c05e176fd",
+		ResultURL:          "https://webhook.site/91ee5dd4-1347-4576-a397-862c05e176fd",
 		Occasion:           "Withdrawal",
 	}
 
@@ -299,6 +299,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	url := "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
 	timestamp := time.Now().Format("20060102150405")
 	token, err := GenerateAccessToken(consumerKey, consumerSecret)
+	fmt.Println("Access Token:", token)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +364,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main102() {
+func main101() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
@@ -373,11 +374,11 @@ func main102() {
 	// fmt.Println("Transaction Status Response:", resp)
 
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
-	// stkResponse, err := StkPush("254768899729", 1, callbackURL, "VUKAPAY", conumerKey, conumerSecret, shortCode, c2bPassKey)
-	// if err != nil {
-	// 	log.Fatal("Error initiating STK push:", err)
-	// }
-	// fmt.Println("STK Push Response:", stkResponse)
+	stkResponse, err := StkPush("254768899729", 1, callbackURL, "LOCAL-TEST", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	if err != nil {
+		log.Fatal("Error initiating STK push:", err)
+	}
+	fmt.Println("STK Push Response:", stkResponse)
 
 	// r := gin.Default()
 
@@ -404,13 +405,13 @@ func main102() {
 
 	// fmt.Println("B2B Payment Response:", resp)
 
-	resp2, err1 := checkBalance()
+	// resp2, err1 := checkBalance()
 
-	if err1 != nil {
-		fmt.Println("Error checking balance:", err1)
-	}
+	// if err1 != nil {
+	// 	fmt.Println("Error checking balance:", err1)
+	// }
 
-	fmt.Println("Balance Check Response:", resp2)
+	// fmt.Println("Balance Check Response:", resp2)
 
 	// check balance
 
@@ -454,27 +455,26 @@ func main102() {
 }
 
 /*
-	ShilingiBetB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-	ShilingiBetB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-	ShilingiBetB2CInitiatorName  = "Collins"
-	ShilingiBetB2CPassword       = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
-	ShilingiBetB2CShortCode      = "3008818"
+	AppC2BConsumerKey       = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
+	AppC2BConsumerSecret    = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
+	AppC2BBusinessShortCode = "4041529"
+	AppC2BPassKey           = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
 )
 */
 
 // )
 
 const (
-	conumerKey         = "NfAquJ6uJGrGVEZKl7w3bgOdf8fat40j540E3xnfZTnZ9zSH"
-	conumerSecret      = "zv4mdYZ0RJ6sGu2jVAKIMVih4HAhbso2LVyCWvsFOr5FlbYL5wFciuHrm8NzwgkU"
+	conumerKey         = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
+	conumerSecret      = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
 	initiatorName      = "collins"
 	securityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-	shortCode          = "3008816"
-
-	callbackURL    = "https://webhook.site/ed938f51-a252-4624-8572-5985f7111733"
-	b2cURL         = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
-	b2bURL         = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
-	tokenURL       = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-	balanceURL     = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
-	transactionURL = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
+	shortCode          = "4041529"
+	c2bPassKey         = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
+	callbackURL        = "https://webhook.site/91ee5dd4-1347-4576-a397-862c05e176fd"
+	b2cURL             = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
+	b2bURL             = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
+	tokenURL           = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+	balanceURL         = "https://api.safaricom.co.ke/mpesa/accountbalance/v1/query"
+	transactionURL     = "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
 )

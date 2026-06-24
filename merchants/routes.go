@@ -770,7 +770,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
-	mpesaRef := mpesaMerchantReference(req.ImpalaMerchantId, secureID)
+	stkAccountReference := strings.TrimSpace(req.ImpalaMerchantId)
 
 	dateAdded := time.Now().Unix()
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.
@@ -804,10 +804,10 @@ func MobilePaymentHandler(c *gin.Context) {
 	if req.Currency == "KES" {
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
 		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
 
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
 			// log the paybill being used
 			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
@@ -817,21 +817,21 @@ func MobilePaymentHandler(c *gin.Context) {
 				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
 		} else {
 			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
 			if req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, mpesaRef, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 
 		}
 

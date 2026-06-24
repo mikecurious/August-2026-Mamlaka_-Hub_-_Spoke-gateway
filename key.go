@@ -11,7 +11,7 @@ import (
 	"os"
 )
 
-func main101() {
+func main1() {
 	// Path to the downloaded certificate
 	certPath := "ProductionCertificate.cer"
 	initiatorPassword := "#Kali@linux003!"
