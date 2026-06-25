@@ -614,6 +614,7 @@ const (
 	maxAppKESCollectionAmount     = 1000
 	maxAppKESPayoutAmount         = 1000
 	appMerchantID                 = "app"
+	meshexSandboxMerchantID       = "meshex_sandbox"
 	testSuccessMSISDN             = "0710000000"
 	testFailedMSISDN              = "0720000000"
 	testSuccessIdentifier         = "888888"
@@ -825,6 +826,8 @@ func MobilePaymentHandler(c *gin.Context) {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
+		} else if strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else {
 			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
 			if req.Amount > maxDefaultKESCollectionAmount {
@@ -1439,7 +1442,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
-		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
+		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") || strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else {
 			if req.Amount > float32(maxDefaultKESPayoutAmount) {
