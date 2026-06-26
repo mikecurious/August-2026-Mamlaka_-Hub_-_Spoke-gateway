@@ -27,6 +27,7 @@ type MerchantBalance struct {
 	ZMWBalance       float64 `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
 	GMDBalance       float64 `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
 	RWFBalance       float64 `gorm:"column:rwfBalance;type:float(100,2)" json:"rwfBalance"`
+	ARTMBalance      float64 `gorm:"column:artmBalance;type:float(100,2)" json:"artmBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
@@ -110,6 +111,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"ZMW":  balance.ZMWBalance,
 		"GMD":  balance.GMDBalance,
 		"RWF":  balance.RWFBalance,
+		"ARTM": balance.ARTMBalance,
 	}
 
 	// Calculate total balance converted to base currency
@@ -142,6 +144,7 @@ func GetTotalBalance(merchantId string, baseCurrency string) (map[string]interfa
 		"xafBalance":   balance.XAFBalance,
 		"gmdBalance":   balance.GMDBalance,
 		"rwfBalance":   balance.RWFBalance,
+		"artmBalance":  balance.ARTMBalance,
 		"baseCurrency": baseCurrency,
 		"merchantId":   balance.ImpalaMerchantID,
 	}
@@ -344,6 +347,8 @@ func AddBalance(impalaMerchantID string, currency string, amount float64) error 
 		balance.GMDBalance += amount
 	case "RWF":
 		balance.RWFBalance += amount
+	case "ARTM":
+		balance.ARTMBalance += amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -442,6 +447,11 @@ func DeductBalance(impalaMerchantID string, currency string, amount float64) err
 			return fmt.Errorf("insufficient RWF balance: available %.2f, required %.2f", balance.RWFBalance, amount)
 		}
 		balance.RWFBalance -= amount
+	case "ARTM":
+		if balance.ARTMBalance < amount {
+			return fmt.Errorf("insufficient ARTM balance: available %.2f, required %.2f", balance.ARTMBalance, amount)
+		}
+		balance.ARTMBalance -= amount
 	default:
 		return fmt.Errorf("unsupported currency: %s", currency)
 	}
@@ -499,6 +509,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		originBalance = &balance.GMDBalance
 	case "RWF":
 		originBalance = &balance.RWFBalance
+	case "ARTM":
+		originBalance = &balance.ARTMBalance
 	default:
 		return fmt.Errorf("invalid origin currency: %s", originCurrency)
 	}
@@ -531,6 +543,8 @@ func ConvertBalance(impalaMerchantID, originCurrency, destinationCurrency string
 		destinationBalance = &balance.GMDBalance
 	case "RWF":
 		destinationBalance = &balance.RWFBalance
+	case "ARTM":
+		destinationBalance = &balance.ARTMBalance
 	default:
 		return fmt.Errorf("invalid destination currency: %s", destinationCurrency)
 	}
@@ -762,6 +776,16 @@ func DeductRWFBalance(impalaMerchantID string, amount float64) error {
 	balance.RWFBalance -= amount
 	balance.LastUpdated = time.Now().Unix()
 	return db.Save(&balance).Error
+}
+
+// DeductARTMBalance debits the merchant airtime payout wallet.
+func DeductARTMBalance(impalaMerchantID string, amount float64) error {
+	return DeductBalance(impalaMerchantID, "ARTM", amount)
+}
+
+// AddARTMBalance returns ARTM to the merchant airtime payout wallet.
+func AddARTMBalance(impalaMerchantID string, amount float64) error {
+	return AddBalance(impalaMerchantID, "ARTM", amount)
 }
 
 // RefundRWFBalance returns RWF to the payout wallet after a failed disbursement.

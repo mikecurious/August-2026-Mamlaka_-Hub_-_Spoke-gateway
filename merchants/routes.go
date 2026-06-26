@@ -86,6 +86,36 @@ type CallbackResponse struct {
 	Reason            string `json:"reason,omitempty"` // Only for failed
 }
 
+type AirtimeDisbursementRequest struct {
+	ImpalaMerchantID string `json:"impalaMerchantId" binding:"required"`
+	Amount           int    `json:"amount" binding:"required"`
+	Phone            string `json:"phone" binding:"required"`
+	MobileMoneySP    string `json:"mobileMoneySP" binding:"required"`
+	ExternalID       string `json:"externalId" binding:"required"`
+	Email            string `json:"email"`
+}
+
+type airtimeTokenResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
+		TokenType   string `json:"token_type"`
+		ExpiresIn   int    `json:"expires_in"`
+		AccessToken string `json:"access_token"`
+	} `json:"data"`
+}
+
+type airtimeSendResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
+		RequestRef          string  `json:"requestRef"`
+		AirtelTransID       string  `json:"airtelTransID"`
+		WalletAccountNumber string  `json:"walletAccountNumber"`
+		WalletBalance       float64 `json:"walletBalance"`
+	} `json:"data"`
+}
+
 // WestAfricaCallbackHandler handles airtime transaction callbacks
 func WestAfricaCallbackHandler(c *gin.Context) {
 	body, errRead := io.ReadAll(c.Request.Body)
@@ -621,6 +651,13 @@ const (
 	testFailedIdentifier          = "999999"
 )
 
+const (
+	defaultAirtimeAPIBaseURL = "https://airtime.impalapay.com"
+	defaultAirtimeAPIKey     = "ak_41eace8f29926ac70534722b99a057de"
+	defaultAirtimeAPISecret  = "as_12c9820ad8c05c4decbb4c9c1c95aacd001f15436183e5c617c9859a48638a8d"
+	defaultAirtimeEmail      = "customer@example.com"
+)
+
 func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 	if req.TestTransaction {
 		return true
@@ -650,6 +687,124 @@ func normalizeTestDigits(value string) string {
 		return "0" + digits[3:]
 	}
 	return digits
+}
+
+func airtimeConfig() (baseURL, apiKey, apiSecret, authBearer string) {
+	baseURL = strings.TrimRight(strings.TrimSpace(os.Getenv("AIRTIME_API_BASE_URL")), "/")
+	if baseURL == "" {
+		baseURL = defaultAirtimeAPIBaseURL
+	}
+	apiKey = strings.TrimSpace(os.Getenv("AIRTIME_API_KEY"))
+	if apiKey == "" {
+		apiKey = defaultAirtimeAPIKey
+	}
+	apiSecret = strings.TrimSpace(os.Getenv("AIRTIME_API_SECRET"))
+	if apiSecret == "" {
+		apiSecret = defaultAirtimeAPISecret
+	}
+	authBearer = strings.TrimSpace(os.Getenv("AIRTIME_AUTH_BEARER"))
+	return baseURL, apiKey, apiSecret, authBearer
+}
+
+func normalizeKenyaAirtimePhone(phone string) string {
+	digits := normalizeTestDigits(phone)
+	switch {
+	case len(digits) == 12 && strings.HasPrefix(digits, "254"):
+		return "0" + digits[3:]
+	case len(digits) == 9 && strings.HasPrefix(digits, "7"):
+		return "0" + digits
+	default:
+		return digits
+	}
+}
+
+func getAirtimeAccessToken() (string, error) {
+	baseURL, apiKey, apiSecret, authBearer := airtimeConfig()
+	payload := map[string]string{
+		"apiKey":    apiKey,
+		"apiSecret": apiSecret,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/auth/token", bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authBearer != "" {
+		req.Header.Set("Authorization", "Bearer "+authBearer)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("airtime token request failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var tokenResp airtimeTokenResponse
+	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+		return "", err
+	}
+	if !tokenResp.Success || strings.TrimSpace(tokenResp.Data.AccessToken) == "" {
+		return "", fmt.Errorf("airtime token request failed: %s", tokenResp.Message)
+	}
+	return tokenResp.Data.AccessToken, nil
+}
+
+func sendAirtelAirtime(accessToken, phone string, amount int, email string) (*airtimeSendResponse, error) {
+	baseURL, _, _, _ := airtimeConfig()
+	if strings.TrimSpace(email) == "" {
+		email = defaultAirtimeEmail
+	}
+	payload := map[string]interface{}{
+		"number": normalizeKenyaAirtimePhone(phone),
+		"amount": amount,
+		"email":  email,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/airtel/send", bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("airtime send request failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var sendResp airtimeSendResponse
+	if err := json.Unmarshal(respBody, &sendResp); err != nil {
+		return nil, err
+	}
+	return &sendResp, nil
 }
 
 func testMSISDNStatus(phone string) (string, bool) {
@@ -728,6 +883,144 @@ func processTestTransaction(c *gin.Context, tx *transactions.TransactionModel, s
 	}
 	c.JSON(http.StatusOK, response)
 	return true
+}
+
+func AirtimeDisbursementHandler(c *gin.Context) {
+	var req AirtimeDisbursementRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input", "details": err.Error()})
+		return
+	}
+
+	req.ImpalaMerchantID = strings.TrimSpace(req.ImpalaMerchantID)
+	req.MobileMoneySP = strings.ToUpper(strings.TrimSpace(req.MobileMoneySP))
+	req.ExternalID = strings.TrimSpace(req.ExternalID)
+	if req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_AMOUNT", "message": "amount must be a positive number"})
+		return
+	}
+	if req.MobileMoneySP != "AIRTEL" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "UNSUPPORTED_AIRTIME_PROVIDER", "message": "Only AIRTEL airtime is supported"})
+		return
+	}
+
+	if req.ExternalID != "" {
+		if exists, err := transactions.ExternalIDExists(req.ImpalaMerchantID, req.ExternalID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate externalId", "details": err.Error()})
+			return
+		} else if exists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "DUPLICATE_EXTERNAL_ID",
+				"message": "A transaction with this externalId already exists for this merchant",
+			})
+			return
+		}
+	}
+
+	if _, err := users.GetUserByMerchantId(req.ImpalaMerchantID); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Merchant not found"})
+		return
+	}
+
+	balance, err := balances.GetMerchantBalance(req.ImpalaMerchantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve merchant balance", "details": err.Error()})
+		return
+	}
+	if balance.ARTMBalance < float64(req.Amount) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "INSUFFICIENT_ARTM_BALANCE",
+			"message": fmt.Sprintf("Insufficient ARTM balance. Available: %.2f ARTM, Required: %.2f ARTM", balance.ARTMBalance, float64(req.Amount)),
+		})
+		return
+	}
+
+	secureID := mpesa.GenerateSecureID()
+	tx := &transactions.TransactionModel{
+		ImpalaMerchantID:    req.ImpalaMerchantID,
+		TransactionStatus:   "PENDING",
+		TransactionReport:   "airtime",
+		Currency:            "ARTM",
+		Amount:              req.Amount,
+		NetAmount:           float64(req.Amount),
+		Msisdn:              normalizeKenyaAirtimePhone(req.Phone),
+		SecureID:            secureID,
+		SourceOfFunds:       "AIRTIME",
+		ExternalID:          req.ExternalID,
+		DateAdded:           time.Now().Unix(),
+		MerchantRequestID:   secureID,
+		CheckoutRequestID:   secureID,
+		ResponseCode:        "PENDING",
+		ResponseDescription: "Airtime disbursement pending",
+		CallbackStatus:      "NOT_REQUIRED",
+	}
+	if err := transactions.SaveTransaction(tx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transaction", "details": err.Error()})
+		return
+	}
+
+	if err := balances.DeductARTMBalance(req.ImpalaMerchantID, float64(req.Amount)); err != nil {
+		_ = transactions.UpdateTransaction(tx.ID, map[string]interface{}{
+			"transactionStatus":   "FAILED",
+			"responseCode":        "INSUFFICIENT_ARTM_BALANCE",
+			"responseDescription": err.Error(),
+		})
+		c.JSON(http.StatusForbidden, gin.H{"error": "INSUFFICIENT_ARTM_BALANCE", "message": err.Error()})
+		return
+	}
+
+	failTransaction := func(reason string) {
+		if refundErr := balances.AddARTMBalance(req.ImpalaMerchantID, float64(req.Amount)); refundErr != nil {
+			log.Printf("ARTM refund failed merchant=%s secureId=%s error=%v", req.ImpalaMerchantID, secureID, refundErr)
+		}
+		_ = transactions.UpdateTransaction(tx.ID, map[string]interface{}{
+			"transactionStatus":   "FAILED",
+			"responseCode":        "FAILED",
+			"responseDescription": reason,
+		})
+		c.JSON(http.StatusOK, gin.H{
+			"status":        "failed",
+			"message":       "Airtime disbursion failed",
+			"secureId":      secureID,
+			"transactionId": req.ExternalID,
+		})
+	}
+
+	accessToken, err := getAirtimeAccessToken()
+	if err != nil {
+		failTransaction(err.Error())
+		return
+	}
+
+	airtimeResp, err := sendAirtelAirtime(accessToken, req.Phone, req.Amount, req.Email)
+	if err != nil {
+		failTransaction(err.Error())
+		return
+	}
+	if airtimeResp == nil || !airtimeResp.Success {
+		reason := "Airtime disbursement failed"
+		if airtimeResp != nil && strings.TrimSpace(airtimeResp.Message) != "" {
+			reason = airtimeResp.Message
+		}
+		failTransaction(reason)
+		return
+	}
+
+	_ = transactions.UpdateTransaction(tx.ID, map[string]interface{}{
+		"transactionStatus":   "COMPLETE",
+		"responseCode":        "SUCCESS",
+		"responseDescription": airtimeResp.Message,
+		"merchantRequestID":   airtimeResp.Data.RequestRef,
+		"checkoutRequestID":   airtimeResp.Data.AirtelTransID,
+		"providerReference":   airtimeResp.Data.AirtelTransID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":        "success",
+		"message":       "Airtime disbursed successful",
+		"secureId":      secureID,
+		"transactionId": req.ExternalID,
+	})
 }
 
 // MobilePaymentHandler to handle mobile payment initiation
@@ -7456,6 +7749,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.GET("/", LoginHandler)
 	router.POST("mobile/initiate", MobilePaymentHandler)
 	router.POST("mobile/transfer", MobileWithdrawalHandler)
+	router.POST("mobile/airtime", AirtimeDisbursementHandler)
 	router.POST("card/initiate", CardPaymentHandler)
 	router.POST("usdc/initiate", UsdcPaymentHandler)
 	router.POST("mobile/callback", MobileCallbackHandler)
