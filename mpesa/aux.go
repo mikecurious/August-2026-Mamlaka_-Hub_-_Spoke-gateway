@@ -135,6 +135,23 @@ const (
 	LipadPayB2CShortCode      = "4564641"
 )
 
+// Neon — Kenya M-Pesa
+const (
+	// Collection (C2B / STK paybill 4041825)
+	NeonC2BConsumerKey       = "Ne2drYwtVntB0COqNC2CrdUCPEK7FAPVpN07sOalaZkL4LYa"
+	NeonC2BConsumerSecret    = "UfIQTtwSf0LjNhsz16ZsGkd2B1v9bAtPOstx4Haj1W1I9GMlc5aCpAfCCsxGlJn0"
+	NeonC2BBusinessShortCode = "4041825"
+	NeonC2BInitiatorName     = "Collins"
+	NeonC2BPassKey           = "dc1f276a2ad324c4f5ed6418047ef4d44e0eb84b1921d38d40863d43f217564d"
+
+	// B2C payouts (shortcode 4564637)
+	NeonPayB2CConsumerKey    = "VlO2gxBwc7AANcBw3rBkSMyORAfD6fgGNiw6cnYk8YeyyNta"
+	NeonPayB2CConsumerSecret = "GxFjK9Vlc75Az90xrJ5ehAIck5HNXqk4xls1KkhIcBXrETQYtBf5OFeCTZL3dSFA"
+	NeonPayB2CInitiatorName  = "Collins"
+	NeonPayB2CPassword       = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+	NeonPayB2CShortCode      = "4564637"
+)
+
 // revert amout  using the api
 
 type StkPushResponse struct {

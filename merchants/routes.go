@@ -645,6 +645,9 @@ const (
 	maxAppKESPayoutAmount         = 1000
 	appMerchantID                 = "app"
 	meshexSandboxMerchantID       = "meshex_sandbox"
+	merchant888StarzProductionID  = "888starz_production"
+	kalokaloMerchantID            = "kalokalo"
+	primeSandboxMerchantID        = "prime_sandbox"
 	testSuccessMSISDN             = "0710000000"
 	testFailedMSISDN              = "0720000000"
 	testSuccessIdentifier         = "888888"
@@ -668,6 +671,12 @@ func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 
 func mpesaMerchantReference(merchantID, secureID string) string {
 	return strings.TrimSpace(merchantID) + "*" + strings.TrimSpace(secureID)
+}
+
+func isNeonMpesaMerchant(merchantID string) bool {
+	return strings.EqualFold(merchantID, merchant888StarzProductionID) ||
+		strings.EqualFold(merchantID, kalokaloMerchantID) ||
+		strings.EqualFold(merchantID, primeSandboxMerchantID)
 }
 
 var errMpesaCallbackAlreadyProcessed = errors.New("mpesa callback already processed")
@@ -1119,6 +1128,12 @@ func MobilePaymentHandler(c *gin.Context) {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
+		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
+			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > maxDefaultKESCollectionAmount {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
+				return
+			}
+			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.NeonC2BConsumerKey, mpesa.NeonC2BConsumerSecret, mpesa.NeonC2BBusinessShortCode, mpesa.NeonC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
 			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else {
@@ -1737,6 +1752,12 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") || strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
 			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
+			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > float32(maxDefaultKESPayoutAmount) {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
+				return
+			}
+			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.NeonPayB2CConsumerKey, mpesa.NeonPayB2CConsumerSecret, mpesa.NeonPayB2CPassword, mpesa.NeonPayB2CShortCode, mpesa.NeonPayB2CInitiatorName)
 		} else {
 			if req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")

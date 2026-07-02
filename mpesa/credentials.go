@@ -23,6 +23,8 @@ func ResolveC2BCredentials(merchantID string) C2BCredentials {
 		return C2BCredentials{LipadC2BConsumerKey, LipadC2BConsumerSecret}
 	case strings.EqualFold(merchantID, "shilingibet"):
 		return C2BCredentials{ShilingiBetC2BConsumerKey, ShilingiBetC2BConsumerSecret}
+	case strings.EqualFold(merchantID, "888starz_production"), strings.EqualFold(merchantID, "kalokalo"), strings.EqualFold(merchantID, "prime_sandbox"):
+		return C2BCredentials{NeonC2BConsumerKey, NeonC2BConsumerSecret}
 	default:
 		return C2BCredentials{AppC2BConsumerKey, AppC2BConsumerSecret}
 	}
