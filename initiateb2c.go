@@ -560,21 +560,21 @@ func main101() {
 
 // )
 /*
-conumerKey         = "VlO2gxBwc7AANcBw3rBkSMyORAfD6fgGNiw6cnYk8YeyyNta"
-conumerSecret      = "GxFjK9Vlc75Az90xrJ5ehAIck5HNXqk4xls1KkhIcBXrETQYtBf5OFeCTZL3dSFA"
-initiatorName      = "Collins"
-securityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-shortCode          = "4564637"
-
+LipadPayB2CConsumerKey    = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
+	LipadPayB2CConsumerSecret = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
+	LipadPayB2CInitiatorName  = "Collins"
+	LipadPayB2CPassword       = "g/cA19za1LNCJXYCZbRLnfzq87iOfdL+tF3g17GTYc8nleCqm0vnchLdHnjr6mBgjIOZtaueJiOaM7xd0z6CnkESso437gtexhUMoShwVKKk9Kl+h4GsHiyQrKXrRDPVsyPLKtnvBZeKZXkgO2JmRU7pa1qRdjXXUYqVOJ2TO19mJpMh6FbqgGRTYCXwiwyaWyA+hxbMtjEu1nKFlE9Kk8TnEfBxCNpwOLVsTdkrK6siLbcUJ1NqE7MNEddIHKTF7z+4nOtEAPGTwXVneWvPeUnWL0ooqxdLis+81mLTxtxV2MisHjHHDgTWw/EuEGjG1PwtTE4grcPLTdKhj13M2Q=="
+	LipadPayB2CShortCode      = "4564641"
 */
 
 const (
-	conumerKey         = "VlO2gxBwc7AANcBw3rBkSMyORAfD6fgGNiw6cnYk8YeyyNta"
-	conumerSecret      = "GxFjK9Vlc75Az90xrJ5ehAIck5HNXqk4xls1KkhIcBXrETQYtBf5OFeCTZL3dSFA"
+	conumerKey         = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
+	conumerSecret      = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
 	initiatorName      = "Collins"
-	shortCode          = "4564637"
-	c2bPassKey         = "dc1f276a2ad324c4f5ed6418047ef4d44e0eb84b1921d38d40863d43f217564d"
 	securityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+	// LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+	shortCode  = "4564641"
+	c2bPassKey = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 
 	callbackURL    = "https://webhook.site/94ea9cd2-5230-4473-ab71-67c69a2a593d"
 	b2pURL         = "https://api.safaricom.co.ke/mpesa/b2pochi/v1/paymentrequest"

@@ -125,7 +125,7 @@ const (
 	LipadC2BBusinessShortCode  = "4041887"
 	LipadC2BInitiatorName      = "Collins"
 	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
-	LipadC2BSecurityCredential = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
+	LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
 
 	// B2C payouts (shortcode 4564641)
 	LipadPayB2CConsumerKey    = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
