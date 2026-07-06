@@ -4087,6 +4087,127 @@ func SearchTransactionsHandler(c *gin.Context) {
 	})
 }
 
+func airtimeTransactionResponse(tx transactions.TransactionModel) gin.H {
+	return gin.H{
+		"id":                   tx.ID,
+		"impalaMerchantId":     tx.ImpalaMerchantID,
+		"transaction_status":   transactions.NormalizeTransactionState(tx.TransactionStatus),
+		"transaction_report":   transactions.NormalizeTransactionReport(tx.TransactionReport),
+		"currency":             tx.Currency,
+		"amount":               tx.Amount,
+		"msisdn":               tx.Msisdn,
+		"net_amount":           tx.NetAmount,
+		"secure_id":            tx.SecureID,
+		"external_id":          tx.ExternalID,
+		"source_of_funds":      tx.SourceOfFunds,
+		"date_added":           tx.DateAdded,
+		"merchant_request_id":  tx.MerchantRequestID,
+		"checkout_request_id":  tx.CheckoutRequestID,
+		"response_code":        tx.ResponseCode,
+		"response_description": tx.ResponseDescription,
+		"callback_status":      tx.CallbackStatus,
+		"provider_reference":   tx.ProviderReference,
+	}
+}
+
+func ListAirtimeTransactionsHandler(c *gin.Context) {
+	merchantID, exists := c.Get("merchantID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication details"})
+		return
+	}
+
+	merchantIDStr, ok := merchantID.(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid merchantID type"})
+		return
+	}
+
+	page := 1
+	if pageParam := c.DefaultQuery("page", "1"); pageParam != "" {
+		if parsedPage, err := strconv.Atoi(pageParam); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	pageSize := 20
+	pageSizeParam := c.Query("limit")
+	if pageSizeParam == "" {
+		pageSizeParam = c.DefaultQuery("page_size", "20")
+	}
+	if pageSizeParam != "" {
+		if parsedPageSize, err := strconv.Atoi(pageSizeParam); err == nil && parsedPageSize > 0 {
+			if parsedPageSize > 100 {
+				pageSize = 100
+			} else {
+				pageSize = parsedPageSize
+			}
+		}
+	}
+
+	params := transactions.SearchTransactionsParams{
+		MerchantID:        merchantIDStr,
+		TransactionReport: "airtime",
+		SourceOfFunds:     "AIRTIME",
+		TransactionStatus: c.Query("status"),
+		Phone:             c.Query("phone"),
+		Currency:          c.Query("currency"),
+		ExternalID:        c.Query("externalId"),
+		SecureID:          c.Query("secureId"),
+		Reference:         strings.TrimSpace(c.Query("reference")),
+		Page:              page,
+		PageSize:          pageSize,
+	}
+
+	if amountStr := c.Query("amount"); amountStr != "" {
+		if amount, err := strconv.Atoi(amountStr); err == nil {
+			params.Amount = &amount
+		}
+	}
+
+	if startDateStr := c.Query("startDate"); startDateStr != "" {
+		if startDate, err := strconv.ParseInt(startDateStr, 10, 64); err == nil {
+			params.StartDate = &startDate
+		}
+	}
+
+	if endDateStr := c.Query("endDate"); endDateStr != "" {
+		if endDate, err := strconv.ParseInt(endDateStr, 10, 64); err == nil {
+			params.EndDate = &endDate
+		}
+	}
+
+	transactionList, total, err := transactions.SearchTransactions(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve airtime transactions", "details": err.Error()})
+		return
+	}
+
+	response := make([]gin.H, 0, len(transactionList))
+	for _, tx := range transactionList {
+		response = append(response, airtimeTransactionResponse(tx))
+	}
+
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"transactions": response,
+		"pagination": gin.H{
+			"page":         page,
+			"limit":        pageSize,
+			"totalPages":   totalPages,
+			"totalItems":   total,
+			"current_page": page,
+			"per_page":     pageSize,
+			"total_pages":  totalPages,
+			"total_items":  total,
+		},
+	})
+}
+
 func ListTransactionsHandler(c *gin.Context) {
 	merchantID, exists := c.Get("merchantID")
 	if !exists {
@@ -7817,6 +7938,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	protected.POST("/till/payment", TillPaymentHandler)
 	protected.POST("/paybill/payment", PaybillPaymentHandler)
 	protected.POST("/mpesa/verify", MpesaIdentifierVerifyHandler)
+	protected.GET("/mobile/airtime/transactions", ListAirtimeTransactionsHandler)
 	// virtualcard endpoins
 
 	// migrate the virtual careds
