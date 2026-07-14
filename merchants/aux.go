@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+var merchantCallbackHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   50,
+		MaxConnsPerHost:       50,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   3 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
 
 // buildMpesaMerchantCallback is the standard webhook payload for KES M-Pesa pay-in/payout.
 func buildMpesaMerchantCallback(tx *transactions.TransactionModel, transactionStatus, transactionReport string, amount int, reference string) map[string]interface{} {
@@ -103,8 +121,7 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 5: Send the raw response body to the CallbackURL
 	//send
 	log.Println("send  raw response body to the CallbackURL", transaction.CallbackURL)
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
+	resp, err := merchantCallbackHTTPClient.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
 	if err != nil {
 		return fmt.Errorf("failed to send callback: %v", err)
 	}

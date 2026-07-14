@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -24,6 +25,14 @@ func Init() *gorm.DB {
 	if err != nil {
 		log.Fatal("Failed to connect to the database:", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to configure database pool:", err)
+	}
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetMaxIdleConns(25)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
 
 	DB = db
 	return DB

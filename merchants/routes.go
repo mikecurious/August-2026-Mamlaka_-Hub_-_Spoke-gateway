@@ -108,6 +108,7 @@ type airtimeTokenResponse struct {
 type airtimeSendResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Error   string `json:"error"`
 	Data    struct {
 		RequestRef          string  `json:"requestRef"`
 		AirtelTransID       string  `json:"airtelTransID"`
@@ -449,6 +450,20 @@ func collectPixelOMOTP(c *gin.Context, req MobilePaymentRequest) string {
 	return omOTP
 }
 
+func collectPixelWithdrawalOMOTP(c *gin.Context, req MobileWithdrawalRequest) string {
+	omOTP := req.OMOTP.String()
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.Query("om_otp"))
+	}
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.GetHeader("X-OM-OTP"))
+	}
+	if omOTP == "" {
+		omOTP = strings.TrimSpace(c.GetHeader("om_otp"))
+	}
+	return omOTP
+}
+
 func normalizeFlutterwaveMobileMoneyBank(sp string) string {
 	normalized := strings.TrimSpace(sp)
 	up := strings.ToUpper(normalized)
@@ -727,6 +742,62 @@ func normalizeKenyaAirtimePhone(phone string) string {
 	}
 }
 
+func cleanAirtimeErrorReason(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "Airtime disbursement failed"
+	}
+
+	if jsonStart := strings.Index(raw, "{"); jsonStart >= 0 {
+		var providerResp struct {
+			Message string          `json:"message"`
+			Error   json.RawMessage `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(raw[jsonStart:]), &providerResp); err == nil {
+			if reason := cleanProviderErrorValue(providerResp.Error); reason != "" {
+				return reason
+			}
+			if reason := strings.TrimSpace(providerResp.Message); reason != "" {
+				return reason
+			}
+		}
+	}
+
+	if idx := strings.LastIndex(raw, ": "); idx >= 0 && idx+2 < len(raw) {
+		raw = strings.TrimSpace(raw[idx+2:])
+	}
+	return stripProviderErrorCode(raw)
+}
+
+func cleanProviderErrorValue(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return stripProviderErrorCode(text)
+	}
+
+	var obj map[string]interface{}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		for _, key := range []string{"message", "error", "detail", "description"} {
+			if value, ok := obj[key].(string); ok && strings.TrimSpace(value) != "" {
+				return stripProviderErrorCode(value)
+			}
+		}
+	}
+
+	return ""
+}
+
+func stripProviderErrorCode(reason string) string {
+	reason = strings.TrimSpace(reason)
+	msgCodePattern := regexp.MustCompile(`(?i)^msg:\d+:\s*`)
+	reason = msgCodePattern.ReplaceAllString(reason, "")
+	return strings.TrimSpace(reason)
+}
+
 func getAirtimeAccessToken() (string, error) {
 	baseURL, apiKey, apiSecret, authBearer := airtimeConfig()
 	payload := map[string]string{
@@ -979,6 +1050,7 @@ func AirtimeDisbursementHandler(c *gin.Context) {
 	}
 
 	failTransaction := func(reason string) {
+		reason = cleanAirtimeErrorReason(reason)
 		if refundErr := balances.AddARTMBalance(req.ImpalaMerchantID, float64(req.Amount)); refundErr != nil {
 			log.Printf("ARTM refund failed merchant=%s secureId=%s error=%v", req.ImpalaMerchantID, secureID, refundErr)
 		}
@@ -1008,7 +1080,9 @@ func AirtimeDisbursementHandler(c *gin.Context) {
 	}
 	if airtimeResp == nil || !airtimeResp.Success {
 		reason := "Airtime disbursement failed"
-		if airtimeResp != nil && strings.TrimSpace(airtimeResp.Message) != "" {
+		if airtimeResp != nil && strings.TrimSpace(airtimeResp.Error) != "" {
+			reason = airtimeResp.Error
+		} else if airtimeResp != nil && strings.TrimSpace(airtimeResp.Message) != "" {
 			reason = airtimeResp.Message
 		}
 		failTransaction(reason)
@@ -1975,10 +2049,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 		ipnWithdraw := westafrica.ResolveIPNURL()
 
-		omOTP := ""
-		if req.OMOTP > 0 {
-			omOTP = strconv.Itoa(req.OMOTP)
-		}
+		omOTP := collectPixelWithdrawalOMOTP(c, req)
 
 		westAfricaRequest := &westafrica.AirtimeRequest{
 			Amount:      int(req.Amount),
@@ -1995,6 +2066,11 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
 		if err != nil {
+			if transactionReport == "withdraw" {
+				if refundErr := balances.AddGMDBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
+					log.Printf("GMD refund failed after Pixel payout error merchant=%s secureId=%s error=%v", req.ImpalaMerchantId, secureID, refundErr)
+				}
+			}
 			respondPaymentFailed(c, "pixel gambia payout", err)
 			return
 		}
@@ -2071,6 +2147,14 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			})
 			return
 		}
+		omOTP := collectPixelWithdrawalOMOTP(c, req)
+		if serviceId == westafrica.ServiceIDSenegalOrangePayout && omOTP == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "MISSING_OM_OTP",
+				"message": "om_otp is required for ORANGE-MONEY Senegal payout",
+			})
+			return
+		}
 
 		// Ensure there’s enough balance before proceeding
 
@@ -2114,10 +2198,6 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		client := westafrica.NewAirtimeClient()
 		redirectURL := ""
-		omOTP := ""
-		if req.OMOTP > 0 {
-			omOTP = strconv.Itoa(req.OMOTP)
-		}
 
 		destPhone := req.RecipientPhone
 		if serviceId == westafrica.ServiceIDBeninMTNPayout {
@@ -2167,6 +2247,11 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		}
 
 		if err != nil {
+			if transactionReport == "withdraw" {
+				if refundErr := balances.AddXOFBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
+					log.Printf("XOF refund failed after Pixel payout error merchant=%s secureId=%s error=%v", req.ImpalaMerchantId, secureID, refundErr)
+				}
+			}
 			respondPaymentFailed(c, "pixel payout", err)
 			return
 		}

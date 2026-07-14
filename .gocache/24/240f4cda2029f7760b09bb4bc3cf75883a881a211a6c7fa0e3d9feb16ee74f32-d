@@ -1,0 +1,5 @@
+./model.go
+./platformEarningSerializer.go
+./routes.go
+./serializer.go
+./validator.go

@@ -7,9 +7,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"regexp"
+	"sync"
 	"time"
+)
+
+var safaricomHTTPClient = &http.Client{
+	Timeout: 20 * time.Second,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
+type cachedAccessToken struct {
+	token     string
+	expiresAt time.Time
+}
+
+var (
+	tokenCacheMu sync.Mutex
+	tokenCache   = make(map[string]cachedAccessToken)
 )
 
 const (
@@ -190,6 +219,14 @@ type StkPushRequest struct {
 }
 
 func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
+	cacheKey := consumerKey + ":" + consumerSecret
+	tokenCacheMu.Lock()
+	if cached, ok := tokenCache[cacheKey]; ok && cached.token != "" && time.Now().Before(cached.expiresAt) {
+		tokenCacheMu.Unlock()
+		return cached.token, nil
+	}
+	tokenCacheMu.Unlock()
+
 	url := "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 
 	// Create the basic auth header
@@ -200,8 +237,7 @@ func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 	}
 	req.Header.Set("Authorization", "Basic "+credentials)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := safaricomHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -221,6 +257,13 @@ func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	tokenCacheMu.Lock()
+	tokenCache[cacheKey] = cachedAccessToken{
+		token:     tokenResponse.AccessToken,
+		expiresAt: time.Now().Add(50 * time.Minute),
+	}
+	tokenCacheMu.Unlock()
 
 	return tokenResponse.AccessToken, nil
 }
@@ -263,8 +306,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := safaricomHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -315,48 +357,7 @@ type B2CRequest struct {
 }
 
 func generateB2BAccessToken(consumerKey, consumerSecret string) (string, error) {
-	// Endpoint for generating the access token
-	url := "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-
-	// Encode credentials in Base64
-	credentials := base64.StdEncoding.EncodeToString([]byte(consumerKey + ":" + consumerSecret))
-
-	// Create a new HTTP request
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add headers
-	req.Header.Add("Authorization", "Basic "+credentials)
-
-	// Create HTTP client
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("HTTP request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Parse JSON response to extract the access token
-	var response map[string]interface{}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return "", fmt.Errorf("failed to parse JSON response: %w", err)
-	}
-
-	// Extract and return the access token
-	token, ok := response["access_token"].(string)
-	if !ok {
-		return "", fmt.Errorf("access token not found in response")
-	}
-
-	return token, nil
+	return GenerateAccessToken(consumerKey, consumerSecret)
 }
 
 func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName string) (*B2BResponse, error) {
@@ -376,7 +377,10 @@ func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackU
 	// password1 := "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
 	// businessShortCode1 := "3008816"
 
-	token, _ := generateB2BAccessToken(consumerKey, consumerSecret)
+	token, err := generateB2BAccessToken(consumerKey, consumerSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate B2C access token: %w", err)
+	}
 	fmt.Println("Access Token:", token)
 	fmt.Printf("------Generating B2C request with phone: %s, amount: %.2f, callbackURL: %s, externalID: %s, identifier: %s, consumerKey: %s, consumerSecret: %s, password: %s, businessShortCode: %s, initiatorName: %s\n",
 		RemovePlusPrefix(phoneNumber), amount, callbackURL, externalID, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName)
@@ -421,8 +425,7 @@ func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackU
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := safaricomHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}

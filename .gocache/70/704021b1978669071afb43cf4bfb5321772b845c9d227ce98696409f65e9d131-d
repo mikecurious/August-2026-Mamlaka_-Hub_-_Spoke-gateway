@@ -1,0 +1,6 @@
+./colls.go
+./initiateb2c.go
+./key.go
+./main.go
+./query.go
+./sign.go

@@ -82,6 +82,7 @@ The response format stays the same and includes `redirectUrl` when the provider 
 ### Request
 
 For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
+`om_otp` is required for Orange Money payout and should be sent as a string so leading zeros are preserved.
 
 
 
@@ -91,7 +92,8 @@ For Senegal payouts, pass `mobileMoneySP` as `WAVE` or `ORANGE-MONEY`.
   "currency": "XOF",
   "amount": 200,
   "recipientPhone": "776389999",
-  "mobileMoneySP": "WAVE",
+  "mobileMoneySP": "ORANGE-MONEY",
+  "om_otp": "091842",
   "externalId": "SN-OUT-001",
   "callbackUrl": "https://your-domain.com/merchant-callback"
 }

@@ -1,5 +1,33 @@
 package merchants
 
+import (
+	"encoding/json"
+	"strings"
+)
+
+type OTPString string
+
+func (o *OTPString) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*o = ""
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*o = OTPString(strings.TrimSpace(s))
+		return nil
+	}
+
+	*o = OTPString(raw)
+	return nil
+}
+
+func (o OTPString) String() string {
+	return strings.TrimSpace(string(o))
+}
+
 type STKResponse struct {
 	MerchantRequestID   string `json:"MerchantRequestID"`
 	CheckoutRequestID   string `json:"CheckoutRequestID"`
@@ -40,14 +68,14 @@ type B2BResponse struct {
 	}
 */
 type MobileWithdrawalRequest struct {
-	ImpalaMerchantId string  `json:"impalaMerchantId" binding:"required"`
-	Currency         string  `json:"currency" binding:"required"`
-	Amount           float32 `json:"amount" binding:"required"`
-	RecipientPhone   string  `json:"recipientPhone" binding:"required"`
-	MobileMoneySP    string  `json:"mobileMoneySP" binding:"required"`
-	ExternalID       string  `json:"externalId" binding:"required"`
-	CallbackURL      string  `json:"callbackUrl" binding:"required"`
-	OMOTP            int     `json:"om_otp"`
+	ImpalaMerchantId string    `json:"impalaMerchantId" binding:"required"`
+	Currency         string    `json:"currency" binding:"required"`
+	Amount           float32   `json:"amount" binding:"required"`
+	RecipientPhone   string    `json:"recipientPhone" binding:"required"`
+	MobileMoneySP    string    `json:"mobileMoneySP" binding:"required"`
+	ExternalID       string    `json:"externalId" binding:"required"`
+	CallbackURL      string    `json:"callbackUrl" binding:"required"`
+	OMOTP            OTPString `json:"om_otp"`
 }
 
 // bank-pesa link request struct containing the followign, amount, destinationAccount, destinationBankCode, customerName string)
