@@ -7858,6 +7858,58 @@ func stalePendingFailurePayload(tx transactions.TransactionModel, reason string)
 	return payload
 }
 
+func parsePositiveIntQuery(c *gin.Context, key string, fallback, max int) (int, error) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	if max > 0 && parsed > max {
+		return max, nil
+	}
+	return parsed, nil
+}
+
+func isSafaricomTransactionNotFound(resp *mpesa.STKStatusQueryResponse) bool {
+	if resp == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(resp.ErrorCode), "500.001.1001")
+}
+
+func safaricomQueryDescription(resp *mpesa.STKStatusQueryResponse) string {
+	if resp == nil {
+		return ""
+	}
+	if strings.TrimSpace(resp.ResultDesc) != "" {
+		return strings.TrimSpace(resp.ResultDesc)
+	}
+	if strings.TrimSpace(resp.ErrorMessage) != "" {
+		return strings.TrimSpace(resp.ErrorMessage)
+	}
+	if strings.TrimSpace(resp.ResponseDescription) != "" {
+		return strings.TrimSpace(resp.ResponseDescription)
+	}
+	return "Safaricom status query returned no description"
+}
+
+func sendSyncedSTKCallback(db *gorm.DB, tx transactions.TransactionModel, payload map[string]interface{}) (string, error) {
+	if strings.TrimSpace(tx.CallbackURL) == "" || strings.EqualFold(strings.TrimSpace(tx.CallbackURL), "NULL") {
+		return "FAILED", fmt.Errorf("callback URL is missing")
+	}
+	if err := SendCallback(tx.ID, payload); err != nil {
+		_ = db.Model(&transactions.TransactionModel{}).Where("id = ?", tx.ID).Update("callbackStatus", "FAILED").Error
+		return "FAILED", err
+	}
+	if err := db.Model(&transactions.TransactionModel{}).Where("id = ?", tx.ID).Update("callbackStatus", "SENT").Error; err != nil {
+		return "FAILED", err
+	}
+	return "SENT", nil
+}
+
 func FailStalePendingTransactionsHandler(c *gin.Context) {
 	db := database.GetConnection()
 	if db == nil {
@@ -7865,109 +7917,248 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 		return
 	}
 
-	cutoff := time.Now().Add(-3 * time.Hour).Unix()
-	reason := "Transaction timed out after 3 hours"
-	limit := 20
-	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
-		parsedLimit, err := strconv.Atoi(rawLimit)
-		if err != nil || parsedLimit < 1 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_LIMIT", "message": "limit must be a positive integer"})
-			return
-		}
-		limit = parsedLimit
+	minAgeMinutes, err := parsePositiveIntQuery(c, "minAgeMinutes", 3, 1440)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_MIN_AGE", "message": err.Error()})
+		return
 	}
-	if limit > 100 {
-		limit = 100
+	failAfterMinutes, err := parsePositiveIntQuery(c, "failAfterMinutes", 180, 1440)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_FAIL_AFTER", "message": err.Error()})
+		return
+	}
+	limit, err := parsePositiveIntQuery(c, "limit", 20, 100)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_LIMIT", "message": err.Error()})
+		return
 	}
 
+	cutoff := time.Now().Add(-time.Duration(minAgeMinutes) * time.Minute).Unix()
+	failCutoff := time.Now().Add(-time.Duration(failAfterMinutes) * time.Minute).Unix()
+
 	var pending []transactions.TransactionModel
-	if err := db.Where("LOWER(transactionStatus) = ? AND dateAdded <= ?", "pending", cutoff).
+	if err := db.Where("LOWER(transactionStatus) = ? AND currency = ? AND LOWER(transactionReport) = ? AND checkoutRequestID <> ? AND dateAdded <= ?",
+		"pending", "KES", "collection", "", cutoff).
 		Order("dateAdded ASC").
 		Limit(limit).
 		Find(&pending).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch stale pending transactions", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending STK transactions", "details": err.Error()})
 		return
 	}
 
 	type staleResult struct {
-		ID             uint   `json:"id"`
-		MerchantID     string `json:"merchantId"`
-		SecureID       string `json:"secureId"`
-		ExternalID     string `json:"externalId"`
-		CallbackStatus string `json:"callbackStatus"`
-		Error          string `json:"error,omitempty"`
+		ID                uint   `json:"id"`
+		MerchantID        string `json:"merchantId"`
+		SecureID          string `json:"secureId"`
+		ExternalID        string `json:"externalId"`
+		MerchantRequestID string `json:"merchantRequestID,omitempty"`
+		CheckoutRequestID string `json:"checkoutRequestID"`
+		ResultCode        string `json:"resultCode,omitempty"`
+		ResultDesc        string `json:"resultDesc,omitempty"`
+		ErrorCode         string `json:"errorCode,omitempty"`
+		Status            string `json:"status"`
+		CallbackStatus    string `json:"callbackStatus,omitempty"`
+		Error             string `json:"error,omitempty"`
 	}
 
 	results := make([]staleResult, 0, len(pending))
-	claimed := 0
+	completed := 0
+	failed := 0
+	stillPending := 0
 	callbackSent := 0
 	callbackFailed := 0
 
 	for _, tx := range pending {
+		result := staleResult{
+			ID:                tx.ID,
+			MerchantID:        tx.ImpalaMerchantID,
+			SecureID:          tx.SecureID,
+			ExternalID:        tx.ExternalID,
+			MerchantRequestID: tx.MerchantRequestID,
+			CheckoutRequestID: tx.CheckoutRequestID,
+			Status:            "PENDING",
+		}
+
+		creds := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+		queryResp, err := mpesa.QuerySTKStatus(tx.CheckoutRequestID, creds)
+		if err != nil {
+			result.Error = err.Error()
+			results = append(results, result)
+			stillPending++
+			continue
+		}
+		if queryResp != nil {
+			result.MerchantRequestID = queryResp.MerchantRequestID
+			if result.MerchantRequestID == "" {
+				result.MerchantRequestID = tx.MerchantRequestID
+			}
+			result.ResultCode = strings.TrimSpace(queryResp.ResultCode)
+			result.ResultDesc = safaricomQueryDescription(queryResp)
+			result.ErrorCode = strings.TrimSpace(queryResp.ErrorCode)
+		}
+		if queryResp == nil {
+			stillPending++
+			result.Status = "PENDING_RETRY"
+			result.Error = "empty Safaricom STK query response"
+			results = append(results, result)
+			continue
+		}
+
+		if isSafaricomTransactionNotFound(queryResp) {
+			if tx.DateAdded > failCutoff {
+				stillPending++
+				result.Status = "PENDING_RETRY"
+				results = append(results, result)
+				continue
+			}
+			reason := "Safaricom transaction not found after status query"
+			claim := db.Model(&transactions.TransactionModel{}).
+				Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
+				Updates(map[string]interface{}{
+					"transactionStatus":   "FAILED",
+					"callbackStatus":      "PROCESSING",
+					"responseCode":        queryResp.ErrorCode,
+					"responseDescription": reason,
+				})
+			if claim.Error != nil {
+				result.Error = claim.Error.Error()
+				results = append(results, result)
+				callbackFailed++
+				continue
+			}
+			if claim.RowsAffected == 0 {
+				results = append(results, result)
+				continue
+			}
+			failed++
+			result.Status = "FAILED"
+			callbackStatus, callbackErr := sendSyncedSTKCallback(db, tx, stalePendingFailurePayload(tx, reason))
+			result.CallbackStatus = callbackStatus
+			if callbackErr != nil {
+				callbackFailed++
+				result.Error = callbackErr.Error()
+			} else {
+				callbackSent++
+			}
+			results = append(results, result)
+			continue
+		}
+
+		resultCode := strings.TrimSpace(queryResp.ResultCode)
+		if resultCode == "" {
+			stillPending++
+			result.Status = "PENDING_RETRY"
+			results = append(results, result)
+			continue
+		}
+
+		desc := safaricomQueryDescription(queryResp)
+		if resultCode == "0" {
+			updates := map[string]interface{}{
+				"transactionStatus":   "COMPLETE",
+				"callbackStatus":      "PROCESSING",
+				"responseCode":        resultCode,
+				"responseDescription": desc,
+			}
+			if queryResp.MerchantRequestID != "" {
+				updates["merchantRequestID"] = queryResp.MerchantRequestID
+			}
+
+			err := db.Transaction(func(txn *gorm.DB) error {
+				claim := txn.Model(&transactions.TransactionModel{}).
+					Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
+					Updates(updates)
+				if claim.Error != nil {
+					return claim.Error
+				}
+				if claim.RowsAffected == 0 {
+					return errMpesaCallbackAlreadyProcessed
+				}
+
+				balanceUpdate := txn.Model(&balances.MerchantCollectionBalance{}).
+					Where("impalaMerchantId = ?", tx.ImpalaMerchantID).
+					Update("kesBalance", gorm.Expr("kesBalance + ?", tx.Amount))
+				if balanceUpdate.Error != nil {
+					return balanceUpdate.Error
+				}
+				if balanceUpdate.RowsAffected == 0 {
+					return fmt.Errorf("merchant collection balance not found for %s", tx.ImpalaMerchantID)
+				}
+				return nil
+			})
+			if errors.Is(err, errMpesaCallbackAlreadyProcessed) {
+				results = append(results, result)
+				continue
+			}
+			if err != nil {
+				result.Error = err.Error()
+				results = append(results, result)
+				callbackFailed++
+				continue
+			}
+
+			completed++
+			result.Status = "COMPLETE"
+			callbackPayload := buildMpesaMerchantCallback(&tx, "COMPLETE", desc, tx.Amount, tx.CheckoutRequestID)
+			callbackStatus, callbackErr := sendSyncedSTKCallback(db, tx, callbackPayload)
+			result.CallbackStatus = callbackStatus
+			if callbackErr != nil {
+				callbackFailed++
+				result.Error = callbackErr.Error()
+			} else {
+				callbackSent++
+			}
+			results = append(results, result)
+			continue
+		}
+
 		claim := db.Model(&transactions.TransactionModel{}).
 			Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
 			Updates(map[string]interface{}{
 				"transactionStatus":   "FAILED",
 				"callbackStatus":      "PROCESSING",
-				"responseDescription": reason,
+				"responseCode":        resultCode,
+				"responseDescription": desc,
 			})
 		if claim.Error != nil {
+			result.Error = claim.Error.Error()
+			results = append(results, result)
 			callbackFailed++
-			results = append(results, staleResult{
-				ID:         tx.ID,
-				MerchantID: tx.ImpalaMerchantID,
-				SecureID:   tx.SecureID,
-				ExternalID: tx.ExternalID,
-				Error:      claim.Error.Error(),
-			})
 			continue
 		}
 		if claim.RowsAffected == 0 {
+			results = append(results, result)
 			continue
 		}
 
-		claimed++
-		callbackStatus := "SENT"
-		var callbackErr error
-		if strings.TrimSpace(tx.CallbackURL) == "" || strings.EqualFold(strings.TrimSpace(tx.CallbackURL), "NULL") {
-			callbackErr = fmt.Errorf("callback URL is missing")
-		} else {
-			callbackErr = SendCallback(tx.ID, stalePendingFailurePayload(tx, reason))
-		}
-
-		result := staleResult{
-			ID:         tx.ID,
-			MerchantID: tx.ImpalaMerchantID,
-			SecureID:   tx.SecureID,
-			ExternalID: tx.ExternalID,
-		}
+		failed++
+		result.Status = "FAILED"
+		callbackPayload := buildMpesaMerchantCallback(&tx, "FAILED", desc, tx.Amount, tx.CheckoutRequestID)
+		callbackStatus, callbackErr := sendSyncedSTKCallback(db, tx, callbackPayload)
+		result.CallbackStatus = callbackStatus
 		if callbackErr != nil {
-			callbackStatus = "FAILED"
 			callbackFailed++
 			result.Error = callbackErr.Error()
 		} else {
 			callbackSent++
 		}
-		result.CallbackStatus = callbackStatus
-
-		if err := db.Model(&transactions.TransactionModel{}).
-			Where("id = ?", tx.ID).
-			Update("callbackStatus", callbackStatus).Error; err != nil {
-			result.Error = strings.TrimSpace(result.Error + " " + err.Error())
-		}
-
 		results = append(results, result)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":         "Stale pending transactions processed",
-		"cutoff":          cutoff,
-		"limit":           limit,
-		"found":           len(pending),
-		"failed":          claimed,
-		"callbacksSent":   callbackSent,
-		"callbacksFailed": callbackFailed,
-		"transactions":    results,
+		"message":          "Pending KES STK transactions synced",
+		"cutoff":           cutoff,
+		"minAgeMinutes":    minAgeMinutes,
+		"failAfterMinutes": failAfterMinutes,
+		"limit":            limit,
+		"found":            len(pending),
+		"completed":        completed,
+		"failed":           failed,
+		"stillPending":     stillPending,
+		"callbacksSent":    callbackSent,
+		"callbacksFailed":  callbackFailed,
+		"queryId":          "checkoutRequestID",
+		"transactions":     results,
 	})
 }
 
@@ -7992,6 +8183,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("bank/pesalink/sync", SyncPesalinkPayoutsNowHandler) // Public trigger endpoint (for external schedulers)
 	router.POST("west-africa/sync-pending", SyncPendingPixelTransactionsHandler)
 	router.POST("transactions/fail-stale-pending", FailStalePendingTransactionsHandler)
+	router.POST("transactions/sync-pending-stk", FailStalePendingTransactionsHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)

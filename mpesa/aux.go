@@ -218,6 +218,25 @@ type StkPushRequest struct {
 	TransactionDesc   string `json:"TransactionDesc"`
 }
 
+type STKStatusQueryRequest struct {
+	BusinessShortCode string `json:"BusinessShortCode"`
+	Password          string `json:"Password"`
+	Timestamp         string `json:"Timestamp"`
+	CheckoutRequestID string `json:"CheckoutRequestID"`
+}
+
+type STKStatusQueryResponse struct {
+	ResponseCode        string `json:"ResponseCode,omitempty"`
+	ResponseDescription string `json:"ResponseDescription,omitempty"`
+	MerchantRequestID   string `json:"MerchantRequestID,omitempty"`
+	CheckoutRequestID   string `json:"CheckoutRequestID,omitempty"`
+	ResultCode          string `json:"ResultCode,omitempty"`
+	ResultDesc          string `json:"ResultDesc,omitempty"`
+	RequestID           string `json:"requestId,omitempty"`
+	ErrorCode           string `json:"errorCode,omitempty"`
+	ErrorMessage        string `json:"errorMessage,omitempty"`
+}
+
 func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 	cacheKey := consumerKey + ":" + consumerSecret
 	tokenCacheMu.Lock()
@@ -334,6 +353,60 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 
 	// Return the parsed response
 	return &stkResponse, nil
+}
+
+func QuerySTKStatus(checkoutRequestID string, creds STKCredentials) (*STKStatusQueryResponse, error) {
+	url := "https://api.safaricom.co.ke/mpesa/stkpushquery/v1/query"
+	timestamp := time.Now().Format("20060102150405")
+	token, err := GenerateAccessToken(creds.ConsumerKey, creds.ConsumerSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	password := base64.StdEncoding.EncodeToString([]byte(creds.BusinessShortCode + creds.PassKey + timestamp))
+	requestBody := STKStatusQueryRequest{
+		BusinessShortCode: creds.BusinessShortCode,
+		Password:          password,
+		Timestamp:         timestamp,
+		CheckoutRequestID: checkoutRequestID,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := safaricomHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var queryResponse STKStatusQueryResponse
+	if err := json.Unmarshal(body, &queryResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse STK query response: %w. Raw body: %s", err, string(body))
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if queryResponse.ErrorMessage != "" {
+			return &queryResponse, nil
+		}
+		return nil, fmt.Errorf("STK query failed: %s, %s", resp.Status, string(body))
+	}
+
+	return &queryResponse, nil
 }
 
 func GenerateSecureID() string {

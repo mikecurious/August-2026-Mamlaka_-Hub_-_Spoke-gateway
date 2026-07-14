@@ -8,24 +8,38 @@ type C2BCredentials struct {
 	ConsumerSecret string
 }
 
+// STKCredentials holds all credentials required for STK push and STK status query.
+type STKCredentials struct {
+	ConsumerKey       string
+	ConsumerSecret    string
+	BusinessShortCode string
+	PassKey           string
+}
+
 // ResolveC2BCredentials returns C2B consumer key/secret for the merchant (used for OAuth + SFC verify).
 func ResolveC2BCredentials(merchantID string) C2BCredentials {
+	stk := ResolveSTKCredentials(merchantID)
+	return C2BCredentials{stk.ConsumerKey, stk.ConsumerSecret}
+}
+
+// ResolveSTKCredentials returns the C2B/STK credentials for a merchant.
+func ResolveSTKCredentials(merchantID string) STKCredentials {
 	switch {
 	case merchantID == "vukaPay_production":
-		return C2BCredentials{VukaC2BConsumerKey, VukaC2BConsumerSecret}
+		return STKCredentials{VukaC2BConsumerKey, VukaC2BConsumerSecret, VukaC2BBusinessShortCode, VukaC2BPassKey}
 	case merchantID == "crayfinance", merchantID == "ncgames_sandbox":
-		return C2BCredentials{CrayC2BConsumerKey, CrayC2BConsumerSecret}
+		return STKCredentials{CrayC2BConsumerKey, CrayC2BConsumerSecret, CrayC2BBusinessShortCode, CrayC2BPassKey}
 	case merchantID == "app":
-		return C2BCredentials{AppC2BConsumerKey, AppC2BConsumerSecret}
+		return STKCredentials{AppC2BConsumerKey, AppC2BConsumerSecret, AppC2BBusinessShortCode, AppC2BPassKey}
 	case merchantID == "transactworld":
-		return C2BCredentials{TWDC2BConsumerKey, TWDC2BConsumerSecret}
+		return STKCredentials{TWDC2BConsumerKey, TWDC2BConsumerSecret, TWDC2BBusinessShortCode, TWDC2BPassKey}
 	case strings.EqualFold(merchantID, "lipad"):
-		return C2BCredentials{LipadC2BConsumerKey, LipadC2BConsumerSecret}
+		return STKCredentials{LipadC2BConsumerKey, LipadC2BConsumerSecret, LipadC2BBusinessShortCode, LipadC2BPassKey}
 	case strings.EqualFold(merchantID, "shilingibet"):
-		return C2BCredentials{ShilingiBetC2BConsumerKey, ShilingiBetC2BConsumerSecret}
+		return STKCredentials{ShilingiBetC2BConsumerKey, ShilingiBetC2BConsumerSecret, ShilingiBetC2BBusinessShortCode, ShilingiBetC2BPassKey}
 	case strings.EqualFold(merchantID, "888starz_production"), strings.EqualFold(merchantID, "kalokalo"), strings.EqualFold(merchantID, "prime_sandbox"):
-		return C2BCredentials{NeonC2BConsumerKey, NeonC2BConsumerSecret}
+		return STKCredentials{NeonC2BConsumerKey, NeonC2BConsumerSecret, NeonC2BBusinessShortCode, NeonC2BPassKey}
 	default:
-		return C2BCredentials{AppC2BConsumerKey, AppC2BConsumerSecret}
+		return STKCredentials{AppC2BConsumerKey, AppC2BConsumerSecret, AppC2BBusinessShortCode, AppC2BPassKey}
 	}
 }
