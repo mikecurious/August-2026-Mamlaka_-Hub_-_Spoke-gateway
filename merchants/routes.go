@@ -677,7 +677,7 @@ func buildMpesaAccountReference(merchantID, externalID string) string {
 		merchantID = "merchant"
 	}
 	if strings.EqualFold(merchantID, "lipad") {
-		merchantID = "lipat"
+		merchantID = "lipad"
 	}
 	if externalID == "" {
 		if len(merchantID) > maxMpesaAccountReferenceLen {
@@ -696,6 +696,34 @@ func buildMpesaAccountReference(merchantID, externalID string) string {
 		externalID = externalID[:remaining]
 	}
 	return prefix + externalID
+}
+
+func logSafaricomSTKIssue(fields map[string]interface{}) {
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
+	fields["loggedAt"] = time.Now().Format(time.RFC3339)
+
+	line, err := json.Marshal(fields)
+	if err != nil {
+		log.Printf("failed to marshal Safaricom STK issue log: %v", err)
+		return
+	}
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		log.Printf("failed to create Safaricom STK issue log directory: %v", err)
+		return
+	}
+
+	file, err := os.OpenFile("logs/safaricom_stk_errors.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("failed to open Safaricom STK issue log: %v", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.Write(append(line, '\n')); err != nil {
+		log.Printf("failed to write Safaricom STK issue log: %v", err)
+	}
 }
 
 const (
@@ -1250,6 +1278,21 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 
 		if errror_stk != nil {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "stk_push",
+				"merchantId":        req.ImpalaMerchantId,
+				"externalId":        req.ExternalID,
+				"secureId":          secureID,
+				"amount":            req.Amount,
+				"msisdn":            RemovePlusPrefix(req.PayerPhone),
+				"accountReference":  stkAccountReference,
+				"sourceOfFunds":     req.MobileMoneySP,
+				"error":             errror_stk.Error(),
+				"responseCode":      responseCode,
+				"responseDesc":      responseDescription,
+				"checkoutRequestID": checkoutRequestID,
+				"merchantRequestID": merchantRequestID,
+			})
 			respondPaymentFailed(c, "mobile collection", errror_stk)
 			return
 		}
@@ -8011,6 +8054,16 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 		creds := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
 		queryResp, err := mpesa.QuerySTKStatus(tx.CheckoutRequestID, creds)
 		if err != nil {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "stk_status_query",
+				"merchantId":        tx.ImpalaMerchantID,
+				"transactionId":     tx.ID,
+				"secureId":          tx.SecureID,
+				"externalId":        tx.ExternalID,
+				"checkoutRequestID": tx.CheckoutRequestID,
+				"merchantRequestID": tx.MerchantRequestID,
+				"error":             err.Error(),
+			})
 			result.Error = err.Error()
 			results = append(results, result)
 			stillPending++
@@ -8034,6 +8087,18 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 		}
 
 		if isSafaricomTransactionNotFound(queryResp) {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "stk_status_query",
+				"merchantId":        tx.ImpalaMerchantID,
+				"transactionId":     tx.ID,
+				"secureId":          tx.SecureID,
+				"externalId":        tx.ExternalID,
+				"checkoutRequestID": tx.CheckoutRequestID,
+				"merchantRequestID": tx.MerchantRequestID,
+				"errorCode":         queryResp.ErrorCode,
+				"errorMessage":      queryResp.ErrorMessage,
+				"status":            "PENDING_RETRY",
+			})
 			if tx.DateAdded > failCutoff {
 				stillPending++
 				result.Status = "PENDING_RETRY"
@@ -8140,6 +8205,21 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 			results = append(results, result)
 			continue
 		}
+
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":             "stk_status_query",
+			"merchantId":        tx.ImpalaMerchantID,
+			"transactionId":     tx.ID,
+			"secureId":          tx.SecureID,
+			"externalId":        tx.ExternalID,
+			"checkoutRequestID": tx.CheckoutRequestID,
+			"merchantRequestID": tx.MerchantRequestID,
+			"resultCode":        resultCode,
+			"resultDesc":        desc,
+			"responseCode":      queryResp.ResponseCode,
+			"responseDesc":      queryResp.ResponseDescription,
+			"status":            "FAILED",
+		})
 
 		claim := db.Model(&transactions.TransactionModel{}).
 			Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
