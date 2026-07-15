@@ -658,6 +658,7 @@ const (
 	maxDefaultKESPayoutAmount     = 10
 	maxAppKESCollectionAmount     = 1000
 	maxAppKESPayoutAmount         = 1000
+	maxMpesaAccountReferenceLen   = 19
 	appMerchantID                 = "app"
 	meshexSandboxMerchantID       = "meshex_sandbox"
 	merchant888StarzProductionID  = "888starz_production"
@@ -668,6 +669,34 @@ const (
 	testSuccessIdentifier         = "888888"
 	testFailedIdentifier          = "999999"
 )
+
+func buildMpesaAccountReference(merchantID, externalID string) string {
+	merchantID = strings.TrimSpace(strings.ToLower(merchantID))
+	externalID = strings.TrimSpace(externalID)
+	if merchantID == "" {
+		merchantID = "merchant"
+	}
+	if strings.EqualFold(merchantID, "lipad") {
+		merchantID = "lipat"
+	}
+	if externalID == "" {
+		if len(merchantID) > maxMpesaAccountReferenceLen {
+			return merchantID[:maxMpesaAccountReferenceLen]
+		}
+		return merchantID
+	}
+
+	prefix := merchantID + "-"
+	if len(prefix) >= maxMpesaAccountReferenceLen {
+		return prefix[:maxMpesaAccountReferenceLen]
+	}
+
+	remaining := maxMpesaAccountReferenceLen - len(prefix)
+	if len(externalID) > remaining {
+		externalID = externalID[:remaining]
+	}
+	return prefix + externalID
+}
 
 const (
 	defaultAirtimeAPIBaseURL = "https://airtime.impalapay.com"
@@ -1147,7 +1176,7 @@ func MobilePaymentHandler(c *gin.Context) {
 
 	// Generate secureId and other dynamic fields
 	secureID := mpesa.GenerateSecureID()
-	stkAccountReference := strings.TrimSpace(req.ImpalaMerchantId)
+	stkAccountReference := buildMpesaAccountReference(req.ImpalaMerchantId, req.ExternalID)
 
 	dateAdded := time.Now().Unix()
 	// RemovePlusPrefix removes the '+' sign from the beginning of a phone number if present.

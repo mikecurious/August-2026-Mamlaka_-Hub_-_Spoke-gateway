@@ -160,7 +160,7 @@ const (
 	LipadPayB2CConsumerKey    = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
 	LipadPayB2CConsumerSecret = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
 	LipadPayB2CInitiatorName  = "Collins"
-	LipadPayB2CPassword       = "g/cA19za1LNCJXYCZbRLnfzq87iOfdL+tF3g17GTYc8nleCqm0vnchLdHnjr6mBgjIOZtaueJiOaM7xd0z6CnkESso437gtexhUMoShwVKKk9Kl+h4GsHiyQrKXrRDPVsyPLKtnvBZeKZXkgO2JmRU7pa1qRdjXXUYqVOJ2TO19mJpMh6FbqgGRTYCXwiwyaWyA+hxbMtjEu1nKFlE9Kk8TnEfBxCNpwOLVsTdkrK6siLbcUJ1NqE7MNEddIHKTF7z+4nOtEAPGTwXVneWvPeUnWL0ooqxdLis+81mLTxtxV2MisHjHHDgTWw/EuEGjG1PwtTE4grcPLTdKhj13M2Q=="
+	LipadPayB2CPassword       = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
 	LipadPayB2CShortCode      = "4564641"
 )
 

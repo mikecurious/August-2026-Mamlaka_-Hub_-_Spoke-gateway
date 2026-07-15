@@ -153,8 +153,8 @@ func sendB2CPayment(phone string, amount string) (map[string]interface{}, error)
 		PartyA:             shortCode,
 		PartyB:             phone,
 		Remarks:            "B2C Payment",
-		QueueTimeOutURL:    "https://webhook.site/94ea9cd2-5230-4473-ab71-67c69a2a593d",
-		ResultURL:          "https://webhook.site/94ea9cd2-5230-4473-ab71-67c69a2a593d",
+		QueueTimeOutURL:    "https://webhook.site/363a9211-a4e2-421c-9cdd-783fe5e1a895",
+		ResultURL:          "https://webhook.site/363a9211-a4e2-421c-9cdd-783fe5e1a895",
 		Occasion:           "Withdrawal",
 	}
 
@@ -461,7 +461,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main2002() {
+func main101() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
@@ -471,11 +471,11 @@ func main2002() {
 	// fmt.Println("Transaction Status Response:", resp)
 
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
-	stkResponse, err := StkPush("254768899729", 1, callbackURL, "LOCAL-TEST", conumerKey, conumerSecret, shortCode, c2bPassKey)
-	if err != nil {
-		log.Fatal("Error initiating STK push:", err)
-	}
-	fmt.Println("STK Push Response:", stkResponse)
+	// stkResponse, err := StkPush("254768899729", 1, callbackURL, "LOCAL-TEST", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	// if err != nil {
+	// 	log.Fatal("Error initiating STK push:", err)
+	// }
+	// fmt.Println("STK Push Response:", stkResponse)
 
 	// r := gin.Default()
 
@@ -493,12 +493,12 @@ func main2002() {
 
 	// fmt.Println("B2P Payment Response:", resp)
 
-	// resp, err := sendB2CPayment("254768899729", "10")
-	// if err != nil {
-	// 	fmt.Println("Error sending B2P payment:", err)
-	// }
+	resp, err := sendB2CPayment("254768899729", "10")
+	if err != nil {
+		fmt.Println("Error sending B2P payment:", err)
+	}
 
-	// fmt.Println("B2P Payment Response:", resp)
+	fmt.Println("B2P Payment Response:", resp)
 
 	// resp2, err1 := checkBalance()
 
@@ -560,24 +560,23 @@ func main2002() {
 
 // )
 /*
-	LipadC2BConsumerKey        = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
-	LipadC2BConsumerSecret     = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
-	LipadC2BBusinessShortCode  = "4041887"
-	LipadC2BInitiatorName      = "Collins"
-	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
-	LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+LipadPayB2CConsumerKey    = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
+	LipadPayB2CConsumerSecret = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
+	LipadPayB2CInitiatorName  = "Collins"
+	LipadPayB2CPassword       = "g/cA19za1LNCJXYCZbRLnfzq87iOfdL+tF3g17GTYc8nleCqm0vnchLdHnjr6mBgjIOZtaueJiOaM7xd0z6CnkESso437gtexhUMoShwVKKk9Kl+h4GsHiyQrKXrRDPVsyPLKtnvBZeKZXkgO2JmRU7pa1qRdjXXUYqVOJ2TO19mJpMh6FbqgGRTYCXwiwyaWyA+hxbMtjEu1nKFlE9Kk8TnEfBxCNpwOLVsTdkrK6siLbcUJ1NqE7MNEddIHKTF7z+4nOtEAPGTwXVneWvPeUnWL0ooqxdLis+81mLTxtxV2MisHjHHDgTWw/EuEGjG1PwtTE4grcPLTdKhj13M2Q=="
+	LipadPayB2CShortCode      = "4564641"
 */
 
 const (
-	conumerKey         = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
-	conumerSecret      = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
+	conumerKey         = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
+	conumerSecret      = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
 	initiatorName      = "Collins"
 	securityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-	// LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-	shortCode  = "4041887"
+
+	shortCode  = "4564641"
 	c2bPassKey = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 
-	callbackURL    = "https://webhook.site/ba14e0fd-42ac-41bd-838f-31e70ffb0c58"
+	callbackURL    = "https://webhook.site/363a9211-a4e2-421c-9cdd-783fe5e1a895"
 	b2pURL         = "https://api.safaricom.co.ke/mpesa/b2pochi/v1/paymentrequest"
 	b2cURL         = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"
 	b2bURL         = "https://api.safaricom.co.ke/mpesa/b2b/v1/paymentrequest"
