@@ -156,11 +156,21 @@ const (
 	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 	LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
 
+	/*
+
+		conumerKey         = "CahE71uTqfIkxZG7GehwWpfVLKBJLzjtskvCKQtzOAzGS2jU"
+		conumerSecret      = "JgmDf0toU9wjGxLtCh5QW4swSzOsWowybdqTQJKzFfxOJdjPxCmX0NO03FeHHJgv"
+		initiatorName      = "pnjogu"
+		securityCredential = "CbYd2X8Wm6JDOpIiMxBbGvaLiWXz22/h2upN01ByQCQILqAyk6hCx5gpDO1P5xRmUbjAACKe9bKze2a/98kzT42UeJE9O5YF+2kRXD6WGe8LZCrYUh60f/8z0pxsht6g3C515599wml9ViReLRf5CfPJKNXPKDDDQmleU5zaBrw8zC2vkHgsPhvta50A2Idagp/eWxt+yfMEVVKdrWdkRdykHEQUTSvImBXWpvXEWM3Tp/kdQ6jVT8/nctedYf311si8dWfYc2XjN0K9qmuiI4ouUY9Xd+U5SRLUF9m3IDlOFJSXdoIEe1nz98QwD45WfI2LXj5Og1kW/PXKfPPmQQ=="
+		shortCode          = "4564641"
+
+	*/
+
 	// B2C payouts (shortcode 4564641)
-	LipadPayB2CConsumerKey    = "OsUs5kpfSKdPOToCdY77ZB9dAE3HmX2zhwEfEVr1G66xOU1m"
-	LipadPayB2CConsumerSecret = "PGNzG7TIZYP1LU8mNdSH5kvJx7GVD1ilfqW9xd9UnsBV5pIreONI0VebzqdsX5dg"
-	LipadPayB2CInitiatorName  = "Collins"
-	LipadPayB2CPassword       = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
+	LipadPayB2CConsumerKey    = "CahE71uTqfIkxZG7GehwWpfVLKBJLzjtskvCKQtzOAzGS2jU"
+	LipadPayB2CConsumerSecret = "JgmDf0toU9wjGxLtCh5QW4swSzOsWowybdqTQJKzFfxOJdjPxCmX0NO03FeHHJgv"
+	LipadPayB2CInitiatorName  = "pnjogu"
+	LipadPayB2CPassword       = "CbYd2X8Wm6JDOpIiMxBbGvaLiWXz22/h2upN01ByQCQILqAyk6hCx5gpDO1P5xRmUbjAACKe9bKze2a/98kzT42UeJE9O5YF+2kRXD6WGe8LZCrYUh60f/8z0pxsht6g3C515599wml9ViReLRf5CfPJKNXPKDDDQmleU5zaBrw8zC2vkHgsPhvta50A2Idagp/eWxt+yfMEVVKdrWdkRdykHEQUTSvImBXWpvXEWM3Tp/kdQ6jVT8/nctedYf311si8dWfYc2XjN0K9qmuiI4ouUY9Xd+U5SRLUF9m3IDlOFJSXdoIEe1nz98QwD45WfI2LXj5Og1kW/PXKfPPmQQ=="
 	LipadPayB2CShortCode      = "4564641"
 )
 

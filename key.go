@@ -11,10 +11,10 @@ import (
 	"os"
 )
 
-func main1() {
+func main201() {
 	// Path to the downloaded certificate
 	certPath := "ProductionCertificate.cer"
-	initiatorPassword := "#Kali@linux003!"
+	initiatorPassword := "SynVice@68341!"
 
 	securityCredential, err := GenerateSecurityCredential(certPath, initiatorPassword)
 	if err != nil {
