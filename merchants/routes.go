@@ -8456,8 +8456,14 @@ func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_LIMIT", "message": err.Error()})
 		return
 	}
+	maxRuntimeSeconds, err := parsePositiveIntQuery(c, "maxRuntimeSeconds", 20, 45)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_MAX_RUNTIME", "message": err.Error()})
+		return
+	}
 
 	cutoff := time.Now().Add(-time.Duration(minAgeMinutes) * time.Minute).Unix()
+	deadline := time.Now().Add(time.Duration(maxRuntimeSeconds) * time.Second)
 	var pending []transactions.TransactionModel
 	if err := db.Where("LOWER(transactionStatus) = ? AND currency = ? AND LOWER(transactionReport) = ? AND dateAdded <= ?",
 		"pending", "KES", "withdraw", cutoff).
@@ -8490,8 +8496,14 @@ func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
 	queried := 0
 	accepted := 0
 	failed := 0
+	timedOut := false
 
 	for _, tx := range pending {
+		if !time.Now().Before(deadline) {
+			timedOut = true
+			break
+		}
+
 		queryReference := strings.TrimSpace(tx.ProviderReference)
 		if queryReference == "" {
 			queryReference = strings.TrimSpace(tx.CheckoutRequestID)
@@ -8596,16 +8608,20 @@ func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Pending KES B2C withdrawals queried",
-		"cutoff":        cutoff,
-		"minAgeMinutes": minAgeMinutes,
-		"limit":         limit,
-		"found":         len(pending),
-		"queried":       queried,
-		"accepted":      accepted,
-		"failed":        failed,
-		"queryId":       "providerReference|checkoutRequestID|merchantRequestID",
-		"transactions":  results,
+		"message":           "Pending KES B2C withdrawals queried",
+		"cutoff":            cutoff,
+		"minAgeMinutes":     minAgeMinutes,
+		"limit":             limit,
+		"maxRuntimeSeconds": maxRuntimeSeconds,
+		"found":             len(pending),
+		"processed":         len(results),
+		"remainingInBatch":  len(pending) - len(results),
+		"timedOut":          timedOut,
+		"queried":           queried,
+		"accepted":          accepted,
+		"failed":            failed,
+		"queryId":           "providerReference|checkoutRequestID|merchantRequestID",
+		"transactions":      results,
 	})
 }
 
