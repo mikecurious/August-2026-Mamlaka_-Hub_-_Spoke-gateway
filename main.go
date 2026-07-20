@@ -8,6 +8,7 @@ import (
 	"com.mam-laka/forex"
 	"com.mam-laka/main/merchants"
 	"com.mam-laka/main/settlement"
+	"com.mam-laka/transactions"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -20,6 +21,7 @@ func Migration(database *gorm.DB) {
 	balances.AutoMigrate()
 	forex.AutoMigrate()
 	settlement.AutoMigrate()
+	transactions.AutoMigrate()
 }
 
 func main() {

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"com.mam-laka/transactions"
@@ -87,6 +88,20 @@ func mpesaReceiptFromSTKMetadata(metadata map[string]interface{}) string {
 
 func mpesaReceiptFromB2CMetadata(metadata map[string]interface{}) string {
 	return metadataValueString(metadata["TransactionReceipt"])
+}
+
+func recipientNameFromB2CMetadata(metadata map[string]interface{}) string {
+	publicName := strings.TrimSpace(metadataValueString(metadata["ReceiverPartyPublicName"]))
+	if publicName == "" || publicName == "<nil>" {
+		return ""
+	}
+
+	parts := strings.SplitN(publicName, " - ", 2)
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[1])
+	}
+
+	return publicName
 }
 
 // SendCallback now accepts the callbackBody.Body type directly

@@ -32,6 +32,9 @@ type TransactionModel struct {
 	CallbackStatus      string  `gorm:"column:callbackStatus" json:"callbackStatus"`
 	// ProviderReference stores M-Pesa receipt (e.g. MpesaReceiptNumber / TransactionReceipt) on success.
 	ProviderReference string `gorm:"column:providerReference" json:"providerReference"`
+	RecipientName     string `gorm:"column:recipientName;type:varchar(255)" json:"recipientName"`
+	RetryCount        int    `gorm:"column:retryCount" json:"retryCount"`
+	LastRetryAt       int64  `gorm:"column:lastRetryAt" json:"lastRetryAt"`
 }
 
 func NormalizeTransactionState(status string) string {
@@ -91,6 +94,11 @@ func (t *TransactionModel) BeforeUpdate(tx *gorm.DB) error {
 
 func (TransactionModel) TableName() string {
 	return "merchant_transactions"
+}
+
+func AutoMigrate() {
+	db := database.GetConnection()
+	db.AutoMigrate(&TransactionModel{})
 }
 
 func SaveTransaction(data *TransactionModel) error {

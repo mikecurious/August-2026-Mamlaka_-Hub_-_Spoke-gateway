@@ -668,6 +668,7 @@ const (
 	testFailedMSISDN              = "0720000000"
 	testSuccessIdentifier         = "888888"
 	testFailedIdentifier          = "999999"
+	maxSafaricomSTKPushRetries    = 2
 )
 
 func buildMpesaAccountReference(merchantID, externalID string) string {
@@ -768,6 +769,33 @@ func normalizeTestDigits(value string) string {
 		return "0" + digits[3:]
 	}
 	return digits
+}
+
+func normalizeKenyaMobileMSISDN(phone string) (string, error) {
+	digits := regexp.MustCompile(`\D`).ReplaceAllString(strings.TrimSpace(phone), "")
+	if digits == "" {
+		return "", fmt.Errorf("recipientPhone is required")
+	}
+	if strings.HasPrefix(digits, "2540") {
+		return "", fmt.Errorf("recipientPhone must not include a 0 after country code 254")
+	}
+
+	switch {
+	case strings.HasPrefix(digits, "254"):
+		if regexp.MustCompile(`^254[17]\d{8}$`).MatchString(digits) {
+			return digits, nil
+		}
+	case strings.HasPrefix(digits, "0"):
+		if regexp.MustCompile(`^0[17]\d{8}$`).MatchString(digits) {
+			return "254" + digits[1:], nil
+		}
+	case strings.HasPrefix(digits, "7"), strings.HasPrefix(digits, "1"):
+		if regexp.MustCompile(`^[17]\d{8}$`).MatchString(digits) {
+			return "254" + digits, nil
+		}
+	}
+
+	return "", fmt.Errorf("recipientPhone must be a valid Kenyan mobile number in the format 2547XXXXXXXX, 2541XXXXXXXX, 07XXXXXXXX, or 01XXXXXXXX")
 }
 
 func airtimeConfig() (baseURL, apiKey, apiSecret, authBearer string) {
@@ -1236,12 +1264,24 @@ func MobilePaymentHandler(c *gin.Context) {
 	}
 
 	if req.Currency == "KES" {
+		normalizedPayerPhone, phoneErr := normalizeKenyaMobileMSISDN(req.PayerPhone)
+		if phoneErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":          "INVALID_PAYER_PHONE",
+				"message":        strings.Replace(phoneErr.Error(), "recipientPhone", "payerPhone", 1),
+				"payerPhone":     req.PayerPhone,
+				"expectedFormat": "2547XXXXXXXX or 2541XXXXXXXX",
+				"example":        "254725602600",
+			})
+			return
+		}
+		msisdnStored = normalizedPayerPhone
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
 		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
 
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
 			// log the paybill being used
 			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
 
@@ -1251,29 +1291,29 @@ func MobilePaymentHandler(c *gin.Context) {
 				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
 		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
 			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.NeonC2BConsumerKey, mpesa.NeonC2BConsumerSecret, mpesa.NeonC2BBusinessShortCode, mpesa.NeonC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.NeonC2BConsumerKey, mpesa.NeonC2BConsumerSecret, mpesa.NeonC2BBusinessShortCode, mpesa.NeonC2BPassKey)
 		} else if strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 		} else {
 			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
 			if req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(RemovePlusPrefix(req.PayerPhone), req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
 
 		}
 
@@ -1284,7 +1324,7 @@ func MobilePaymentHandler(c *gin.Context) {
 				"externalId":        req.ExternalID,
 				"secureId":          secureID,
 				"amount":            req.Amount,
-				"msisdn":            RemovePlusPrefix(req.PayerPhone),
+				"msisdn":            normalizedPayerPhone,
 				"accountReference":  stkAccountReference,
 				"sourceOfFunds":     req.MobileMoneySP,
 				"error":             errror_stk.Error(),
@@ -1864,6 +1904,18 @@ func MobileWithdrawalHandler(c *gin.Context) {
 	//check the currenvy from the request
 	switch req.Currency {
 	case "KES":
+		normalizedRecipientPhone, phoneErr := normalizeKenyaMobileMSISDN(req.RecipientPhone)
+		if phoneErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":          "INVALID_RECIPIENT_PHONE",
+				"message":        phoneErr.Error(),
+				"recipientPhone": req.RecipientPhone,
+				"expectedFormat": "2547XXXXXXXX or 2541XXXXXXXX",
+				"example":        "254725602600",
+			})
+			return
+		}
+
 		// Check if merchant has sufficient KES balance BEFORE initiating payout
 		if balance.KESBalance < float64(req.Amount) {
 			c.JSON(http.StatusOK, gin.H{
@@ -1886,30 +1938,30 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
 		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "transactworld" { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") || strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
 			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
 				return
 			}
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.NeonPayB2CConsumerKey, mpesa.NeonPayB2CConsumerSecret, mpesa.NeonPayB2CPassword, mpesa.NeonPayB2CShortCode, mpesa.NeonPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.NeonPayB2CConsumerKey, mpesa.NeonPayB2CConsumerSecret, mpesa.NeonPayB2CPassword, mpesa.NeonPayB2CShortCode, mpesa.NeonPayB2CInitiatorName)
 		} else {
 			if req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
 				return
 			}
-			b2bResponse, err = mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
 
 		}
 
@@ -1927,7 +1979,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			ResponseCode:        b2bResponse.ResponseCode,
 			Currency:            req.Currency,
 			Amount:              int(req.Amount),
-			Msisdn:              req.RecipientPhone,
+			Msisdn:              normalizedRecipientPhone,
 			NetAmount:           float64(req.Amount),
 			SecureID:            secureID,
 			SourceOfFunds:       req.MobileMoneySP,
@@ -3183,12 +3235,54 @@ func MobileCallbackHandler(c *gin.Context) {
 
 			c.JSON(http.StatusOK, gin.H{"message": "Callback processed and status updated to SENT"})
 		} else { // Failure or Canceled
+			resultCodeString := strconv.Itoa(int(resultCode))
+			if isSafaricomPushRequestError(resultDesc) {
+				logSafaricomSTKIssue(map[string]interface{}{
+					"stage":             "stk_push_callback_failure",
+					"merchantId":        transaction.ImpalaMerchantID,
+					"transactionId":     transaction.ID,
+					"secureId":          transaction.SecureID,
+					"externalId":        transaction.ExternalID,
+					"amount":            transaction.Amount,
+					"msisdn":            RemovePlusPrefix(transaction.Msisdn),
+					"resultCode":        resultCodeString,
+					"resultDesc":        resultDesc,
+					"retryCount":        transaction.RetryCount,
+					"checkoutRequestID": checkoutRequestID,
+					"merchantRequestID": merchantRequestID,
+				})
+
+				if transaction.RetryCount < maxSafaricomSTKPushRetries {
+					retryResp, retryErr := retrySafaricomSTKPush(db, transaction, resultCodeString, resultDesc)
+					if retryErr == nil {
+						c.JSON(http.StatusOK, gin.H{
+							"message":           "Safaricom STK push failure received; retry initiated",
+							"retryCount":        transaction.RetryCount + 1,
+							"merchantRequestID": retryResp.MerchantRequestID,
+							"checkoutRequestID": retryResp.CheckoutRequestID,
+						})
+						return
+					}
+
+					logSafaricomSTKIssue(map[string]interface{}{
+						"stage":         "stk_push_callback_retry_failed",
+						"merchantId":    transaction.ImpalaMerchantID,
+						"transactionId": transaction.ID,
+						"secureId":      transaction.SecureID,
+						"externalId":    transaction.ExternalID,
+						"retryCount":    transaction.RetryCount,
+						"error":         retryErr.Error(),
+					})
+				}
+			}
+
 			// Update the transaction status to FAILED
 			if err := db.Model(&transactions.TransactionModel{}).
 				Where("id = ?", transaction.ID).
 				Updates(map[string]interface{}{
 					"transactionStatus":   "FAILED",
 					"responseDescription": resultDesc, // Include the failure reason
+					"responseCode":        resultCodeString,
 					"callbackStatus":      "SENT",
 				}).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update transaction", "details": err.Error()})
@@ -3303,6 +3397,7 @@ func MobileCallbackHandler(c *gin.Context) {
 			log.Println("Withdrawal successful")
 
 			providerRef := mpesaReceiptFromB2CMetadata(metadata)
+			recipientName := recipientNameFromB2CMetadata(metadata)
 			amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
 			updates := map[string]interface{}{
 				"transactionStatus":   "COMPLETE",
@@ -3311,6 +3406,9 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 			if providerRef != "" {
 				updates["providerReference"] = providerRef
+			}
+			if recipientName != "" {
+				updates["recipientName"] = recipientName
 			}
 
 			err = db.Transaction(func(tx *gorm.DB) error {
@@ -3351,6 +3449,9 @@ func MobileCallbackHandler(c *gin.Context) {
 
 			if providerRef != "" {
 				transaction.ProviderReference = providerRef
+			}
+			if recipientName != "" {
+				transaction.RecipientName = recipientName
 			}
 			callbackResponse := buildMpesaMerchantCallback(&transaction, "COMPLETE", resultDesc, amount, providerRef)
 			log.Println("callback response", callbackResponse)
@@ -3497,6 +3598,7 @@ func B2CCallbackHandler(c *gin.Context) {
 		log.Println("✅ B2C withdrawal successful")
 
 		providerRef := mpesaReceiptFromB2CMetadata(metadata)
+		recipientName := recipientNameFromB2CMetadata(metadata)
 		amount := metadataValueInt(metadata["TransactionAmount"], transaction.Amount)
 
 		updates := map[string]interface{}{
@@ -3506,6 +3608,9 @@ func B2CCallbackHandler(c *gin.Context) {
 		}
 		if providerRef != "" {
 			updates["providerReference"] = providerRef
+		}
+		if recipientName != "" {
+			updates["recipientName"] = recipientName
 		}
 
 		err = db.Transaction(func(tx *gorm.DB) error {
@@ -3549,6 +3654,9 @@ func B2CCallbackHandler(c *gin.Context) {
 
 		if providerRef != "" {
 			transaction.ProviderReference = providerRef
+		}
+		if recipientName != "" {
+			transaction.RecipientName = recipientName
 		}
 		callbackResponse := buildMpesaMerchantCallback(&transaction, "COMPLETE", resultDesc, amount, providerRef)
 
@@ -7968,6 +8076,66 @@ func safaricomQueryDescription(resp *mpesa.STKStatusQueryResponse) string {
 	return "Safaricom status query returned no description"
 }
 
+func isSafaricomPushRequestError(desc string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(desc))
+	return strings.Contains(normalized, "error occurred while sending push request")
+}
+
+func retrySafaricomSTKPush(db *gorm.DB, tx transactions.TransactionModel, resultCode, resultDesc string) (*mpesa.StkPushResponse, error) {
+	if tx.RetryCount >= maxSafaricomSTKPushRetries {
+		return nil, fmt.Errorf("retry limit reached")
+	}
+
+	creds := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+	accountReference := buildMpesaAccountReference(tx.ImpalaMerchantID, tx.ExternalID)
+	resp, err := mpesa.StkPush(RemovePlusPrefix(tx.Msisdn), tx.Amount, tx.CallbackURL, accountReference, creds.ConsumerKey, creds.ConsumerSecret, creds.BusinessShortCode, creds.PassKey)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("empty Safaricom STK retry response")
+	}
+	if strings.TrimSpace(resp.ResponseCode) != "" && strings.TrimSpace(resp.ResponseCode) != "0" {
+		return resp, fmt.Errorf("Safaricom STK retry rejected: %s", resp.ResponseDescription)
+	}
+
+	updates := map[string]interface{}{
+		"transactionStatus":   "PENDING",
+		"callbackStatus":      "NOT_SENT",
+		"merchantRequestID":   resp.MerchantRequestID,
+		"checkoutRequestID":   resp.CheckoutRequestID,
+		"responseCode":        resp.ResponseCode,
+		"responseDescription": fmt.Sprintf("Retrying after Safaricom callback failure: %s", resultDesc),
+		"retryCount":          gorm.Expr("retryCount + ?", 1),
+		"lastRetryAt":         time.Now().Unix(),
+	}
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ? AND LOWER(transactionStatus) <> ?", tx.ID, "complete").
+		Updates(updates).Error; err != nil {
+		return resp, err
+	}
+
+	logSafaricomSTKIssue(map[string]interface{}{
+		"stage":                 "stk_push_callback_retry",
+		"merchantId":            tx.ImpalaMerchantID,
+		"transactionId":         tx.ID,
+		"secureId":              tx.SecureID,
+		"externalId":            tx.ExternalID,
+		"amount":                tx.Amount,
+		"msisdn":                RemovePlusPrefix(tx.Msisdn),
+		"previousResultCode":    resultCode,
+		"previousResultDesc":    resultDesc,
+		"retryNumber":           tx.RetryCount + 1,
+		"newMerchantRequestID":  resp.MerchantRequestID,
+		"newCheckoutRequestID":  resp.CheckoutRequestID,
+		"retryResponseCode":     resp.ResponseCode,
+		"retryResponseDesc":     resp.ResponseDescription,
+		"originalCheckoutReqID": tx.CheckoutRequestID,
+	})
+
+	return resp, nil
+}
+
 func sendSyncedSTKCallback(db *gorm.DB, tx transactions.TransactionModel, payload map[string]interface{}) (string, error) {
 	if strings.TrimSpace(tx.CallbackURL) == "" || strings.EqualFold(strings.TrimSpace(tx.CallbackURL), "NULL") {
 		return "FAILED", fmt.Errorf("callback URL is missing")
@@ -8271,6 +8439,176 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 	})
 }
 
+func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
+	db := database.GetConnection()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection failed"})
+		return
+	}
+
+	minAgeMinutes, err := parsePositiveIntQuery(c, "minAgeMinutes", 3, 1440)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_MIN_AGE", "message": err.Error()})
+		return
+	}
+	limit, err := parsePositiveIntQuery(c, "limit", 20, 100)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_LIMIT", "message": err.Error()})
+		return
+	}
+
+	cutoff := time.Now().Add(-time.Duration(minAgeMinutes) * time.Minute).Unix()
+	var pending []transactions.TransactionModel
+	if err := db.Where("LOWER(transactionStatus) = ? AND currency = ? AND LOWER(transactionReport) = ? AND dateAdded <= ?",
+		"pending", "KES", "withdraw", cutoff).
+		Order("dateAdded ASC").
+		Limit(limit).
+		Find(&pending).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending B2C withdrawals", "details": err.Error()})
+		return
+	}
+
+	type withdrawalResult struct {
+		ID                            uint   `json:"id"`
+		MerchantID                    string `json:"merchantId"`
+		SecureID                      string `json:"secureId"`
+		ExternalID                    string `json:"externalId"`
+		QueryReference                string `json:"queryReference"`
+		RetryCount                    int    `json:"retryCount"`
+		OriginatorConversationID      string `json:"originatorConversationID,omitempty"`
+		QueryOriginatorConversationID string `json:"queryOriginatorConversationID,omitempty"`
+		QueryConversationID           string `json:"queryConversationID,omitempty"`
+		ResponseCode                  string `json:"responseCode,omitempty"`
+		ResponseDescription           string `json:"responseDescription,omitempty"`
+		ErrorCode                     string `json:"errorCode,omitempty"`
+		ErrorMessage                  string `json:"errorMessage,omitempty"`
+		Status                        string `json:"status"`
+		Error                         string `json:"error,omitempty"`
+	}
+
+	results := make([]withdrawalResult, 0, len(pending))
+	queried := 0
+	accepted := 0
+	failed := 0
+
+	for _, tx := range pending {
+		queryReference := strings.TrimSpace(tx.ProviderReference)
+		if queryReference == "" {
+			queryReference = strings.TrimSpace(tx.CheckoutRequestID)
+		}
+		if queryReference == "" {
+			queryReference = strings.TrimSpace(tx.MerchantRequestID)
+		}
+
+		result := withdrawalResult{
+			ID:                       tx.ID,
+			MerchantID:               tx.ImpalaMerchantID,
+			SecureID:                 tx.SecureID,
+			ExternalID:               tx.ExternalID,
+			QueryReference:           queryReference,
+			RetryCount:               tx.RetryCount,
+			OriginatorConversationID: tx.MerchantRequestID,
+			Status:                   "PENDING",
+		}
+
+		if queryReference == "" {
+			result.Status = "SKIPPED"
+			result.Error = "missing Safaricom query reference"
+			results = append(results, result)
+			continue
+		}
+
+		creds := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+		queryResp, err := mpesa.QueryB2CTransactionStatus(queryReference, creds)
+		queried++
+		if err != nil {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "b2c_status_query",
+				"merchantId":        tx.ImpalaMerchantID,
+				"transactionId":     tx.ID,
+				"secureId":          tx.SecureID,
+				"externalId":        tx.ExternalID,
+				"queryReference":    queryReference,
+				"merchantRequestID": tx.MerchantRequestID,
+				"checkoutRequestID": tx.CheckoutRequestID,
+				"retryCount":        tx.RetryCount,
+				"error":             err.Error(),
+			})
+			result.Status = "QUERY_FAILED"
+			result.Error = err.Error()
+			results = append(results, result)
+			failed++
+			continue
+		}
+		if queryResp != nil {
+			result.QueryOriginatorConversationID = queryResp.OriginatorConversationID
+			result.QueryConversationID = queryResp.ConversationID
+			result.ResponseCode = strings.TrimSpace(queryResp.ResponseCode)
+			result.ResponseDescription = strings.TrimSpace(queryResp.ResponseDescription)
+			result.ErrorCode = strings.TrimSpace(queryResp.ErrorCode)
+			result.ErrorMessage = strings.TrimSpace(queryResp.ErrorMessage)
+		}
+
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":                         "b2c_status_query",
+			"merchantId":                    tx.ImpalaMerchantID,
+			"transactionId":                 tx.ID,
+			"secureId":                      tx.SecureID,
+			"externalId":                    tx.ExternalID,
+			"queryReference":                queryReference,
+			"merchantRequestID":             tx.MerchantRequestID,
+			"checkoutRequestID":             tx.CheckoutRequestID,
+			"retryCount":                    tx.RetryCount + 1,
+			"queryOriginatorConversationID": result.QueryOriginatorConversationID,
+			"queryConversationID":           result.QueryConversationID,
+			"responseCode":                  result.ResponseCode,
+			"responseDescription":           result.ResponseDescription,
+			"errorCode":                     result.ErrorCode,
+			"errorMessage":                  result.ErrorMessage,
+		})
+
+		status := "QUERY_ACCEPTED"
+		if result.ErrorCode != "" || (result.ResponseCode != "" && result.ResponseCode != "0") {
+			status = "QUERY_REJECTED"
+			failed++
+		} else {
+			accepted++
+		}
+		result.Status = status
+
+		updates := map[string]interface{}{
+			"retryCount":  gorm.Expr("retryCount + ?", 1),
+			"lastRetryAt": time.Now().Unix(),
+		}
+		if result.ResponseCode != "" {
+			updates["responseCode"] = result.ResponseCode
+		}
+		if result.ResponseDescription != "" {
+			updates["responseDescription"] = result.ResponseDescription
+		}
+		if err := db.Model(&transactions.TransactionModel{}).
+			Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
+			Updates(updates).Error; err != nil {
+			result.Error = err.Error()
+		}
+
+		results = append(results, result)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Pending KES B2C withdrawals queried",
+		"cutoff":        cutoff,
+		"minAgeMinutes": minAgeMinutes,
+		"limit":         limit,
+		"found":         len(pending),
+		"queried":       queried,
+		"accepted":      accepted,
+		"failed":        failed,
+		"queryId":       "providerReference|checkoutRequestID|merchantRequestID",
+		"transactions":  results,
+	})
+}
+
 func RegisterRoutes(router *gin.RouterGroup) {
 
 	router.GET("/", LoginHandler)
@@ -8293,6 +8631,7 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("west-africa/sync-pending", SyncPendingPixelTransactionsHandler)
 	router.POST("transactions/fail-stale-pending", FailStalePendingTransactionsHandler)
 	router.POST("transactions/sync-pending-stk", FailStalePendingTransactionsHandler)
+	router.POST("transactions/sync-pending-withdrawals", SyncPendingB2CWithdrawalsHandler)
 	router.POST("flutterwave/initiate", FlutterwavePaymentHandler)
 	router.POST("flutterwave/callback", FlutterwaveCallbackHandler)
 	router.POST("payaza/callback", PayazaCallbackHandler)

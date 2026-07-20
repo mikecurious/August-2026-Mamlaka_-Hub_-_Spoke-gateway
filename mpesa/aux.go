@@ -247,6 +247,29 @@ type STKStatusQueryResponse struct {
 	ErrorMessage        string `json:"errorMessage,omitempty"`
 }
 
+type TransactionStatusQueryRequest struct {
+	Initiator          string `json:"Initiator"`
+	SecurityCredential string `json:"SecurityCredential"`
+	CommandID          string `json:"CommandID"`
+	TransactionID      string `json:"TransactionID"`
+	PartyA             string `json:"PartyA"`
+	IdentifierType     string `json:"IdentifierType"`
+	ResultURL          string `json:"ResultURL"`
+	QueueTimeOutURL    string `json:"QueueTimeOutURL"`
+	Remarks            string `json:"Remarks"`
+	Occasion           string `json:"Occasion"`
+}
+
+type TransactionStatusQueryResponse struct {
+	OriginatorConversationID string `json:"OriginatorConversationID,omitempty"`
+	ConversationID           string `json:"ConversationID,omitempty"`
+	ResponseCode             string `json:"ResponseCode,omitempty"`
+	ResponseDescription      string `json:"ResponseDescription,omitempty"`
+	ErrorCode                string `json:"errorCode,omitempty"`
+	ErrorMessage             string `json:"errorMessage,omitempty"`
+	RequestID                string `json:"requestId,omitempty"`
+}
+
 func GenerateAccessToken(consumerKey, consumerSecret string) (string, error) {
 	cacheKey := consumerKey + ":" + consumerSecret
 	tokenCacheMu.Lock()
@@ -414,6 +437,64 @@ func QuerySTKStatus(checkoutRequestID string, creds STKCredentials) (*STKStatusQ
 			return &queryResponse, nil
 		}
 		return nil, fmt.Errorf("STK query failed: %s, %s", resp.Status, string(body))
+	}
+
+	return &queryResponse, nil
+}
+
+func QueryB2CTransactionStatus(transactionID string, creds B2CCredentials) (*TransactionStatusQueryResponse, error) {
+	url := "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
+	token, err := GenerateAccessToken(creds.ConsumerKey, creds.ConsumerSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	requestBody := TransactionStatusQueryRequest{
+		Initiator:          creds.InitiatorName,
+		SecurityCredential: creds.SecurityCredential,
+		CommandID:          "TransactionStatusQuery",
+		TransactionID:      transactionID,
+		PartyA:             creds.BusinessShortCode,
+		IdentifierType:     "4",
+		ResultURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		QueueTimeOutURL:    "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		Remarks:            transactionID,
+		Occasion:           "Withdrawal status query",
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := safaricomHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var queryResponse TransactionStatusQueryResponse
+	if err := json.Unmarshal(body, &queryResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction status query response: %w. Raw body: %s", err, string(body))
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if queryResponse.ErrorMessage != "" {
+			return &queryResponse, nil
+		}
+		return nil, fmt.Errorf("transaction status query failed: %s, %s", resp.Status, string(body))
 	}
 
 	return &queryResponse, nil
