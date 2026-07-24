@@ -410,7 +410,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 		TransactionType:   "CustomerPayBillOnline",
 		Amount:            amount,
 		PartyA:            phoneNumber,
-		PartyB:            businessShortCode,
+		PartyB:            "5480795",
 		PhoneNumber:       phoneNumber,
 		CallBackURL:       callbackURL,
 		AccountReference:  accountReference,
@@ -461,7 +461,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 	return &stkResponse, nil
 }
 
-func main200() {
+func main101() {
 
 	//call transaction query
 	// resp, err := checkTransactionStatus("UEIEP4MNLG")
@@ -471,7 +471,7 @@ func main200() {
 	// fmt.Println("Transaction Status Res ponse:", resp)
 
 	// StkPush fetches its own OAuth token from consumerKey + consumerSecret (do not pass the token here).
-	stkResponse, err := StkPush("254768899729", 1, callbackURL, "LOCAL-TEST", conumerKey, conumerSecret, shortCode, c2bPassKey)
+	stkResponse, err := StkPush("", 1, callbackURL, "LOCAL-TEST", conumerKey, conumerSecret, shortCode, c2bPassKey)
 	if err != nil {
 		log.Fatal("Error initiating STK push:", err)
 	}
@@ -571,14 +571,14 @@ func main200() {
 */
 
 const (
-	conumerKey                 = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
-	conumerSecret              = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
+	conumerKey                 = "R93FgobYO2mLTZ1iQhM2zFfljffKODo1"
+	conumerSecret              = "6AAAAbb6MEFisxi2"
 	initiatorName              = "Collins"
 	securityCredential         = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
 	LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-	shortCode                  = "4041887"
-	c2bPassKey                 = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
-	callbackURL                = "https://webhook.site/363a9211-a4e2-421c-9cdd-783fe5e1a895"
+	shortCode                  = "7478719"
+	c2bPassKey                 = "ba150d423173fee25f130734efcd66d1682fe2518c6afb1a5f5ac54a1971595d"
+	callbackURL                = "https://webhook.site/35a6a1ed-9468-4454-a638-297afeee2531"
 
 	b2pURL         = "https://api.safaricom.co.ke/mpesa/b2pochi/v1/paymentrequest"
 	b2cURL         = "https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest"

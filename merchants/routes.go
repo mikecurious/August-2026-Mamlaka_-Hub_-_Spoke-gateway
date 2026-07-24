@@ -671,12 +671,20 @@ const (
 	maxSafaricomSTKPushRetries    = 2
 )
 
-func buildMpesaAccountReference(merchantID, externalID string) string {
+func safaricomMerchantReferencePrefix(merchantID string) string {
 	merchantID = strings.TrimSpace(strings.ToLower(merchantID))
-	externalID = strings.TrimSpace(externalID)
-	if merchantID == "" {
-		merchantID = "merchant"
+	if merchantID == appMerchantID {
+		return "fusionfi"
 	}
+	if merchantID == "" {
+		return "merchant"
+	}
+	return merchantID
+}
+
+func buildMpesaAccountReference(merchantID, externalID string) string {
+	merchantID = safaricomMerchantReferencePrefix(merchantID)
+	externalID = strings.TrimSpace(externalID)
 	if strings.EqualFold(merchantID, "lipad") {
 		merchantID = "lipad"
 	}
@@ -743,7 +751,7 @@ func isMpesaSharedPaybillTestFlow(req *MobilePaymentRequest) bool {
 }
 
 func mpesaMerchantReference(merchantID, secureID string) string {
-	return strings.TrimSpace(merchantID) + "*" + strings.TrimSpace(secureID)
+	return safaricomMerchantReferencePrefix(merchantID) + "-" + strings.TrimSpace(secureID)
 }
 
 func isNeonMpesaMerchant(merchantID string) bool {
@@ -8150,6 +8158,118 @@ func sendSyncedSTKCallback(db *gorm.DB, tx transactions.TransactionModel, payloa
 	return "SENT", nil
 }
 
+func b2cWithdrawalQueryReference(tx transactions.TransactionModel) string {
+	queryReference := strings.TrimSpace(tx.ProviderReference)
+	if queryReference == "" {
+		queryReference = strings.TrimSpace(tx.CheckoutRequestID)
+	}
+	if queryReference == "" {
+		queryReference = strings.TrimSpace(tx.MerchantRequestID)
+	}
+	return queryReference
+}
+
+func processPendingB2CWithdrawalQuery(db *gorm.DB, tx transactions.TransactionModel, jobID string) {
+	queryReference := b2cWithdrawalQueryReference(tx)
+	if queryReference == "" {
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":         "b2c_status_query",
+			"jobId":         jobID,
+			"merchantId":    tx.ImpalaMerchantID,
+			"transactionId": tx.ID,
+			"secureId":      tx.SecureID,
+			"externalId":    tx.ExternalID,
+			"status":        "SKIPPED",
+			"error":         "missing Safaricom query reference",
+		})
+		return
+	}
+
+	creds := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+	queryResp, err := mpesa.QueryB2CTransactionStatus(queryReference, creds)
+	if err != nil {
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":             "b2c_status_query",
+			"jobId":             jobID,
+			"merchantId":        tx.ImpalaMerchantID,
+			"transactionId":     tx.ID,
+			"secureId":          tx.SecureID,
+			"externalId":        tx.ExternalID,
+			"queryReference":    queryReference,
+			"merchantRequestID": tx.MerchantRequestID,
+			"checkoutRequestID": tx.CheckoutRequestID,
+			"retryCount":        tx.RetryCount,
+			"status":            "QUERY_FAILED",
+			"error":             err.Error(),
+		})
+		return
+	}
+
+	responseCode := ""
+	responseDescription := ""
+	errorCode := ""
+	errorMessage := ""
+	queryOriginatorConversationID := ""
+	queryConversationID := ""
+	if queryResp != nil {
+		responseCode = strings.TrimSpace(queryResp.ResponseCode)
+		responseDescription = strings.TrimSpace(queryResp.ResponseDescription)
+		errorCode = strings.TrimSpace(queryResp.ErrorCode)
+		errorMessage = strings.TrimSpace(queryResp.ErrorMessage)
+		queryOriginatorConversationID = queryResp.OriginatorConversationID
+		queryConversationID = queryResp.ConversationID
+	}
+
+	status := "QUERY_ACCEPTED"
+	if errorCode != "" || (responseCode != "" && responseCode != "0") {
+		status = "QUERY_REJECTED"
+	}
+
+	logSafaricomSTKIssue(map[string]interface{}{
+		"stage":                         "b2c_status_query",
+		"jobId":                         jobID,
+		"merchantId":                    tx.ImpalaMerchantID,
+		"transactionId":                 tx.ID,
+		"secureId":                      tx.SecureID,
+		"externalId":                    tx.ExternalID,
+		"queryReference":                queryReference,
+		"merchantRequestID":             tx.MerchantRequestID,
+		"checkoutRequestID":             tx.CheckoutRequestID,
+		"retryCount":                    tx.RetryCount + 1,
+		"queryOriginatorConversationID": queryOriginatorConversationID,
+		"queryConversationID":           queryConversationID,
+		"responseCode":                  responseCode,
+		"responseDescription":           responseDescription,
+		"errorCode":                     errorCode,
+		"errorMessage":                  errorMessage,
+		"status":                        status,
+	})
+
+	updates := map[string]interface{}{
+		"retryCount":  gorm.Expr("retryCount + ?", 1),
+		"lastRetryAt": time.Now().Unix(),
+	}
+	if responseCode != "" {
+		updates["responseCode"] = responseCode
+	}
+	if responseDescription != "" {
+		updates["responseDescription"] = responseDescription
+	}
+	if err := db.Model(&transactions.TransactionModel{}).
+		Where("id = ? AND LOWER(transactionStatus) = ?", tx.ID, "pending").
+		Updates(updates).Error; err != nil {
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":         "b2c_status_query_update_failed",
+			"jobId":         jobID,
+			"merchantId":    tx.ImpalaMerchantID,
+			"transactionId": tx.ID,
+			"secureId":      tx.SecureID,
+			"externalId":    tx.ExternalID,
+			"error":         err.Error(),
+		})
+	}
+}
+
 func FailStalePendingTransactionsHandler(c *gin.Context) {
 	db := database.GetConnection()
 	if db == nil {
@@ -8471,6 +8591,57 @@ func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
 		Limit(limit).
 		Find(&pending).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending B2C withdrawals", "details": err.Error()})
+		return
+	}
+
+	if strings.EqualFold(strings.TrimSpace(c.Query("async")), "true") {
+		jobID := mpesa.GenerateSecureID()
+		batch := append([]transactions.TransactionModel(nil), pending...)
+		go func(items []transactions.TransactionModel, id string, runtimeSeconds int) {
+			workerDB := database.GetConnection()
+			if workerDB == nil {
+				logSafaricomSTKIssue(map[string]interface{}{
+					"stage":  "b2c_status_query_async",
+					"jobId":  id,
+					"status": "FAILED",
+					"error":  "database connection failed",
+				})
+				return
+			}
+
+			deadline := time.Now().Add(time.Duration(runtimeSeconds) * time.Second)
+			processed := 0
+			timedOut := false
+			for _, tx := range items {
+				if !time.Now().Before(deadline) {
+					timedOut = true
+					break
+				}
+				processPendingB2CWithdrawalQuery(workerDB, tx, id)
+				processed++
+			}
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":            "b2c_status_query_async_complete",
+				"jobId":            id,
+				"found":            len(items),
+				"processed":        processed,
+				"remainingInBatch": len(items) - processed,
+				"timedOut":         timedOut,
+			})
+		}(batch, jobID, maxRuntimeSeconds)
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"message":           "Pending KES B2C withdrawal sync started",
+			"mode":              "async",
+			"jobId":             jobID,
+			"cutoff":            cutoff,
+			"minAgeMinutes":     minAgeMinutes,
+			"limit":             limit,
+			"maxRuntimeSeconds": maxRuntimeSeconds,
+			"found":             len(batch),
+			"status":            "PROCESSING",
+			"logFile":           "logs/safaricom_stk_errors.log",
+		})
 		return
 	}
 
