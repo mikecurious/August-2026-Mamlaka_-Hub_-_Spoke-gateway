@@ -54,7 +54,7 @@ func main() {
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
 
-	if err := router.Run("0.0.0.0:8090"); err != nil {
+	if err := router.Run("127.0.0.1:8090"); err != nil {
 		panic(err)
 	}
 }
