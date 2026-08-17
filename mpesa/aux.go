@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -443,6 +444,9 @@ func QuerySTKStatus(checkoutRequestID string, creds STKCredentials) (*STKStatusQ
 }
 
 func QueryB2CTransactionStatus(transactionID string, creds B2CCredentials) (*TransactionStatusQueryResponse, error) {
+	if strings.TrimSpace(transactionID) == "" {
+		return nil, fmt.Errorf("transaction status query: empty transaction id")
+	}
 	url := "https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query"
 	token, err := GenerateAccessToken(creds.ConsumerKey, creds.ConsumerSecret)
 	if err != nil {
