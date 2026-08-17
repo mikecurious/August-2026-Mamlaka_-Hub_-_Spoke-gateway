@@ -192,6 +192,20 @@ const (
 	NeonPayB2CShortCode      = "4564637"
 )
 
+// CHEZAMONSTA -- Gaming
+const (
+      ChezaC2BConsumerKey       = "6AGZF8X3LBW1KsRjx5G7Dzt1Gz75bvld"
+      ChezaC2BConsumerSecret    = "UX7GaRRzHELUGGaj"
+      ChezaC2BBusinessShortCode = "783484"
+      ChezaC2BPassKey           = "f090854e4abd11c221a282e9543cb88fd10834e4ab9e5945fa7eedd6f4e41ec1"
+
+      ChezaPayB2CConsumerKey    = "8bd877LV5CL5q85MNArlkln7dGk7prYq"
+      ChezaPayB2CConsumerSecret = "bteAYHA1zllZ16Dr"
+      ChezaPayB2CShortCode      = "3039027"
+      ChezaPayB2CInitiatorName  = "CHEZAPI"
+      ChezaPayB2CPassword       = "OOd9rVn1Vg0sjpjymKN0YOJq+3uyaRFzk0Pr1jaOs3SHtxcjGVD67K06t5bN5s9hRP61kQUrsnxBMqsYKXitrtseFjOs8K/EMX9O36jigXbKtA4dnd990WtccYGkkGUJrtdJf6VUfGV+YramIoCEiKM+PczCPTRAZOt8I9MgrfCKqeMgC9D/qfb3JjzdyFwzgs6Saogz5KG13RV+JhlLgDJgSDSOgdRrl8k8RQCAMuyLksF5zaFbCYHo2KXbinSh6vwoaXcjANavoKG1D/va4zzFkfGWclrq06QRwvGWhekxgOzBWHoJ0QD56VKxAG0FS4qzNW5dIKzSDeHfeHsYfg=="
+)
+
 // revert amout  using the api
 
 type StkPushResponse struct {

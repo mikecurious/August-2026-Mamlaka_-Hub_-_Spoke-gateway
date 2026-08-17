@@ -34,6 +34,8 @@ func ResolveC2BCredentials(merchantID string) C2BCredentials {
 // ResolveSTKCredentials returns the C2B/STK credentials for a merchant.
 func ResolveSTKCredentials(merchantID string) STKCredentials {
 	switch {
+	case strings.EqualFold(merchantID, "chezamonsta"):
+        return STKCredentials{ChezaC2BConsumerKey, ChezaC2BConsumerSecret, ChezaC2BBusinessShortCode, ChezaC2BPassKey}
 	case merchantID == "vukaPay_production":
 		return STKCredentials{VukaC2BConsumerKey, VukaC2BConsumerSecret, VukaC2BBusinessShortCode, VukaC2BPassKey}
 	case merchantID == "crayfinance", merchantID == "ncgames_sandbox":
@@ -55,6 +57,8 @@ func ResolveSTKCredentials(merchantID string) STKCredentials {
 
 func ResolveB2CCredentials(merchantID string) B2CCredentials {
 	switch {
+	 case strings.EqualFold(merchantID, "chezamonsta"):
+        return B2CCredentials{ChezaPayB2CConsumerKey, ChezaPayB2CConsumerSecret, ChezaPayB2CShortCode, ChezaPayB2CInitiatorName, ChezaPayB2CPassword}	
 	case merchantID == "vukaPay_production":
 		return B2CCredentials{VukaPayB2CConsumerKey, VukaPayB2CConsumerSecret, VukaPayB2CShortCode, VukaPayB2CInitiatorName, VukaPayB2CPassword}
 	case merchantID == "crayfinance", merchantID == "ncgames_sandbox":
