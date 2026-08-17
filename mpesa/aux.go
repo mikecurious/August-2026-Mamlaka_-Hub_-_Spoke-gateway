@@ -563,9 +563,6 @@ func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackU
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate B2C access token: %w", err)
 	}
-	fmt.Println("Access Token:", token)
-	fmt.Printf("------Generating B2C request with phone: %s, amount: %.2f, callbackURL: %s, externalID: %s, identifier: %s, consumerKey: %s, consumerSecret: %s, password: %s, businessShortCode: %s, initiatorName: %s\n",
-		RemovePlusPrefix(phoneNumber), amount, callbackURL, externalID, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName)
 
 	// businessShortCode := "3039805"
 	// how is the password generated
@@ -592,7 +589,6 @@ func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackU
 		Occassion: "Ok",
 	}
 	// print the b2c request payload
-	fmt.Println("B2C Request Payload:", b2cRequest)
 	requestBody, err := json.Marshal(b2cRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request body: %w", err)
