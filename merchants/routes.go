@@ -1286,12 +1286,12 @@ func MobilePaymentHandler(c *gin.Context) {
 		msisdnStored = normalizedPayerPhone
 
 		if req.ImpalaMerchantId == "vukaPay_production" {
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.VukaC2BConsumerKey, mpesa.VukaC2BConsumerSecret, mpesa.VukaC2BBusinessShortCode, mpesa.VukaC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandVuka)
 		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
 
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.CrayC2BConsumerKey, mpesa.CrayC2BConsumerSecret, mpesa.CrayC2BBusinessShortCode, mpesa.CrayC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandCray)
 			// log the paybill being used
-			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.CrayC2BBusinessShortCode)
+			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.STKShortCodeForBrand(mpesa.BrandCray))
 
 		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) {
 			//use app c2b detail
@@ -1299,29 +1299,29 @@ func MobilePaymentHandler(c *gin.Context) {
 				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
 		} else if req.ImpalaMerchantId == "transactworld" {
 			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.TWDC2BConsumerKey, mpesa.TWDC2BConsumerSecret, mpesa.TWDC2BBusinessShortCode, mpesa.TWDC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandTWD)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.LipadC2BConsumerKey, mpesa.LipadC2BConsumerSecret, mpesa.LipadC2BBusinessShortCode, mpesa.LipadC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandLipad)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.ShilingiBetC2BConsumerKey, mpesa.ShilingiBetC2BConsumerSecret, mpesa.ShilingiBetC2BBusinessShortCode, mpesa.ShilingiBetC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandShilingiBet)
 		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
 			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.NeonC2BConsumerKey, mpesa.NeonC2BConsumerSecret, mpesa.NeonC2BBusinessShortCode, mpesa.NeonC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandNeon)
 		} else if strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
 		} else {
 			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
 			if req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPush(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.AppC2BConsumerKey, mpesa.AppC2BConsumerSecret, mpesa.AppC2BBusinessShortCode, mpesa.AppC2BPassKey)
+			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
 
 		}
 
@@ -1946,30 +1946,30 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
 		if req.ImpalaMerchantId == "VukaPay" { //figue ...
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.VukaPayB2CConsumerKey, mpesa.VukaPayB2CConsumerSecret, mpesa.VukaPayB2CPassword, mpesa.VukaPayB2CShortCode, mpesa.VukaPayB2CInitiatorName) //transactworld
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandVuka) //transactworld
 		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandApp)
 		} else if req.ImpalaMerchantId == "transactworld" { // use app paybill
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.TWDPayB2CConsumerKey, mpesa.TWDPayB2CConsumerSecret, mpesa.TWDPayB2CPassword, mpesa.TWDPayB2CShortCode, mpesa.TWDPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandTWD)
 		} else if req.ImpalaMerchantId == "ncgames_sandbox" || req.ImpalaMerchantId == "crayfinance" {
 			//return withdrawl not allowed and end the process here
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.CrayPayB2CConsumerKey, mpesa.CrayPayB2CConsumerSecret, mpesa.CrayPayB2CPassword, mpesa.CrayPayB2CShortCode, mpesa.CrayPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandCray)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.LipadPayB2CConsumerKey, mpesa.LipadPayB2CConsumerSecret, mpesa.LipadPayB2CPassword, mpesa.LipadPayB2CShortCode, mpesa.LipadPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandLipad)
 		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") || strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandApp)
 		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
 			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
 				return
 			}
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.NeonPayB2CConsumerKey, mpesa.NeonPayB2CConsumerSecret, mpesa.NeonPayB2CPassword, mpesa.NeonPayB2CShortCode, mpesa.NeonPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandNeon)
 		} else {
 			if req.Amount > float32(maxDefaultKESPayoutAmount) {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
 				return
 			}
-			b2bResponse, err = mpesa.GenerateB2CRequest(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.AppPayB2CConsumerKey, mpesa.AppPayB2CConsumerSecret, mpesa.AppPayB2CPassword, mpesa.AppPayB2CShortCode, mpesa.AppPayB2CInitiatorName)
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandApp)
 
 		}
 
@@ -8094,7 +8094,10 @@ func retrySafaricomSTKPush(db *gorm.DB, tx transactions.TransactionModel, result
 		return nil, fmt.Errorf("retry limit reached")
 	}
 
-	creds := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+	creds, credErr := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+	if credErr != nil {
+		return nil, credErr
+	}
 	accountReference := buildMpesaAccountReference(tx.ImpalaMerchantID, tx.ExternalID)
 	resp, err := mpesa.StkPush(RemovePlusPrefix(tx.Msisdn), tx.Amount, tx.CallbackURL, accountReference, creds.ConsumerKey, creds.ConsumerSecret, creds.BusinessShortCode, creds.PassKey)
 	if err != nil {
@@ -8185,7 +8188,22 @@ func processPendingB2CWithdrawalQuery(db *gorm.DB, tx transactions.TransactionMo
 		return
 	}
 
-	creds := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+	creds, credErr := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+	if credErr != nil {
+		logSafaricomSTKIssue(map[string]interface{}{
+			"stage":          "b2c_status_query",
+			"jobId":          jobID,
+			"merchantId":     tx.ImpalaMerchantID,
+			"transactionId":  tx.ID,
+			"secureId":       tx.SecureID,
+			"externalId":     tx.ExternalID,
+			"queryReference": queryReference,
+			"status":         "QUERY_FAILED",
+			"error":          credErr.Error(),
+		})
+		return
+	}
+
 	queryResp, err := mpesa.QueryB2CTransactionStatus(queryReference, creds)
 	if err != nil {
 		logSafaricomSTKIssue(map[string]interface{}{
@@ -8339,7 +8357,24 @@ func FailStalePendingTransactionsHandler(c *gin.Context) {
 			Status:            "PENDING",
 		}
 
-		creds := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+		creds, credErr := mpesa.ResolveSTKCredentials(tx.ImpalaMerchantID)
+		if credErr != nil {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "stk_status_query",
+				"merchantId":        tx.ImpalaMerchantID,
+				"transactionId":     tx.ID,
+				"secureId":          tx.SecureID,
+				"externalId":        tx.ExternalID,
+				"checkoutRequestID": tx.CheckoutRequestID,
+				"merchantRequestID": tx.MerchantRequestID,
+				"error":             credErr.Error(),
+			})
+			result.Error = credErr.Error()
+			results = append(results, result)
+			stillPending++
+			continue
+		}
+
 		queryResp, err := mpesa.QuerySTKStatus(tx.CheckoutRequestID, creds)
 		if err != nil {
 			logSafaricomSTKIssue(map[string]interface{}{
@@ -8701,7 +8736,27 @@ func SyncPendingB2CWithdrawalsHandler(c *gin.Context) {
 			continue
 		}
 
-		creds := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+		creds, credErr := mpesa.ResolveB2CCredentials(tx.ImpalaMerchantID)
+		if credErr != nil {
+			logSafaricomSTKIssue(map[string]interface{}{
+				"stage":             "b2c_status_query",
+				"merchantId":        tx.ImpalaMerchantID,
+				"transactionId":     tx.ID,
+				"secureId":          tx.SecureID,
+				"externalId":        tx.ExternalID,
+				"queryReference":    queryReference,
+				"merchantRequestID": tx.MerchantRequestID,
+				"checkoutRequestID": tx.CheckoutRequestID,
+				"retryCount":        tx.RetryCount,
+				"error":             credErr.Error(),
+			})
+			result.Status = "QUERY_FAILED"
+			result.Error = credErr.Error()
+			results = append(results, result)
+			failed++
+			continue
+		}
+
 		queryResp, err := mpesa.QueryB2CTransactionStatus(queryReference, creds)
 		queried++
 		if err != nil {

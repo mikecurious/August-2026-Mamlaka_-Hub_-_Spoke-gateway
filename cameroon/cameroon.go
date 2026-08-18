@@ -101,7 +101,6 @@ func SendCollectRequest(token, phone string, amount float64, reference, callback
 	requestData.BeneficiaryAccount.CurrencyCode = "XAF"
 	requestData.Reference = reference
 	requestData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/collect/callback"
-	// requestData.CallbackURL = "https://webhook.site/e43bc8c9-09c0-4e4a-b3b2-c1d0409102ab"
 
 	jsonData, _ := json.Marshal(requestData)
 
@@ -169,7 +168,6 @@ func SendDisburseRequest(token, phone string, amount float64, reference, callbac
 
 	reqData.Reference = reference
 	reqData.CallbackURL = "https://payments.mam-laka.com/api/v1/cameroon/disburse/callback"
-	// reqData.CallbackURL = "https://webhook.site/fc077011-2d1e-466e-83eb-d3ce909e16a3"
 
 	jsonData, _ := json.Marshal(reqData)
 

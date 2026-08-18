@@ -362,7 +362,7 @@ func (c *AirtimeClient) validateRequest(req *AirtimeRequest) error {
 // 		Amount:      200,
 // 		Destination: "0709110204",
 // 		APIKey:      "PIX_737219e4-4980-4000-b0a9-a0393bbcaf28",
-// 		IPNUrl:      "https://webhook.site/f0f0657a-4fef-4c19-a6e3-f521cf2947b7",
+// 		IPNUrl:      "https://<your-ipn-callback-host>/ipn",
 // 		ServiceID:   7,
 // 		OMOTP:       "1080",
 // 		CustomData:  "your_custom_data",

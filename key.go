@@ -7,23 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"os"
 )
 
-func main201() {
-	// Path to the downloaded certificate
-	certPath := "ProductionCertificate.cer"
-	initiatorPassword := "SynVice@68341!"
-
-	securityCredential, err := GenerateSecurityCredential(certPath, initiatorPassword)
-	if err != nil {
-		log.Fatal("Error generating Security Credential:", err)
-	}
-
-	fmt.Println("SecurityCredential:", securityCredential)
-}
-
+// GenerateSecurityCredential encrypts an M-Pesa initiator password against the
+// Safaricom production certificate and returns the base64 SecurityCredential.
+// The certificate path and the initiator password are supplied by the caller;
+// neither is hardcoded here.
 func GenerateSecurityCredential(certPath, password string) (string, error) {
 	certData, err := os.ReadFile(certPath)
 	if err != nil {

@@ -3,9 +3,36 @@ package merchants
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 )
+
+// Environment variables holding the blockchain credentials. There are no
+// fallbacks: an unset or blank value aborts the transfer rather than sending
+// a request with a wrong or empty key.
+//
+//	BLOCKCHAIN_SIGNER_SEED_TRANSFER -- signer seed for sendTokenTransfer
+//	BLOCKCHAIN_SIGNER_SEED_DEDUCT   -- signer seed for DeductTokenTransfer
+//	CHAIN_API_BEARER_TOKEN          -- bearer token for chain.impalapay.com
+const (
+	envSignerSeedTransfer = "BLOCKCHAIN_SIGNER_SEED_TRANSFER"
+	envSignerSeedDeduct   = "BLOCKCHAIN_SIGNER_SEED_DEDUCT"
+	envChainBearerToken   = "CHAIN_API_BEARER_TOKEN"
+)
+
+// requireChainEnv reads one required blockchain credential. A missing or blank
+// value is reported by name -- never by value -- and reported as not ok so the
+// caller can abort before building a request.
+func requireChainEnv(name string) (string, bool) {
+	raw, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(raw) == "" {
+		log.Printf("token transfer aborted: required environment variable %s is unset or empty", name)
+		return "", false
+	}
+	return raw, true
+}
 
 // Function to send a token transfer
 func sendTokenTransfer(amount, receiverAddress string) {
@@ -17,7 +44,14 @@ func sendTokenTransfer(amount, receiverAddress string) {
 	// Define the constant fields
 	assetCode := "IMC"
 	issuerAddress := "GBKXT3O3JDSPLM36XQJG3E72QELD3UJRVVMPVKYAMV5O7N7BDFJ5CGRN"
-	signerSeed := "SBYB3CETFLIX5RMGWB3AQHKDIM6LCMA4VU4W6YUO4GSDIA254QUW3VW2"
+	signerSeed, ok := requireChainEnv(envSignerSeedTransfer)
+	if !ok {
+		return
+	}
+	bearerToken, ok := requireChainEnv(envChainBearerToken)
+	if !ok {
+		return
+	}
 
 	// Create the payload with dynamic amount and receiver address
 	payload := strings.NewReader(fmt.Sprintf(`{
@@ -36,7 +70,7 @@ func sendTokenTransfer(amount, receiverAddress string) {
 		return
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1haW5haG13YW5naTEyQGdtYWlsLmNvbSIsImV4cCI6MTc0MTY3OTA3OSwicm9sZUlEIjoxLCJ1c2VySUQiOjd9.IdD4JsW-m5lYxlkh6ZWgVt6nQrRlKUk85RovnM4u3BM")
+	req.Header.Add("Authorization", "Bearer "+bearerToken)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -62,7 +96,14 @@ func DeductTokenTransfer(amount, Address string) {
 	// Define the constant fields
 	assetCode := "IMC"
 	issuerAddress := "GBKXT3O3JDSPLM36XQJG3E72QELD3UJRVVMPVKYAMV5O7N7BDFJ5CGRN"
-	signerSeed := "SABI4FZXS5LIYOUJJUPIYPIA3GJV6KGAUTGO6RNPP6IQOCKAFI2AEYJ5"
+	signerSeed, ok := requireChainEnv(envSignerSeedDeduct)
+	if !ok {
+		return
+	}
+	bearerToken, ok := requireChainEnv(envChainBearerToken)
+	if !ok {
+		return
+	}
 
 	// Create the payload with dynamic amount and receiver address
 	payload := strings.NewReader(fmt.Sprintf(`{
@@ -81,7 +122,7 @@ func DeductTokenTransfer(amount, Address string) {
 		return
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1haW5haG13YW5naTEyQGdtYWlsLmNvbSIsImV4cCI6MTc0MTY3OTA3OSwicm9sZUlEIjoxLCJ1c2VySUQiOjd9.IdD4JsW-m5lYxlkh6ZWgVt6nQrRlKUk85RovnM4u3BM")
+	req.Header.Add("Authorization", "Bearer "+bearerToken)
 
 	res, err := client.Do(req)
 	if err != nil {

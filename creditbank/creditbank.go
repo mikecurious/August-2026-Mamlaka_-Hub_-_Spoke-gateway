@@ -40,8 +40,8 @@ type TillDestinationRequest struct {
    "recieverPhoneNumber": "254711354342",
    "amount": "1",
    "timestamp": "2021-01-29T00:54:08+03:00",
-   "errorCallBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
-   "callBackUrl": "https://whbc4735654c6eb6a002.free.beeceptor.com",
+   "errorCallBackUrl": "https://<your-callback-host>/creditbank/error",
+   "callBackUrl": "https://<your-callback-host>/creditbank/callback",
    "transactionReference": "J21E23KAJ129"
 */
 

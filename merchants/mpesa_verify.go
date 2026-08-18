@@ -59,7 +59,11 @@ func MpesaIdentifierVerifyHandler(c *gin.Context) {
 		return
 	}
 
-	creds := mpesa.ResolveC2BCredentials(merchantID)
+	creds, credErr := mpesa.ResolveC2BCredentials(merchantID)
+	if credErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "M-Pesa credentials unavailable", "message": credErr.Error()})
+		return
+	}
 	verifyResp, err := mpesa.QueryIdentifierInfo(creds.ConsumerKey, creds.ConsumerSecret, identifierType, identifier)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Identifier lookup failed", "message": err.Error()})

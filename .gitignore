@@ -27,3 +27,7 @@ westra
 *.log
 logs/
 .gocache/
+
+# Environment / credential files -- never commit
+*.env
+.env*

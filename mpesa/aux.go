@@ -10,10 +10,24 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"sync"
 	"time"
 )
+
+// callbackBase is the public base URL Safaricom posts asynchronous results to.
+// It is configurable so a single binary can serve boxes published under
+// different hostnames during a staged migration: a box reached at one hostname
+// must have its callbacks delivered back to itself, not to whichever box the
+// legacy hostname happens to resolve to. Defaults to the legacy host, so an
+// existing deployment that sets nothing behaves exactly as before.
+func callbackBase() string {
+	if v := strings.TrimSpace(os.Getenv("CALLBACK_BASE_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "https://payments.mam-laka.com"
+}
 
 var safaricomHTTPClient = &http.Client{
 	Timeout: 20 * time.Second,
@@ -42,169 +56,6 @@ var (
 	tokenCache   = make(map[string]cachedAccessToken)
 )
 
-const (
-	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
-	// 4904594
-	// ConsumerKey       = "a53D2lxIgGTgXtTDEnMo5btDnG90nOhg16GOK0MAlOOQNhBe"
-	// ConsumerSecret    = "LchqRZnB48pQfGB1WUvNhp6qqzGQ3MfBFd32sGsqvYIzvmJswghXXWA0KormP3NV"
-	// BusinessShortCode = "4130455"
-	// PassKey           = "172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7"
-	// Password          = "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
-	// InitiatorName     = "b2cInit"
-
-	// test b2c
-	AppconumerKey         = "Lj4StGZWiCQRbgSQmGZV9FMEd0ZRzdkJ7h8yAhgiEdpKWFaO"
-	AppconumerSecret      = "FYRQ59r2imH0Kw89SQH9qZKKJOupFTNWwEd0bt5zazqZUl8ie75bAwSSLuAtNxRh"
-	AppinitiatorName      = "collins"
-	AppsecurityCredential = "W0LXtRIf33TqQuSQLevyqTyvO847tqYMB3WauCFdYGRF6PiXZj770OhmG3lJnX4cVMrsm3K258oUx7y2p6MCs1V+W8YXNM3oqfb9pOoXFqnSmyTammvSetJct3/w0UT+0FUJTrg8JXH6j0FYlsqibCXc8f9ATb+twMi4Mxm37Ehu7fNOP40c6BHO7Cp4HHUa5yHjAVOSNDioWZr39bzyvBIiCT9Az/aISj060rCMZLWGlUlbpKVVQFqAwh/flu8AXxVqT2/zhg5NOPjhHb5i8uyau1IhN9LxC9nOGBKqInmlj59g4qTUPlSY1apZ3Y+Ny6iPN3yyseq3mm4UXKxGAg=="
-	APPshortCode          = "3008826"
-
-	// bc2 details
-	B2Cconsumerkey       = "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
-	B2Cconsumersecret    = "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
-	B2CBusinessShortCode = "3039805"
-	B2CPassword          = "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
-)
-
-// vuka creds
-const (
-	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
-	// 4904594
-	VukaC2BConsumerKey       = "JYYWwClNVsMWO3IGCjvvN9TnpvvmSNI0BrldPQr81lnHWVHj"
-	VukaC2BConsumerSecret    = "FHRt2bBkIlgCTsrAAcWKH6mIe9faO283YMrytFnzKjJrTqUArlMJsBWHWEifg83w"
-	VukaC2BBusinessShortCode = "4041587"
-	VukaC2BPassKey           = "1f441ccbc8e477a4e24094d603f172fc08620b3fa104ea14e206aa0465ad7d07"
-
-	VukaPayB2CConsumerKey    = "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-	VukaPayB2CConsumerSecret = "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	VukaPayB2CInitiatorName  = "Collin"
-	VukaPayB2CPassword       = "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	VukaPayB2CShortCode      = "3008816"
-)
-
-const (
-
-	// 4904594
-	AppC2BConsumerKey       = "AKCwOp24DxNCotKUIjZzPjGgVXqJ4izSa5jyF9JDTP6XHGSC"
-	AppC2BConsumerSecret    = "Gg3c5rzpNpKGJR0ZJ64U0JoGCfo4VO0cytBS0HnljAZEoctYS4a7EAGUcgLxVG8W"
-	AppC2BBusinessShortCode = "4041529"
-	AppC2BPassKey           = "bd160634242c28b805468346e4647c22ae7cd9b2dc46e88ec193d89ce8a16146"
-
-	// b2c ...
-
-	AppPayB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-	AppPayB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-	AppPayB2CInitiatorName  = "Collins"
-	AppPayB2CPassword       = "fIbuUntzyiHE0Xb04RiDodF8paXQ2ujiZrG1uGtk7Mf5zEkE4h+Uqi9fYw2TscAZv0yCFL4bp83FtzRGOa5zJfPCMS5yojhOtg5hl4PL5FwHFW6kaeEqSK2rR0wZICUR9kQSQ+YAHxZkjiK33BF2Kh5AvIS1lmcp6rsQasQaCPF2o+YtXouiHTMPDHd3QpkywidN687/DKMIfIzA1K+bmBRXIb6kjd+Mu6dIpHBu78nzFHA6mUKtHNRAiOX+xTl7SdeLlmld/HLWbx10DBP1hozt6dx/4DCbX1nIef/4WtfWq8tKLCpTXVuuzTGc175baUhB2EcYJjeBPHoKnY5cLA=="
-	AppPayB2CShortCode      = "3008818"
-)
-
-// Shiling-Bet m-pesa kenya
-const (
-
-	// 4904594
-	ShilingiBetC2BConsumerKey       = "zhBLJbYmeE81THXKjOOQQld8V5HbxHwwKIGTZQAGlbhG6NK5"
-	ShilingiBetC2BConsumerSecret    = "VD4MDNHkVT7kCcpcADD8rgrtmE4AJighFTHeNIywE4Cw39P36ptyIkJPSMqudEHp"
-	ShilingiBetC2BBusinessShortCode = "4040811"
-	ShilingiBetC2BPassKey           = "a8a2389145fe5219018b2c06d41971334f1806fb7a330800c253ecb49770c3ff"
-
-	// b2c ...
-
-	ShilingiBetB2CConsumerKey    = "m99dbV8i4Vm4GgIn9yQ903a5kOZoi9DXClmFkVq4Aepo3ihx"
-	ShilingiBetB2CConsumerSecret = "x9CJvif8SpRg96qX0cUSyfyCrEkWjIjjwtoH5kGRIUE38orM714VImejkMDPs1EN"
-	ShilingiBetB2CInitiatorName  = "Collins"
-	ShilingiBetB2CPassword       = "Pka2rWhBsx3HdUpChiBUBotu47nXf6hoOZi7yNL+IO+hmewQ4v8segW/HjfRflylmIgRBfLD0NMJvtUASB7qDo7JRkHC/7jWAhUi3gJwaAV6X3yk5HNtwfpYm53wZcMqi6dOu1PH9Fj94Q0psg3DN6CiI3SZnxDNeWbeW5uIZPBQMTTOap04Wh0E4k9ygAgnCTXHOjMywQ3y5CgbfKwtvSnErOBzHtbGUvRoqOca66wkH5zdGA585OZtEjK2oJ/oYoxJuQ2K0iV4101Xa3RynS4XO2UOV9WalHXgKNi74E/vUCoSWHZJ80JpJ+myh6ficMuF3x3PB5xAqoN0lLyLmQ=="
-	ShilingiBetB2CShortCode      = "3008818"
-)
-
-// technology@crayfinance.com
-const (
-	//4130455:172f9892373eafe6dac71a87e4e8ade1792599809f7de1667c647bce03364ca7
-	// 4904594
-	CrayC2BConsumerKey       = "v1PsGtti6d1GaS1JYV9Txo2S5dEI3Ea3V6SdCQ9B98HVuXW5"
-	CrayC2BConsumerSecret    = "3JP0v5g0AJm2GEUAVDOD9sbxp1XPpQwNhAoAqZFBbBTt0JMXDHGIs46X7NkrVQAo"
-	CrayC2BBusinessShortCode = "4041603"
-	CrayC2BPassKey           = "4f2269d5d4270a073d41f9f9b72260dfa5265c78eae65cf5f2635bc06883e0fe"
-
-	CrayPayB2CConsumerKey    = "3RNMVF7lei58Sm3xGGJv4qkTgz3laFZ3zXi7BI7JjE5pasq5"
-	CrayPayB2CConsumerSecret = "pe5nTUfjgmMXnA8AQ1OX7vuILL7nPZOGqG9JFrTQPOYtDAuQrQBu9kmOcx0TdcLJ"
-	CrayPayB2CInitiatorName  = "collins"
-	CrayPayB2CPassword       = "H3y/unl9dwsviXb6RFQ20Fzdp3DBGWuFuec4tbVgCUQGFZeLVuOILMZLmzYTLGqRCXbxPmlou/VdYrLBwANoFbK53ZSdlW9DsLzWtcRSkrDEoiQU9mDpp4e9T8pPC1Jbg3rISAdTrOP72OBnZPZu5rBkIgMnBPnVa21TJfy3K3xY+Gta+txH4cbguoJ1/ffmhJmMqX0Gcr90N6ozTOWxVsTh4WE904YWxagJrK4iTvHBIAwQ07lnto2dlSMNYAiYwEJF4l5KoNa7v2gtsUr7b3VbQe+4TzQ4KE1N4BHMKIe/tJ7ml2QNn3USyK5gpcKT9zYX75gazfkfg4G3fw9QeA=="
-	CrayPayB2CShortCode      = "3008814"
-)
-
-// TWD
-const (
-	TWDC2BConsumerKey       = "P2BwQcGj8fnnvsgirs2iFZ6pWbjLsrAJEzIlO2vvOnHM4uHS"
-	TWDC2BConsumerSecret    = "26RPkoUxX4RRa9Wywg5RAQFOGwZwZYxjTzCIlO3kj6it56J9ze40TUxLvYMGj4Gd"
-	TWDC2BBusinessShortCode = "4041809"
-	TWDC2BPassKey           = "ef99e90e1744e1a689df2a3c2bcee521caf8c93d7db8f723c7634ad8424db324"
-
-	TWDPayB2CConsumerKey    = "AG3ayMSMz6Se4JPkdC7h7Z1yOAMHlAzGLuicI3GfWP2cijmO"
-	TWDPayB2CConsumerSecret = "kJIJRzMie4HbljhhF9d9d7bEvMJkMMjPoA4AHLyThrSSxDO8w2uFQUzY3AhI0Ey4"
-	TWDPayB2CInitiatorName  = "collins"
-	TWDPayB2CPassword       = "kaEiK3aDSUdZrHOr2dHsN6YgRAd9f3eYl02E4xUuZ7Gbjv6mAa7G8BNgxCYQaR1JCiqydFa5ksFRc+K5Agg+vQFFwcbBUCQHm5N0ZaXUoVonlQ3Z9aqQJObnHgpNQbUq5GpXPENJZSsr2rNb4ZHIKeJfXX+kmw3hNYiePQUmaIKDt5+Py/60GcfWzbaUgQkGqI1yefgSe/H95Kuha2TX/g5nbD4U0cyko1m8aneeMV8asAnnCYlMk+GzCPRcEf1gsIC2pU9KXBAqIvHoXxz8wRaaMENQSy39+OO03kb5zV7L36nWpLhecJrPL5YPzDdl/iYq+vj3LYpKfhTAH5AQlA=="
-	TWDPayB2CShortCode      = "3008812"
-)
-
-// Lipad — Kenya M-Pesa
-const (
-	// Collection (C2B / STK paybill 4041887)
-	LipadC2BConsumerKey        = "ITC9UqoLUF5iSGOIYH2fQYAGqQpLn1dJcsV2YKRRVbslI9DW"
-	LipadC2BConsumerSecret     = "u9R2gmL2F5iklijz8PryuSmTY9oTdCVP1YHZ0lPd2gkmapCnfe7OLkM8r1gl2OGQ"
-	LipadC2BBusinessShortCode  = "4041887"
-	LipadC2BInitiatorName      = "Collins"
-	LipadC2BPassKey            = "f79caa1b22f802af4f0489e03e2959d3d3463dc593e8bfe630adcac2b79d5c90"
-	LipadC2BSecurityCredential = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-
-	/*
-
-		conumerKey         = "CahE71uTqfIkxZG7GehwWpfVLKBJLzjtskvCKQtzOAzGS2jU"
-		conumerSecret      = "JgmDf0toU9wjGxLtCh5QW4swSzOsWowybdqTQJKzFfxOJdjPxCmX0NO03FeHHJgv"
-		initiatorName      = "pnjogu"
-		securityCredential = "CbYd2X8Wm6JDOpIiMxBbGvaLiWXz22/h2upN01ByQCQILqAyk6hCx5gpDO1P5xRmUbjAACKe9bKze2a/98kzT42UeJE9O5YF+2kRXD6WGe8LZCrYUh60f/8z0pxsht6g3C515599wml9ViReLRf5CfPJKNXPKDDDQmleU5zaBrw8zC2vkHgsPhvta50A2Idagp/eWxt+yfMEVVKdrWdkRdykHEQUTSvImBXWpvXEWM3Tp/kdQ6jVT8/nctedYf311si8dWfYc2XjN0K9qmuiI4ouUY9Xd+U5SRLUF9m3IDlOFJSXdoIEe1nz98QwD45WfI2LXj5Og1kW/PXKfPPmQQ=="
-		shortCode          = "4564641"
-
-	*/
-
-	// B2C payouts (shortcode 4564641)
-	LipadPayB2CConsumerKey    = "CahE71uTqfIkxZG7GehwWpfVLKBJLzjtskvCKQtzOAzGS2jU"
-	LipadPayB2CConsumerSecret = "JgmDf0toU9wjGxLtCh5QW4swSzOsWowybdqTQJKzFfxOJdjPxCmX0NO03FeHHJgv"
-	LipadPayB2CInitiatorName  = "pnjogu"
-	LipadPayB2CPassword       = "CbYd2X8Wm6JDOpIiMxBbGvaLiWXz22/h2upN01ByQCQILqAyk6hCx5gpDO1P5xRmUbjAACKe9bKze2a/98kzT42UeJE9O5YF+2kRXD6WGe8LZCrYUh60f/8z0pxsht6g3C515599wml9ViReLRf5CfPJKNXPKDDDQmleU5zaBrw8zC2vkHgsPhvta50A2Idagp/eWxt+yfMEVVKdrWdkRdykHEQUTSvImBXWpvXEWM3Tp/kdQ6jVT8/nctedYf311si8dWfYc2XjN0K9qmuiI4ouUY9Xd+U5SRLUF9m3IDlOFJSXdoIEe1nz98QwD45WfI2LXj5Og1kW/PXKfPPmQQ=="
-	LipadPayB2CShortCode      = "4564641"
-)
-
-// Neon — Kenya M-Pesa
-const (
-	// Collection (C2B / STK paybill 4041825)
-	NeonC2BConsumerKey       = "Ne2drYwtVntB0COqNC2CrdUCPEK7FAPVpN07sOalaZkL4LYa"
-	NeonC2BConsumerSecret    = "UfIQTtwSf0LjNhsz16ZsGkd2B1v9bAtPOstx4Haj1W1I9GMlc5aCpAfCCsxGlJn0"
-	NeonC2BBusinessShortCode = "4041825"
-	NeonC2BInitiatorName     = "Collins"
-	NeonC2BPassKey           = "dc1f276a2ad324c4f5ed6418047ef4d44e0eb84b1921d38d40863d43f217564d"
-
-	// B2C payouts (shortcode 4564637)
-	NeonPayB2CConsumerKey    = "VlO2gxBwc7AANcBw3rBkSMyORAfD6fgGNiw6cnYk8YeyyNta"
-	NeonPayB2CConsumerSecret = "GxFjK9Vlc75Az90xrJ5ehAIck5HNXqk4xls1KkhIcBXrETQYtBf5OFeCTZL3dSFA"
-	NeonPayB2CInitiatorName  = "Collins"
-	NeonPayB2CPassword       = "VNTumMLkIpRAhV/ieQS1JxKVqWcCY1G3TcbnLRBCOkQqJJQuXyWH8sx2IM5/m8RojRr9A8w0tF/EJW0p5TXJ957IyPiLNFqtyA1SGQb7ikgosCpGZxtuO/+qNHt7a6uwV/d35/lAsw+cmQnSzNb36aDc23yZqgLis8qGU5QdluGO4QZT1QOsnlYCwnWSbsUhxjYdTxwahktLyyr3ShEckxAp5FTO5YG3s+HFctCjo44L0YmvomChlQSSw7/BD5/eb3rDQAUgQmnpYzpurBbNVrch9WaI0x+5d3eU83G7Ud8EhqYoDzdEWJoMkD54/w7oBvY0stIg9bTrhZQrzA4CEA=="
-	NeonPayB2CShortCode      = "4564637"
-)
-
-// CHEZAMONSTA -- Gaming
-const (
-      ChezaC2BConsumerKey       = "6AGZF8X3LBW1KsRjx5G7Dzt1Gz75bvld"
-      ChezaC2BConsumerSecret    = "UX7GaRRzHELUGGaj"
-      ChezaC2BBusinessShortCode = "783484"
-      ChezaC2BPassKey           = "f090854e4abd11c221a282e9543cb88fd10834e4ab9e5945fa7eedd6f4e41ec1"
-
-      ChezaPayB2CConsumerKey    = "8bd877LV5CL5q85MNArlkln7dGk7prYq"
-      ChezaPayB2CConsumerSecret = "bteAYHA1zllZ16Dr"
-      ChezaPayB2CShortCode      = "3039027"
-      ChezaPayB2CInitiatorName  = "CHEZAPI"
-      ChezaPayB2CPassword       = "OOd9rVn1Vg0sjpjymKN0YOJq+3uyaRFzk0Pr1jaOs3SHtxcjGVD67K06t5bN5s9hRP61kQUrsnxBMqsYKXitrtseFjOs8K/EMX9O36jigXbKtA4dnd990WtccYGkkGUJrtdJf6VUfGV+YramIoCEiKM+PczCPTRAZOt8I9MgrfCKqeMgC9D/qfb3JjzdyFwzgs6Saogz5KG13RV+JhlLgDJgSDSOgdRrl8k8RQCAMuyLksF5zaFbCYHo2KXbinSh6vwoaXcjANavoKG1D/va4zzFkfGWclrq06QRwvGWhekxgOzBWHoJ0QD56VKxAG0FS4qzNW5dIKzSDeHfeHsYfg=="
-)
 
 // revert amout  using the api
 
@@ -355,7 +206,7 @@ func StkPush(phoneNumber string, amount int, callbackURL, accountReference, cons
 		PartyA:            phoneNumber,
 		PartyB:            businessShortCode,
 		PhoneNumber:       phoneNumber,
-		CallBackURL:       "https://payments.mam-laka.com/api/v1/mobile/callback",
+		CallBackURL:       callbackBase() + "/api/v1/mobile/callback",
 		AccountReference:  accountReference,
 		TransactionDesc:   accountReference,
 	}
@@ -474,8 +325,8 @@ func QueryB2CTransactionStatus(transactionID string, creds B2CCredentials) (*Tra
 		TransactionID:      transactionID,
 		PartyA:             creds.BusinessShortCode,
 		IdentifierType:     "4",
-		ResultURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		QueueTimeOutURL:    "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		ResultURL:          callbackBase() + "/api/v1/mobile/b2c/callback",
+		QueueTimeOutURL:    callbackBase() + "/api/v1/mobile/b2c/callback",
 		Remarks:            transactionID,
 		Occasion:           "Withdrawal status query",
 	}
@@ -547,27 +398,14 @@ func GenerateB2CRequest(phoneNumber string, amount float64, callbackURL, externa
 }
 
 func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackURL, externalID string, identifier, consumerKey, consumerSecret, password, businessShortCode, initiatorName, commandID string) (*B2BResponse, error) {
-	// consumer_key := "oLwt5LEkO7zkQaqV8Sy9Gs8MvgA8PFADM6VOUe4jYj98nVr1"
-	// consumer_secret := "YylBuouNZdeOJeU8ltCKll5QBQ0xSDrdAq7pdaurpOS8FNYPkaSAA8kZLlblwslM"
 	if commandID == "" {
 		commandID = "PromotionPayment"
 	}
-
-	// consumerKey1 := "FYAzZv4GvPsYpIG0Yxan3k9llRAcv59HAnwP62pbr6gabOqf"
-	// consumerSecret1 := "3IrR0Q0qbRnkhl2L2PB3oWDujrZpMvg00F7hYFBoihZGMpXuObCuKPzlFPIkJM2V"
-	// initiatorName1 := "Collin"
-	// password1 := "jUdSHSh84lzrYUnmIwfiZZIrOL7+o0sRRxteBLEJLO60lHVfV7K10ySoE0E8EqvbU6u6ZMNh6ATfQf8sU+XbFnWdMZUlADuhJXeUeGMk8Z842l8J8kWC3txYM1U0X5qDf3K/QnU26kj4UiRqhkXaIjJ69SL26ptVFozFYI2+8WXOH6Hhj20dDhWfsNaJCl8gYeAqdJMockmsZ1PQYNe6oph2jFPTS5kRKuXOglIYtVe97xkIdsnzKScseqTFRxm6Anlroi0fZLP9svNbOANSqTWY0p5rtuyILZlUD/gzWbAVlvO5SImLqI0RIikzAAuxnXvGkaKw36V795ItSwdeRQ=="
-	// businessShortCode1 := "3008816"
 
 	token, err := generateB2BAccessToken(consumerKey, consumerSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate B2C access token: %w", err)
 	}
-
-	// businessShortCode := "3039805"
-	// how is the password generated
-
-	// password := "Xw8NWgC6K4Hnese1stlIMC0sE3p+kbcMtTVVxG57s4K/WZB2owiOf30B3yYSdTaTqdz2gv22we9sd4bgvfPVl7jynLtAglZn6KuGtdhhdy3eVQ0nosw3wZdfHDum8DCu5BAI/jU+x32PMSB/vtx9bbreV0rUHEvx7Gx4CI4Eze4BnhFQ368Z2x7x9Q+82r/tZxDlgG76NbWnLfj9DHbcs5hOBoMYiMbnXg8HsLUaI688qNGqqK9CLr8uKfIgXgFBSD4Ky7P9UwWBXlTOODtmv/TRJBnrD+8IFttZqjruDxV81NGIeASl9q6Ni8go5gBGrNHGxSJ/SF5rGhloTXLtHg=="
 
 	re := regexp.MustCompile(`\D`)
 	phoneNumberStr := re.ReplaceAllString(fmt.Sprintf("%s", phoneNumber), "")
@@ -583,8 +421,8 @@ func GenerateB2CRequestWithCommand(phoneNumber string, amount float64, callbackU
 		PartyA:                   businessShortCode,
 		PartyB:                   phoneNumberStr,
 		Remarks:                  identifier,
-		QueueTimeOutURL:          "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
-		ResultURL:                "https://payments.mam-laka.com/api/v1/mobile/b2c/callback",
+		QueueTimeOutURL:          callbackBase() + "/api/v1/mobile/b2c/callback",
+		ResultURL:                callbackBase() + "/api/v1/mobile/b2c/callback",
 
 		Occassion: "Ok",
 	}
