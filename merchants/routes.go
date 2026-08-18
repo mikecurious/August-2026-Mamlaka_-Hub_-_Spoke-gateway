@@ -1968,7 +1968,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				return
 			}
 			fmt.Printf("B2C Payout (override): merchant=%s brand=%s paybill=%s\n",
-				req.ImpalaMerchantId, ovBrand, mpesa.STKShortCodeForBrand(ovBrand))
+				req.ImpalaMerchantId, ovBrand, mpesa.B2CShortCodeForBrand(ovBrand))
 			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, ovBrand)
 		} else if req.ImpalaMerchantId == "VukaPay" { //figue ...
 			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandVuka) //transactworld

@@ -126,6 +126,13 @@ func STKShortCodeForBrand(brand Brand) string {
 	return os.Getenv(envVarName(brand, "STK", "SHORTCODE"))
 }
 
+// B2CShortCodeForBrand returns the brand's payout (B2C) short code. Distinct from
+// the STK/collection short code — a brand routinely uses different paybills for
+// collections and payouts, so logging the STK code on a B2C path is misleading.
+func B2CShortCodeForBrand(brand Brand) string {
+	return os.Getenv(envVarName(brand, "B2C", "SHORTCODE"))
+}
+
 // envSafeMerchantID renders a merchant ID as an environment variable fragment:
 // upper-cased, with every character outside [A-Z0-9] replaced by an underscore,
 // since merchant IDs may contain characters env var names cannot.
