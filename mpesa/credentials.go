@@ -169,6 +169,16 @@ func brandOverride(merchantID, channel string) (Brand, bool) {
 	return "", false
 }
 
+// STKBrandOverride returns the collection-brand override for a merchant, if any.
+func STKBrandOverride(merchantID string) (Brand, bool) {
+	return brandOverride(merchantID, "STK")
+}
+
+// B2CBrandOverride returns the payout-brand override for a merchant, if any.
+func B2CBrandOverride(merchantID string) (Brand, bool) {
+	return brandOverride(merchantID, "B2C")
+}
+
 // STKBrandForMerchant maps a merchant ID to its collection brand.
 // The matching semantics here (which cases use == and which use EqualFold)
 // are load-bearing and must not be "tidied up".

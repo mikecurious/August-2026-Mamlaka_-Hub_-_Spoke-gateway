@@ -1956,8 +1956,21 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		// b2bResponse, err := mpesa.GenerateB2CRequest(RemovePlusPrefix(req.RecipientPhone), float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.ConsumerKey, mpesa.ConsumerSecret, mpesa.Password, mpesa.BusinessShortCode, mpesa.InitiatorName)
 		var b2bResponse *mpesa.B2BResponse
 
-		// check if the merchant is vukaPay_production or ncgames_sandbox and use the vuka credentials if true
-		if req.ImpalaMerchantId == "VukaPay" { //figue ...
+		// If a payout-brand override is set for this merchant, honour it and skip
+		// the legacy per-merchant chain entirely. This is how a merchant is moved
+		// off a dead paybill (e.g. lipad -> CHEZAMONSTA) without changing the
+		// routing of any merchant that has no override. The default payout cap
+		// still applies to an overridden merchant that would otherwise be a
+		// default-collection merchant.
+		if ovBrand, ok := mpesa.B2CBrandOverride(req.ImpalaMerchantId); ok {
+			if isDefaultCollectionMerchant(req.ImpalaMerchantId) && req.Amount > float32(maxDefaultKESPayoutAmount) {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
+				return
+			}
+			fmt.Printf("B2C Payout (override): merchant=%s brand=%s paybill=%s\n",
+				req.ImpalaMerchantId, ovBrand, mpesa.STKShortCodeForBrand(ovBrand))
+			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, ovBrand)
+		} else if req.ImpalaMerchantId == "VukaPay" { //figue ...
 			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandVuka) //transactworld
 		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) { // use app paybill
 			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, mpesa.BrandApp)
