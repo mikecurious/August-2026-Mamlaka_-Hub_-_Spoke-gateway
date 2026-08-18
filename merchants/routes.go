@@ -760,6 +760,27 @@ func isNeonMpesaMerchant(merchantID string) bool {
 		strings.EqualFold(merchantID, primeSandboxMerchantID)
 }
 
+// isDefaultCollectionMerchant reports whether a merchant has no explicitly
+// allocated M-Pesa collection paybill and therefore falls back to the shared
+// default (BrandApp) with the default collection cap. The set of allocated
+// merchants mirrors the STK dispatch branches exactly, so the cap semantics are
+// unchanged from the previous per-merchant if/else chain.
+func isDefaultCollectionMerchant(merchantID string) bool {
+	switch {
+	case merchantID == "vukaPay_production",
+		merchantID == "crayfinance", merchantID == "ncgames_sandbox",
+		strings.EqualFold(merchantID, appMerchantID),
+		merchantID == "transactworld",
+		strings.EqualFold(merchantID, "lipad"),
+		strings.EqualFold(merchantID, "shilingibet"),
+		isNeonMpesaMerchant(merchantID),
+		strings.EqualFold(merchantID, meshexSandboxMerchantID):
+		return false
+	default:
+		return true
+	}
+}
+
 var errMpesaCallbackAlreadyProcessed = errors.New("mpesa callback already processed")
 
 func rejectAmountLimit(c *gin.Context, amount interface{}, limit int, scope string) {
@@ -1285,45 +1306,36 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 		msisdnStored = normalizedPayerPhone
 
-		if req.ImpalaMerchantId == "vukaPay_production" {
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandVuka)
-		} else if req.ImpalaMerchantId == "crayfinance" || req.ImpalaMerchantId == "ncgames_sandbox" {
+		// Resolve the collection brand through STKBrandForMerchant so that the
+		// MPESA_BRAND_OVERRIDE_* environment overrides are honoured on the STK
+		// path exactly as they are on the B2C path. The per-merchant amount caps
+		// below are business rules that stay keyed on the merchant ID, not the
+		// resolved brand, so a merchant moved to another paybill keeps its cap.
+		stkBrand := mpesa.STKBrandForMerchant(req.ImpalaMerchantId)
 
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandCray)
-			// log the paybill being used
-			fmt.Printf("Using Crayfinance Paybill for M-Pesa STK Push: %s\n", mpesa.STKShortCodeForBrand(mpesa.BrandCray))
-
-		} else if strings.EqualFold(req.ImpalaMerchantId, appMerchantID) {
-			//use app c2b detail
+		switch {
+		case strings.EqualFold(req.ImpalaMerchantId, appMerchantID):
 			if req.Amount > maxAppKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
-		} else if req.ImpalaMerchantId == "transactworld" {
-			//use app c2b detail
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandTWD)
-		} else if strings.EqualFold(req.ImpalaMerchantId, "lipad") {
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandLipad)
-		} else if strings.EqualFold(req.ImpalaMerchantId, "shilingibet") {
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandShilingiBet)
-		} else if isNeonMpesaMerchant(req.ImpalaMerchantId) {
-			if strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID) && req.Amount > maxDefaultKESCollectionAmount {
-				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
-				return
-			}
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandNeon)
-		} else if strings.EqualFold(req.ImpalaMerchantId, meshexSandboxMerchantID) {
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
-		} else {
-			// Default shared paybill for merchants without allocated M-Pesa collection credentials.
+		case strings.EqualFold(req.ImpalaMerchantId, primeSandboxMerchantID):
 			if req.Amount > maxDefaultKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
 				return
 			}
-			stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, mpesa.BrandApp)
-
+		case isDefaultCollectionMerchant(req.ImpalaMerchantId):
+			// Merchants without allocated M-Pesa collection credentials fall through
+			// to the shared default paybill (BrandApp) and carry its cap.
+			if req.Amount > maxDefaultKESCollectionAmount {
+				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
+				return
+			}
 		}
+
+		fmt.Printf("STK Push: merchant=%s brand=%s paybill=%s\n",
+			req.ImpalaMerchantId, stkBrand, mpesa.STKShortCodeForBrand(stkBrand))
+		stkResponse, errror_stk = mpesa.StkPushForBrand(normalizedPayerPhone, req.Amount, req.CallbackURL, stkAccountReference, stkBrand)
 
 		if errror_stk != nil {
 			logSafaricomSTKIssue(map[string]interface{}{
