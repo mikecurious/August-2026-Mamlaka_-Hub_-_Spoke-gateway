@@ -2,11 +2,15 @@ package merchants
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -105,6 +109,29 @@ func recipientNameFromB2CMetadata(metadata map[string]interface{}) string {
 }
 
 // SendCallback now accepts the callbackBody.Body type directly
+// callbackSigningSecret returns the HMAC secret used to sign outbound callbacks
+// to a merchant. A per-merchant secret CALLBACK_SIGNING_SECRET_<MERCHANT>
+// (merchant id upper-cased, non-alphanumerics -> _) takes precedence, falling
+// back to the platform-wide CALLBACK_SIGNING_SECRET. Returns "" when no secret
+// is configured, in which case the callback is sent unsigned (backwards
+// compatible with merchants not yet verifying).
+func callbackSigningSecret(merchantID string) string {
+	up := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			return r
+		case r >= 'a' && r <= 'z':
+			return r - 32
+		default:
+			return '_'
+		}
+	}, merchantID)
+	if v := strings.TrimSpace(os.Getenv("CALLBACK_SIGNING_SECRET_" + up)); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("CALLBACK_SIGNING_SECRET"))
+}
+
 func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 1: Retrieve the transaction by ID
 	log.Println("Getting transaction by id", transactionID)
@@ -136,7 +163,19 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 5: Send the raw response body to the CallbackURL
 	//send
 	log.Println("send  raw response body to the CallbackURL", transaction.CallbackURL)
-	resp, err := merchantCallbackHTTPClient.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(responseBody))
+	req, err := http.NewRequest(http.MethodPost, transaction.CallbackURL, bytes.NewBuffer(responseBody))
+	if err != nil {
+		return fmt.Errorf("failed to build callback request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// Sign the exact bytes so the merchant can verify the callback is genuinely
+	// from us: X-Mamlaka-Signature: sha256=<hex(HMAC-SHA256(body, secret))>.
+	if secret := callbackSigningSecret(transaction.ImpalaMerchantID); secret != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(responseBody)
+		req.Header.Set("X-Mamlaka-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
+	resp, err := merchantCallbackHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send callback: %v", err)
 	}
