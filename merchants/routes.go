@@ -1313,7 +1313,13 @@ func MobilePaymentHandler(c *gin.Context) {
 		// resolved brand, so a merchant moved to another paybill keeps its cap.
 		stkBrand := mpesa.STKBrandForMerchant(req.ImpalaMerchantId)
 
+		// A merchant with an explicit brand override is deliberately configured on
+		// a real paybill, so the "unknown merchant" default cap does not apply.
+		_, stkOverridden := mpesa.STKBrandOverride(req.ImpalaMerchantId)
+
 		switch {
+		case stkOverridden:
+			// no default cap for explicitly-overridden merchants
 		case strings.EqualFold(req.ImpalaMerchantId, appMerchantID):
 			if req.Amount > maxAppKESCollectionAmount {
 				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
@@ -1963,10 +1969,8 @@ func MobileWithdrawalHandler(c *gin.Context) {
 		// still applies to an overridden merchant that would otherwise be a
 		// default-collection merchant.
 		if ovBrand, ok := mpesa.B2CBrandOverride(req.ImpalaMerchantId); ok {
-			if isDefaultCollectionMerchant(req.ImpalaMerchantId) && req.Amount > float32(maxDefaultKESPayoutAmount) {
-				rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
-				return
-			}
+			// An overridden merchant is deliberately configured on a real paybill,
+			// so the "unknown merchant" default payout cap does not apply.
 			fmt.Printf("B2C Payout (override): merchant=%s brand=%s paybill=%s\n",
 				req.ImpalaMerchantId, ovBrand, mpesa.B2CShortCodeForBrand(ovBrand))
 			b2bResponse, err = mpesa.GenerateB2CRequestForBrand(normalizedRecipientPhone, float64(req.Amount), req.CallbackURL, req.ExternalID, mpesaRef, ovBrand)
