@@ -30,6 +30,7 @@ type MerchantBalance struct {
 	GMDBalance       float64 `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
 	RWFBalance       float64 `gorm:"column:rwfBalance;type:float(100,2)" json:"rwfBalance"`
 	ARTMBalance      float64 `gorm:"column:artmBalance;type:float(100,2)" json:"artmBalance"`
+	AirtelBalance    float64 `gorm:"column:airtelBalance;type:float(100,2)" json:"airtelBalance"`
 	BaseCurrency     string  `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 

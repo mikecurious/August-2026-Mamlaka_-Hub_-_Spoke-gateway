@@ -27,6 +27,7 @@ type MerchantCollectionBalance struct {
 	ZMWBalance       float64   `gorm:"column:zmwBalance;type:float(100,2)" json:"zmwBalance"`
 	GMDBalance       float64   `gorm:"column:gmdBalance;type:float(100,2)" json:"gmdBalance"`
 	RWFBalance       float64   `gorm:"column:rwfBalance;type:float(100,2)" json:"rwfBalance"`
+	AirtelBalance    float64   `gorm:"column:airtelBalance;type:float(100,2)" json:"airtelBalance"`
 	BaseCurrency     string    `gorm:"column:baseCurrency;type:varchar(3);default:USD" json:"baseCurrency"`
 }
 
