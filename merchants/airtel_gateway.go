@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -34,23 +33,6 @@ func isAirtelSP(sp string) bool {
 	return s == "AIRTEL" || s == "AIRTELMONEY"
 }
 
-// isAirtelUncappedMerchant reports whether a merchant is exempt from the default
-// Airtel amount caps. Set AIRTEL_UNCAPPED_MERCHANTS to a comma-separated list of
-// impalaMerchantIds (e.g. test merchants and trusted production merchants) that
-// may transact any amount on the single Airtel paybill.
-func isAirtelUncappedMerchant(merchantID string) bool {
-	list := strings.TrimSpace(os.Getenv("AIRTEL_UNCAPPED_MERCHANTS"))
-	if list == "" {
-		return false
-	}
-	for _, m := range strings.Split(list, ",") {
-		if strings.EqualFold(strings.TrimSpace(m), strings.TrimSpace(merchantID)) {
-			return true
-		}
-	}
-	return false
-}
-
 // generateAirtelReference returns a globally-unique, alphanumeric correlation id
 // stored in merchantRequestID. Airtel echoes it back as callback.transaction.id.
 // A dedicated hex value avoids base64url secureID chars (which may violate
@@ -70,24 +52,8 @@ func generateAirtelReference() string {
 // PENDING row, and settle synchronously only if Airtel already returned a
 // terminal status (normally it is just an acknowledgement -> callback settles).
 func handleAirtelCollection(c *gin.Context, req *MobilePaymentRequest, msisdnStored, secureID string, dateAdded int64) {
-	// Amount cap — same protection the M-Pesa branch applies, so an
-	// airtel-tagged request cannot bypass the default-merchant cap. Merchants in
-	// AIRTEL_UNCAPPED_MERCHANTS (e.g. test credentials) are exempt.
-	if !isAirtelUncappedMerchant(req.ImpalaMerchantId) {
-		switch {
-		case strings.EqualFold(req.ImpalaMerchantId, appMerchantID):
-			if req.Amount > maxAppKESCollectionAmount {
-				rejectAmountLimit(c, req.Amount, maxAppKESCollectionAmount, "KES collection")
-				return
-			}
-		case isDefaultCollectionMerchant(req.ImpalaMerchantId):
-			if req.Amount > maxDefaultKESCollectionAmount {
-				rejectAmountLimit(c, req.Amount, maxDefaultKESCollectionAmount, "KES collection")
-				return
-			}
-		}
-	}
-
+	// Airtel amounts are uncapped at the gateway — the single Airtel paybill is
+	// our own, so amounts are bounded only by Airtel's per-transaction min/max.
 	reference := generateAirtelReference()
 	result, err := airtel.InitiateSTKPush(airtel.NormalizeMSISDN(req.PayerPhone), req.Amount, reference)
 	if err != nil {
@@ -138,15 +104,8 @@ func handleAirtelCollection(c *gin.Context, req *MobilePaymentRequest, msisdnSto
 // may settle synchronously (TS/TF in the response) OR via callback, so a single
 // idempotent settle handles both without double-deducting.
 func handleAirtelPayout(c *gin.Context, req *MobileWithdrawalRequest, recipientPhone, secureID string, dateAdded int64, balance balances.MerchantBalance) {
-	// Default-merchant payout cap (mirror M-Pesa). AIRTEL_UNCAPPED_MERCHANTS exempt.
-	if !isAirtelUncappedMerchant(req.ImpalaMerchantId) &&
-		!strings.EqualFold(req.ImpalaMerchantId, appMerchantID) &&
-		isDefaultCollectionMerchant(req.ImpalaMerchantId) {
-		if req.Amount > float32(maxDefaultKESPayoutAmount) {
-			rejectAmountLimit(c, req.Amount, maxDefaultKESPayoutAmount, "KES withdrawal")
-			return
-		}
-	}
+	// Airtel payout amounts are uncapped at the gateway (bounded by Airtel's own
+	// min/max and the merchant's Airtel balance below).
 
 	// Sufficiency check against the SEPARATE Airtel balance (deduction happens on
 	// success settlement). Airtel funds are tracked apart from the M-Pesa KES pool.
