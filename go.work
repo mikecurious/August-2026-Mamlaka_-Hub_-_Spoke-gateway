@@ -15,6 +15,7 @@ use (
     ./virtualcards
     ./uganda
     ./westafrica
+    ./airtel
     ./cameroon
     ./korapay
     ./flutterwave

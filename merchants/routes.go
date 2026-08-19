@@ -1306,6 +1306,13 @@ func MobilePaymentHandler(c *gin.Context) {
 		}
 		msisdnStored = normalizedPayerPhone
 
+		// Airtel Money is also KES, so currency cannot discriminate — route on
+		// mobileMoneySP before the M-Pesa STK path. Airtel is fully self-contained.
+		if isAirtelSP(req.MobileMoneySP) {
+			handleAirtelCollection(c, &req, normalizedPayerPhone, secureID, dateAdded)
+			return
+		}
+
 		// Resolve the collection brand through STKBrandForMerchant so that the
 		// MPESA_BRAND_OVERRIDE_* environment overrides are honoured on the STK
 		// path exactly as they are on the B2C path. The per-merchant amount caps
@@ -1939,6 +1946,12 @@ func MobileWithdrawalHandler(c *gin.Context) {
 				"expectedFormat": "2547XXXXXXXX or 2541XXXXXXXX",
 				"example":        "254725602600",
 			})
+			return
+		}
+
+		// Airtel Money is also KES; route on mobileMoneySP before the M-Pesa B2C path.
+		if isAirtelSP(req.MobileMoneySP) {
+			handleAirtelPayout(c, &req, normalizedRecipientPhone, secureID, dateAdded, balance)
 			return
 		}
 
@@ -8890,6 +8903,8 @@ func RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("usdc/initiate", UsdcPaymentHandler)
 	router.POST("mobile/callback", MobileCallbackHandler)
 	router.POST("mobile/b2c/callback", B2CCallbackHandler) // Dedicated B2C withdrawal callback endpoint
+	router.POST("airtel/callback/collections", AirtelCallbackHandler)     // Airtel Money C2B result callback
+	router.POST("airtel/callback/disbursements", AirtelCallbackHandler)   // Airtel Money B2C result callback
 	router.POST("card/callback", CardCallbackHandler)
 	router.POST("usdc/callback", CryptoCallbackHandler)
 	router.POST("korapay/initiate", KorapayPaymentHandler)
