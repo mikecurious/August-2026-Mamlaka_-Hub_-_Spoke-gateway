@@ -27,6 +27,7 @@ func (s *TransactionSerializer) Response() map[string]interface{} {
 		"secure_id":    s.Transaction.SecureID,
 		"external_id":  s.Transaction.ExternalID,
 		"callback_url": s.Transaction.CallbackURL,
+		"environment":  s.Transaction.EnvironmentLabel(),
 		// "redirect_url":         s.Transaction.RedirectURL,
 		"date_added": s.Transaction.DateAdded,
 		// "merchant_request_id": s.Transaction.MerchantRequestID,

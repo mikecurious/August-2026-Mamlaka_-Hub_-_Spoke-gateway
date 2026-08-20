@@ -4,11 +4,28 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"com.mam-laka/database"
 	"gorm.io/gorm"
 )
+
+// appEnv labels every transaction this process creates. It is read once at
+// startup: APP_ENV=sandbox on the sandbox instance, unset in production.
+var appEnv = resolveAppEnv()
+
+func resolveAppEnv() string {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV"))); v != "" {
+		return v
+	}
+	return "production"
+}
+
+// AppEnvironment is the label applied to transactions created by this process.
+func AppEnvironment() string {
+	return appEnv
+}
 
 type TransactionModel struct {
 	ID                  uint    `gorm:"primaryKey" json:"id"`
@@ -35,6 +52,10 @@ type TransactionModel struct {
 	RecipientName     string `gorm:"column:recipientName;type:varchar(255)" json:"recipientName"`
 	RetryCount        int    `gorm:"column:retryCount" json:"retryCount"`
 	LastRetryAt       int64  `gorm:"column:lastRetryAt" json:"lastRetryAt"`
+	// Environment records which instance created the row -- "production" or
+	// "sandbox". Stamped on insert and never rewritten, so a later callback
+	// updating the row cannot relabel it.
+	Environment string `gorm:"column:environment;type:varchar(16);index" json:"environment"`
 }
 
 func NormalizeTransactionState(status string) string {
@@ -90,6 +111,26 @@ func (t *TransactionModel) BeforeSave(tx *gorm.DB) error {
 func (t *TransactionModel) BeforeUpdate(tx *gorm.DB) error {
 	t.normalizeStates()
 	return nil
+}
+
+// BeforeCreate stamps the creating environment. It lives on the model rather
+// than at the ~20 call sites that insert transactions, so every rail is
+// covered without touching any of them. Deliberately not BeforeSave: updates
+// must not relabel a row after the fact.
+func (t *TransactionModel) BeforeCreate(tx *gorm.DB) error {
+	if strings.TrimSpace(t.Environment) == "" {
+		t.Environment = appEnv
+	}
+	return nil
+}
+
+// EnvironmentLabel reports the row's environment, treating rows written before
+// the column existed as production.
+func (t TransactionModel) EnvironmentLabel() string {
+	if e := strings.TrimSpace(t.Environment); e != "" {
+		return e
+	}
+	return "production"
 }
 
 func (TransactionModel) TableName() string {

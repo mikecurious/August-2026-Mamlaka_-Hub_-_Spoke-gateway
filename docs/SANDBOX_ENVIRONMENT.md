@@ -1,8 +1,21 @@
 # Sandbox environment
 
-A second, isolated instance of the gateway running alongside production on the
-same host (`52.204.175.2`), for testing changes against production-shaped data
-without touching production or live money rails.
+A second instance of the gateway running alongside production on the same host
+(`52.204.175.2`), so merchants can integrate and test before going live.
+
+**It is deliberately not a fake environment.** There are no sandbox paybills, so
+the sandbox uses the *same live provider credentials as production*. Only two
+things differ: the **base URL** and the **database**. A merchant who has
+integrated against sandbox moves to production by changing the URL and nothing
+else.
+
+The consequence is that **transactions on sandbox move real money**. An STK push
+or a payout initiated against the sandbox is a real M-Pesa or Airtel
+transaction. Test with small amounts.
+
+Every transaction the sandbox creates is labelled `environment: "sandbox"` in
+the database, in API responses and in merchant callbacks, so sandbox activity is
+always distinguishable from production activity.
 
 ## What is where
 
@@ -15,8 +28,10 @@ without touching production or live money rails.
 | Port | `127.0.0.1:8090` | `127.0.0.1:8091` |
 | Database | `impala_gateway` (user `colls`) | `impala_gateway_sandbox` (user `sandbox`) |
 | nginx vhost | `/etc/nginx/sites-available/payments.mamlakapsp.com` | `/etc/nginx/sites-available/sandbox.payments.mamlakapsp.com` |
+| Provider credentials | live | **same live credentials** |
+| M-Pesa / Airtel rails | live | **live** |
+| Transaction label | `production` | `sandbox` |
 | Background crons | running | **disabled** (`DISABLE_CRONS=1`) |
-| Airtel rail | `production` | `uat` |
 
 The sandbox MySQL user is granted on `impala_gateway_sandbox` only — it cannot
 read or write the production database. Its password is on the host at
@@ -24,14 +39,15 @@ read or write the production database. Its password is on the host at
 
 ## How isolation is implemented
 
-Three environment variables were added to the code. **Each defaults to the
-previous hard-coded value**, so production behaves identically with them unset:
+Four environment variables. **Each defaults to the previous hard-coded
+behaviour**, so production is unaffected when they are unset:
 
 | Variable | Default (= production) | Sandbox value |
 |---|---|---|
 | `DB_DSN` | prod `impala_gateway` DSN | sandbox DSN |
 | `LISTEN_ADDR` | `127.0.0.1:8090` | `127.0.0.1:8091` |
 | `DISABLE_CRONS` | unset — crons run | `1` — crons skipped |
+| `APP_ENV` | unset — labels rows `production` | `sandbox` |
 
 `DISABLE_CRONS` is the safety-critical one. `StartPesalinkPayoutStatusCron()`
 and `StartAirtelReconciler()` query live payment rails about rows in the
@@ -39,9 +55,41 @@ database and fire signed callbacks at merchant URLs. The sandbox runs on a
 **copy of production data**, so leaving them on would re-notify real merchants
 about real transactions. They are gated off.
 
-The sandbox also gets its own `CALLBACK_SIGNING_SECRET` values, distinct from
-production's, so a callback signed by sandbox cannot be mistaken for a
-production one.
+## Transaction labelling
+
+`APP_ENV` is read once at startup and stamped onto every transaction the
+process creates, via a `BeforeCreate` hook on `TransactionModel`
+(`transactions/model.go`). The hook lives on the model rather than at the ~20
+call sites that insert transactions, so every rail — M-Pesa, Airtel, Pesalink,
+card, and any added later — is covered without touching any of them.
+
+It is `BeforeCreate`, not `BeforeSave`: a provider callback that later updates a
+row must not relabel it. The label reflects where the transaction was *created*.
+
+The label surfaces in three places:
+
+- **Database** — `merchant_transactions.environment` (indexed, so you can filter
+  in SQL: `WHERE environment = 'sandbox'`).
+- **API responses** — an `environment` field on the transaction object.
+- **Merchant callbacks** — an `environment` field in the webhook payload.
+
+Rows created before the column existed read back as `production`
+(`EnvironmentLabel()`), so nothing is silently mislabelled.
+
+### Backfill after first deploy
+
+`AutoMigrate` adds the column on startup, leaving existing rows blank. On the
+**sandbox** database, the existing rows are copies of production rows, so label
+them honestly:
+
+```sql
+UPDATE impala_gateway_sandbox.merchant_transactions
+SET environment = 'production'
+WHERE environment IS NULL OR environment = '';
+```
+
+Run the equivalent on the production database only when this code is deployed
+there. (Not required — blank already reads as `production`.)
 
 ## Refreshing sandbox data from production
 
@@ -55,6 +103,8 @@ zcat ~/sandbox-seed-impala_gateway.sql.gz | sudo mysql impala_gateway_sandbox
 The `grep` check matters: a dump containing `USE`/`CREATE DATABASE` would ignore
 the target database argument and overwrite production tables. Do not skip it.
 
+Re-run the backfill above afterwards — a refresh reimports unlabelled prod rows.
+
 ## Deploying a change to sandbox
 
 ```bash
@@ -65,6 +115,9 @@ go build -o merchant-api-sandbox .
 sudo systemctl restart merchant-api-sandbox
 sudo journalctl -u merchant-api-sandbox -n 50 --no-pager
 ```
+
+Never build to `-o merchant-api-fix`, and never build inside the production
+checkout — that directory's binary is what production runs.
 
 Confirm after every restart that the log contains
 `DISABLE_CRONS=1: skipping ...` and `listening on 127.0.0.1:8091`.
@@ -79,6 +132,13 @@ sudo mysql -e 'SELECT user, db, COUNT(*) FROM information_schema.processlist
 `colls` must appear only against `impala_gateway`, `sandbox` only against
 `impala_gateway_sandbox`.
 
+To confirm labelling is live:
+
+```bash
+sudo mysql -e 'SELECT environment, COUNT(*) FROM
+               impala_gateway_sandbox.merchant_transactions GROUP BY environment;'
+```
+
 ## Known outstanding items
 
 1. **DNS** — `sandbox.payments.mamlakapsp.com` resolves to two A records in
@@ -90,10 +150,10 @@ sudo mysql -e 'SELECT user, db, COUNT(*) FROM information_schema.processlist
    `sudo certbot --nginx -d sandbox.payments.mamlakapsp.com`.
    Certbot's HTTP-01 challenge cannot succeed while the name round-robins to a
    host that does not serve it.
-3. **Provider credentials** — the sandbox currently carries a copy of
-   production's `.env`. Airtel is pointed at UAT, but the M-Pesa credentials are
-   live Daraja production apps: an STK push or B2C call made against the sandbox
-   will move real money. Swap in Daraja sandbox apps per brand before treating
-   this as a safe place to test payments.
+3. **Callback signing secrets** — per-merchant secrets come from the database,
+   which is a copy of production, so those already match. The *platform fallback*
+   secret is currently sandbox-specific, so a merchant on the fallback path gets
+   a different signature on sandbox than on production. Decide whether to keep
+   them distinct (safer) or match production (zero-friction migration).
 4. **Secrets in git history** — `.env` is tracked in this repository, so live
    credentials are in the history. Rotation, not deletion, is what fixes that.

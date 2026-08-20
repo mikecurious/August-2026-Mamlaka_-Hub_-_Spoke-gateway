@@ -46,6 +46,7 @@ func buildMpesaMerchantCallback(tx *transactions.TransactionModel, transactionSt
 		"secureId":          tx.SecureID,
 		"transactionReport": transactionReport,
 		"transactionStatus": transactionStatus,
+		"environment":       tx.EnvironmentLabel(),
 	}
 	if reference != "" {
 		payload["reference"] = reference
