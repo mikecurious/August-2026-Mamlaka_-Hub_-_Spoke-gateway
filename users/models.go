@@ -104,7 +104,12 @@ func GetUserByMerchantId(merchantID string) (int, error) {
 	var userId int
 
 	// Query to check if merchant exists and retrieve userId
-	err := tx.Raw("SELECT userId FROM merchant_access WHERE impalaMerchantId = ?", merchantID).Scan(&userId).Error
+	// A merchant can have several dashboard users linked to it (an operator
+	// added alongside the original account). Without an explicit order the row
+	// returned here is arbitrary, so which user's password authenticates the
+	// API would vary between calls. Pin it to the earliest-created user -- the
+	// account the merchant ID was issued with.
+	err := tx.Raw("SELECT userId FROM merchant_access WHERE impalaMerchantId = ? ORDER BY userId LIMIT 1", merchantID).Scan(&userId).Error
 	if err != nil {
 		tx.Rollback()
 		if errors.Is(err, gorm.ErrRecordNotFound) {

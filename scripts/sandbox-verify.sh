@@ -88,18 +88,17 @@ printf '  prod    https://payments.mamlakapsp.com -> %s\n' \
   "$(curl -s -o /dev/null -w %{http_code} --max-time 10 https://payments.mamlakapsp.com/api/v1/)"
 printf '  sandbox (direct 8091)                   -> %s\n' \
   "$(curl -s -o /dev/null -w %{http_code} --max-time 10 http://127.0.0.1:8091/api/v1/)"
-printf '  sandbox (via nginx vhost)               -> %s\n' \
-  "$(curl -s -o /dev/null -w %{http_code} --max-time 10 -H 'Host: sandbox.payments.mamlakapsp.com' http://127.0.0.1/api/v1/)"
+printf '  sandbox (public HTTPS)                  -> %s\n' \
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 20 https://sandbox.payments.mamlakapsp.com/api/v1/)"
 echo "  (401 = reachable and asking for auth, which is correct)"
 
 head_ "7b. Dashboard"
-DH='Host: sandbox.merchants-dashboard.mamlakapsp.com'
-printf '  sandbox dashboard  /                 -> %s (308 = redirect, correct)\n' \
-  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H "$DH" http://127.0.0.1/)"
+printf '  sandbox dashboard  /                 -> %s (307/308 = redirect, correct)\n' \
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 20 https://sandbox.merchants-dashboard.mamlakapsp.com/)"
 printf '  sandbox dashboard  /api/auth/session -> %s (200 = NextAuth up)\n' \
-  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H "$DH" http://127.0.0.1/api/auth/session)"
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 20 https://sandbox.merchants-dashboard.mamlakapsp.com/api/auth/session)"
 printf '  prod dashboard     /                 -> %s\n' \
-  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H 'Host: merchants-dashboard.mamlakapsp.com' http://127.0.0.1/)"
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 20 https://merchants-dashboard.mamlakapsp.com/)"
 DAPI=$(grep -c 'impala_gateway_sandbox' /etc/systemd/system/dashboard-api-sandbox.service 2>/dev/null)
 [ "${DAPI:-0}" -gt 0 ] && ok "sandbox dashboard API points at the sandbox database" \
                        || bad "sandbox dashboard API is NOT pointed at the sandbox database"
