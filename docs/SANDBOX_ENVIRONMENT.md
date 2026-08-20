@@ -135,8 +135,8 @@ differs only by environment:
 and sharing it would let sandbox and production serve each other cached data.
 
 `AUTH_URL` matters too — NextAuth builds its callback URLs from it, so a wrong
-value breaks login. **It is currently `http://...`; change it to `https://...`
-when TLS is issued.**
+value breaks login. It is set to `https://sandbox.merchants-dashboard.mamlakapsp.com`,
+matching the issued certificate. If the host ever changes, change this with it.
 
 Logins work with existing credentials because the user tables came across in the
 database copy. Note that the copy also brings production's transaction history,
@@ -218,16 +218,13 @@ sudo mysql -e 'SELECT environment, COUNT(*) FROM
    `52.204.58.147` record so the name resolves only here.
    (`sandbox.merchants-dashboard.mamlakapsp.com` is already correct — a single
    A record to this host.)
-2. **TLS** — neither sandbox vhost has a certificate; both are HTTP-only.
-   The dashboard can be issued immediately, its DNS is already correct:
+2. **TLS (gateway only)** — the dashboard has a certificate and serves HTTPS.
+   The gateway vhost is still HTTP-only, because certbot's HTTP-01 challenge
+   cannot succeed while that name round-robins to a host that does not serve
+   it. Once item 1 is done:
    ```
-   sudo certbot --nginx -d sandbox.merchants-dashboard.mamlakapsp.com
-   sudo certbot --nginx -d sandbox.payments.mamlakapsp.com   # after the DNS fix above
+   sudo certbot --nginx -d sandbox.payments.mamlakapsp.com
    ```
-   Certbot's HTTP-01 challenge cannot succeed for the gateway while that name
-   round-robins to a host that does not serve it. After issuing the dashboard
-   certificate, update `AUTH_URL` in `dashboard-fe-sandbox.service` to `https://`
-   and restart it, or login will break.
 3. **Callback signing secrets** — per-merchant secrets come from the database,
    which is a copy of production, so those already match. The *platform fallback*
    secret is currently sandbox-specific, so a merchant on the fallback path gets
