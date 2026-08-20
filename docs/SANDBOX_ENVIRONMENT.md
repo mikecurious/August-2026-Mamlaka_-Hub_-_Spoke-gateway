@@ -213,6 +213,25 @@ sudo journalctl -u merchant-api-sandbox -n 50 --no-pager
 Never build to `-o merchant-api-fix`, and never build inside the production
 checkout — that directory's binary is what production runs.
 
+### Back up `.env` before moving a host onto this branch — once
+
+`.env` used to be tracked and no longer is (commit `499d393`). Git deletes a
+file that was tracked in the old commit and untracked in the new one, so the
+**first** checkout/reset that crosses that commit removes `.env` from the
+working directory and the service loses its credentials on restart. This is a
+one-time transition, but it applies to every host, **including production**:
+
+```bash
+cp -p .env ~/.env.bak.$(date +%F)          # BEFORE
+git fetch mine && git reset --hard mine/sandbox/env-configurable
+[ -f .env ] || cp -p ~/.env.bak.$(date +%F) .env   # AFTER -- restore if removed
+```
+
+Afterwards `.gitignore` keeps `.env` out, and later pulls leave it alone.
+
+Untracking does **not** remove the credentials already in git history — that
+still needs rotation (see outstanding items).
+
 Confirm after every restart that the log contains
 `DISABLE_CRONS=1: skipping ...` and `listening on 127.0.0.1:8091`.
 
