@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"com.mam-laka/balances"
 	"com.mam-laka/database"
@@ -49,13 +50,27 @@ func main() {
 	// users.Create(sun.Group("/users"))
 	merchants.RegisterRoutes(sun.Group("/v1"))
 	settlement.RegisterRoutes(sun.Group("/v1"))
-	merchants.StartPesalinkPayoutStatusCron()
-	merchants.StartAirtelReconciler()
+	// Background reconcilers talk to live payment rails and fire merchant
+	// callbacks. A sandbox runs on a copy of production data, so replaying them
+	// there would re-notify real merchants -- DISABLE_CRONS=1 gates them off.
+	// Unset keeps the production behaviour.
+	if os.Getenv("DISABLE_CRONS") == "1" {
+		fmt.Println("DISABLE_CRONS=1: skipping Pesalink payout-status cron and Airtel reconciler")
+	} else {
+		merchants.StartPesalinkPayoutStatusCron()
+		merchants.StartAirtelReconciler()
+	}
 	forex.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
 
-	if err := router.Run("127.0.0.1:8090"); err != nil {
+	// LISTEN_ADDR lets a second instance bind its own port; unset keeps 8090.
+	listenAddr := os.Getenv("LISTEN_ADDR")
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:8090"
+	}
+	fmt.Println("merchant-api listening on", listenAddr)
+	if err := router.Run(listenAddr); err != nil {
 		panic(err)
 	}
 }
