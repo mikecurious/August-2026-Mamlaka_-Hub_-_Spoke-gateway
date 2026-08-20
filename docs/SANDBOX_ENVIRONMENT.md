@@ -163,27 +163,51 @@ waiting for a callback that never arrives. The reconciler asks Airtel directly.
 ### Callback signatures differ between sandbox and production — deliberately
 
 Callbacks are signed `X-Mamlaka-Signature: sha256=<hex(HMAC-SHA256(body, secret))>`.
-Which secret is used depends on the merchant:
+`callbackSigningSecret()` in `merchants/aux.go` resolves the secret **from the
+environment, not the database**:
 
-- **Per-merchant secret** (the normal case) — read from the database. The
-  sandbox database is a copy of production, so these are **identical** in both
-  environments. A merchant verifying with their own secret needs no change when
-  they migrate.
-- **Platform fallback secret** — used when a merchant has no secret of their
-  own. This is **deliberately different** on sandbox
-  (`CALLBACK_SIGNING_SECRET` / `CALLBACK_SIGNING_SECRET_LIPAD` in the sandbox
-  unit are sandbox-only values).
+1. `CALLBACK_SIGNING_SECRET_<MERCHANTID>` — a dedicated per-merchant secret
+   (merchant id uppercased, non-alphanumerics become `_`). Only `LIPAD` has one.
+2. `CALLBACK_SIGNING_SECRET` — the platform fallback, used by **every other
+   merchant**.
 
-Keeping the fallback distinct means a sandbox callback can never carry a
-signature that would validate as production. The trade-off is that a merchant on
-the fallback path must use a different verification secret per environment —
-tell them that during onboarding. Do not "simplify" this by copying
-production's fallback secret into the sandbox unit; that is the property being
-protected.
+Two consequences worth understanding:
+
+- **The fallback is shared.** Every merchant without a dedicated secret verifies
+  against the same value, so handing it to one merchant hands them the secret
+  that signs other merchants' callbacks. Issue a dedicated
+  `CALLBACK_SIGNING_SECRET_<MERCHANTID>` before giving a merchant the secret.
+- **Sandbox and production differ.** The sandbox unit carries its own
+  `CALLBACK_SIGNING_SECRET` / `_LIPAD`, deliberately not production's, so a
+  sandbox callback can never carry a signature that validates as production. A
+  merchant on the fallback path therefore needs a different verification secret
+  per environment — tell them at onboarding. Do not "simplify" this by copying
+  production's value into the sandbox unit; that is the property being
+  protected.
 
 Settlement via the reconciler goes through the same idempotent
 `settleAirtelTransaction` as the callback path, so a late-arriving callback
 cannot double-credit a row the reconciler already settled.
+
+## The sandbox carries no production transaction history
+
+The sandbox was seeded from a production dump, then its **financial history was
+deliberately cleared** so the sandbox dashboard shows only sandbox activity and
+no real customer data (phone numbers, amounts, settlements) sits in it.
+
+Cleared: `merchant_transactions`, `transactions`, `settlement_requests`,
+`withdrawal_requests`, `withdrawal_logs`, `platform_earning_models`,
+`platform_fee_requests`, `finance_fee_adjustments`, `refund_requests`,
+`manual_settlements`, `card_transactions`, `mobile_bulk_payments`,
+`bank_bulk_payments`, `balance_topups`, `access_tokens`, `notifications`.
+
+Kept, because the sandbox is unusable without them: `merchants`, `users`,
+`merchant_access`, `merchant_balances`, `merchant_collection_balance`, roles,
+currencies and forex rates. These still contain real merchant names, emails and
+password hashes — treat sandbox database access as production-sensitive.
+
+**The refresh procedure below reimports all of it.** If you re-seed, re-run the
+clear afterwards or the sandbox dashboard will show production history again.
 
 ## Refreshing sandbox data from production
 
