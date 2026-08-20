@@ -54,10 +54,13 @@ func reconcileAirtelCollectionsOnce(grace, maxAge int64, batch int) {
 	now := time.Now().Unix()
 
 	var rows []transactions.TransactionModel
-	err := db.Model(&transactions.TransactionModel{}).
+	q := db.Model(&transactions.TransactionModel{}).
 		Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus = ?", "AIRTEL", "collection", "PENDING").
 		Where("dateAdded <= ? AND dateAdded >= ?", now-grace, now-maxAge).
-		Where("merchantRequestID <> ''").
+		Where("merchantRequestID <> ''")
+	// Never reconcile another environment's rows: on the sandbox the database
+	// is a copy of production, and those rows belong to production.
+	err := transactions.ScopeToEnvironment(q).
 		Order("id DESC").
 		Limit(batch).
 		Find(&rows).Error

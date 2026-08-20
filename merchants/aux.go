@@ -133,6 +133,38 @@ func callbackSigningSecret(merchantID string) string {
 	return strings.TrimSpace(os.Getenv("CALLBACK_SIGNING_SECRET"))
 }
 
+// stampEnvironment adds the creating environment to an outbound merchant
+// callback body. Maps are updated in place; anything else (a struct payload) is
+// round-tripped through JSON so the field can be added. A body that is not a
+// JSON object, or one that already carries the field, is returned unchanged.
+func stampEnvironment(callbackBody interface{}, env string) interface{} {
+	switch b := callbackBody.(type) {
+	case map[string]interface{}:
+		if _, ok := b["environment"]; !ok {
+			b["environment"] = env
+		}
+		return b
+	case gin.H:
+		if _, ok := b["environment"]; !ok {
+			b["environment"] = env
+		}
+		return b
+	}
+
+	raw, err := json.Marshal(callbackBody)
+	if err != nil {
+		return callbackBody
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return callbackBody
+	}
+	if _, ok := m["environment"]; !ok {
+		m["environment"] = env
+	}
+	return m
+}
+
 func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// Step 1: Retrieve the transaction by ID
 	log.Println("Getting transaction by id", transactionID)
@@ -150,6 +182,10 @@ func SendCallback(transactionID uint, callbackBody interface{}) error {
 	// 	return fmt.Errorf("callback URL is missing or empty")
 	// }
 	log.Println("Callback found")
+
+	// Every rail's merchant webhook goes out through this function, so stamping
+	// the environment here covers all of them rather than each payload builder.
+	callbackBody = stampEnvironment(callbackBody, transaction.EnvironmentLabel())
 
 	// Step 3: Marshal the callbackBody to JSON
 	responseBody, err := json.Marshal(callbackBody)

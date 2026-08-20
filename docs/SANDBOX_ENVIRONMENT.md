@@ -31,7 +31,8 @@ always distinguishable from production activity.
 | Provider credentials | live | **same live credentials** |
 | M-Pesa / Airtel rails | live | **live** |
 | Transaction label | `production` | `sandbox` |
-| Background crons | running | **disabled** (`DISABLE_CRONS=1`) |
+| Background reconcilers | running, production rows | running, **sandbox rows only** |
+| Merchant callbacks | delivered | **delivered** |
 
 The sandbox MySQL user is granted on `impala_gateway_sandbox` only — it cannot
 read or write the production database. Its password is on the host at
@@ -46,14 +47,26 @@ behaviour**, so production is unaffected when they are unset:
 |---|---|---|
 | `DB_DSN` | prod `impala_gateway` DSN | sandbox DSN |
 | `LISTEN_ADDR` | `127.0.0.1:8090` | `127.0.0.1:8091` |
-| `DISABLE_CRONS` | unset — crons run | `1` — crons skipped |
+| `DISABLE_CRONS` | unset — crons run | unset — crons run (kill switch: `1`) |
 | `APP_ENV` | unset — labels rows `production` | `sandbox` |
+| `AIRTEL_RECON_ENABLED` | unset — reconciler off | `true` |
 
-`DISABLE_CRONS` is the safety-critical one. `StartPesalinkPayoutStatusCron()`
-and `StartAirtelReconciler()` query live payment rails about rows in the
-database and fire signed callbacks at merchant URLs. The sandbox runs on a
-**copy of production data**, so leaving them on would re-notify real merchants
-about real transactions. They are gated off.
+### Why the reconcilers can run on a copy of production
+
+`StartPesalinkPayoutStatusCron()` and `StartAirtelReconciler()` query live
+payment rails about pending rows and then fire callbacks at merchant URLs. The
+sandbox database is a **copy of production**, so an unscoped reconciler there
+would chase production's pending transactions and re-notify real merchants.
+
+Both queries are therefore wrapped in `transactions.ScopeToEnvironment()`: the
+sandbox only ever reconciles rows it created itself, and production also matches
+rows written before the `environment` column existed, so no existing row is
+stranded when this reaches production.
+
+That scoping — not an off switch — is what makes the sandbox safe. `DISABLE_CRONS=1`
+remains as a kill switch but is not set on the sandbox, because the reconciler is
+currently the **only** way a sandbox Airtel collection reaches a terminal state
+(see the callback note below).
 
 ## Transaction labelling
 
@@ -71,7 +84,11 @@ The label surfaces in three places:
 - **Database** — `merchant_transactions.environment` (indexed, so you can filter
   in SQL: `WHERE environment = 'sandbox'`).
 - **API responses** — an `environment` field on the transaction object.
-- **Merchant callbacks** — an `environment` field in the webhook payload.
+- **Merchant callbacks** — an `environment` field in the webhook payload. Added
+  centrally in `SendCallback` (the single exit point all 24 call sites use), so
+  every rail is covered; the two handlers that POST directly rather than through
+  `SendCallback` stamp it themselves. The Flutterwave *forward* POST is not a
+  merchant callback and is left alone.
 
 Rows created before the column existed read back as `production`
 (`EnvironmentLabel()`), so nothing is silently mislabelled.
@@ -90,6 +107,24 @@ WHERE environment IS NULL OR environment = '';
 
 Run the equivalent on the production database only when this code is deployed
 there. (Not required — blank already reads as `production`.)
+
+## Callback delivery on sandbox
+
+Merchant callbacks are delivered from sandbox exactly as they are from
+production — same code path, same signing, same retry behaviour. A merchant
+integrating against sandbox receives real webhooks.
+
+**Inbound provider callbacks are a different matter.** `CALLBACK_BASE_URL` on
+sandbox is `https://sandbox.payments.mamlakapsp.com`, which providers cannot
+reach until the DNS record is corrected and TLS is issued (see outstanding
+items). Until then, an Airtel or M-Pesa result callback aimed at sandbox will
+not arrive, and the **Airtel reconciler is the only path** by which a sandbox
+Airtel collection reaches a terminal state. That is why it is enabled here
+(`AIRTEL_RECON_ENABLED=true`) though it is off in production.
+
+Settlement via the reconciler goes through the same idempotent
+`settleAirtelTransaction` as the callback path, so a late-arriving callback
+cannot double-credit a row the reconciler already settled.
 
 ## Refreshing sandbox data from production
 

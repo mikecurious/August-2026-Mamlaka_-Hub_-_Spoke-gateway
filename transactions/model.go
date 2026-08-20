@@ -124,6 +124,22 @@ func (t *TransactionModel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ScopeToEnvironment restricts a query to rows this instance owns.
+//
+// It is what lets the background reconcilers run on the sandbox at all: the
+// sandbox database is a copy of production, so an unscoped reconciler would
+// pick up real production rows and fire callbacks at real merchants. Scoped,
+// the sandbox only ever touches rows it created itself.
+//
+// Production also matches rows written before the column existed, so deploying
+// this does not strand any existing row.
+func ScopeToEnvironment(q *gorm.DB) *gorm.DB {
+	if appEnv == "production" {
+		return q.Where("environment = ? OR environment IS NULL OR environment = ''", "production")
+	}
+	return q.Where("environment = ?", appEnv)
+}
+
 // EnvironmentLabel reports the row's environment, treating rows written before
 // the column existed as production.
 func (t TransactionModel) EnvironmentLabel() string {

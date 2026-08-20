@@ -6200,6 +6200,8 @@ func KorapayCallbackHandler(c *gin.Context) {
 	log.Printf("Korapay callback matched transaction: id=%d merchant=%s secureId=%s callbackUrl=%q",
 		transaction.ID, transaction.ImpalaMerchantID, transaction.SecureID, transaction.CallbackURL)
 	if transaction.CallbackURL != "" {
+		// Posts directly rather than through SendCallback, so stamp here too.
+		callbackPayload["environment"] = transaction.EnvironmentLabel()
 		jsonData, _ := json.Marshal(callbackPayload)
 		log.Printf("Sending merchant callback to URL: %s payload=%s", transaction.CallbackURL, string(jsonData))
 		resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(jsonData))
@@ -6671,8 +6673,11 @@ func SyncPendingPesalinkPayoutsWithMeta(callerIP, requestPayload string) {
 
 	db := database.GetConnection()
 	var pending []transactions.TransactionModel
-	if err := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus IN ?",
-		"pesalink_creditbank", "withdraw", []string{"PENDING", "pending"}).Find(&pending).Error; err != nil {
+	// Scoped to this environment: the sandbox database is a copy of production,
+	// and syncing production's payouts from there would notify real merchants.
+	pendingQuery := db.Where("sourceOfFunds = ? AND transactionReport = ? AND transactionStatus IN ?",
+		"pesalink_creditbank", "withdraw", []string{"PENDING", "pending"})
+	if err := transactions.ScopeToEnvironment(pendingQuery).Find(&pending).Error; err != nil {
 		log.Printf("Pesalink sync query failed: %v", err)
 		logCBSync(callerIP, requestPayload, fmt.Sprintf("sync_query_failed error=%v", err), nil)
 		return
@@ -7430,7 +7435,8 @@ func FlutterwaveCallbackHandler(c *gin.Context) {
 	if transaction.CallbackURL != "" {
 		go func() {
 			// Send HTTP POST request to merchant's callback URL
-			jsonData, _ := json.Marshal(callbackResponse)
+			// Posts directly rather than through SendCallback, so stamp here too.
+			jsonData, _ := json.Marshal(stampEnvironment(callbackResponse, transaction.EnvironmentLabel()))
 			log.Printf("Sending callback to merchant URL: %s", transaction.CallbackURL)
 			log.Printf("Callback request payload URL=%s body=%s", transaction.CallbackURL, string(jsonData))
 			resp, err := http.Post(transaction.CallbackURL, "application/json", bytes.NewBuffer(jsonData))
