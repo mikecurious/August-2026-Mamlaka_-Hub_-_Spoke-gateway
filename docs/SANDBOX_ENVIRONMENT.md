@@ -21,7 +21,7 @@ always distinguishable from production activity.
 
 | | Production | Sandbox |
 |---|---|---|
-| Host name | `payments.mamlakapsp.com` | `sandbox.payments.mamlakapsp.com` |
+| Base URL | `https://payments.mamlakapsp.com` | `https://sandbox.payments.mamlakapsp.com` |
 | Checkout | `/home/ubuntu/payments.mam-laka.com` | `/home/ubuntu/sandbox.payments.mamlakapsp.com` |
 | Binary | `merchant-api-fix` | `merchant-api-sandbox` |
 | systemd unit | `merchant-api.service` | `merchant-api-sandbox.service` |
@@ -150,13 +150,15 @@ Merchant callbacks are delivered from sandbox exactly as they are from
 production — same code path, same signing, same retry behaviour. A merchant
 integrating against sandbox receives real webhooks.
 
-**Inbound provider callbacks are a different matter.** `CALLBACK_BASE_URL` on
-sandbox is `https://sandbox.payments.mamlakapsp.com`, which providers cannot
-reach until the DNS record is corrected and TLS is issued (see outstanding
-items). Until then, an Airtel or M-Pesa result callback aimed at sandbox will
-not arrive, and the **Airtel reconciler is the only path** by which a sandbox
-Airtel collection reaches a terminal state. That is why it is enabled here
-(`AIRTEL_RECON_ENABLED=true`) though it is off in production.
+**Inbound provider callbacks now work too.** `CALLBACK_BASE_URL` is
+`https://sandbox.payments.mamlakapsp.com`, which resolves to this host and
+serves a valid certificate, so a provider posting a result callback to the
+sandbox reaches it.
+
+The Airtel reconciler stays enabled (`AIRTEL_RECON_ENABLED=true`, though it is
+off in production) as a safety net: Airtel delivers its C2B result to a URL the
+gateway does not control, so a sandbox collection could still hang `PENDING`
+waiting for a callback that never arrives. The reconciler asks Airtel directly.
 
 Settlement via the reconciler goes through the same idempotent
 `settleAirtelTransaction` as the callback path, so a late-arriving callback
@@ -212,23 +214,18 @@ sudo mysql -e 'SELECT environment, COUNT(*) FROM
 
 ## Known outstanding items
 
-1. **DNS** — `sandbox.payments.mamlakapsp.com` resolves to two A records in
-   Cloudflare: `52.204.175.2` (this host, serves the sandbox) and
-   `52.204.58.147` (a different host, returns 404 for this name). Remove the
-   `52.204.58.147` record so the name resolves only here.
-   (`sandbox.merchants-dashboard.mamlakapsp.com` is already correct — a single
-   A record to this host.)
-2. **TLS (gateway only)** — the dashboard has a certificate and serves HTTPS.
-   The gateway vhost is still HTTP-only, because certbot's HTTP-01 challenge
-   cannot succeed while that name round-robins to a host that does not serve
-   it. Once item 1 is done:
-   ```
-   sudo certbot --nginx -d sandbox.payments.mamlakapsp.com
-   ```
-3. **Callback signing secrets** — per-merchant secrets come from the database,
+1. **Callback signing secrets** — per-merchant secrets come from the database,
    which is a copy of production, so those already match. The *platform fallback*
    secret is currently sandbox-specific, so a merchant on the fallback path gets
    a different signature on sandbox than on production. Decide whether to keep
    them distinct (safer) or match production (zero-friction migration).
-4. **Secrets in git history** — `.env` is tracked in this repository, so live
+2. **Secrets in git history** — `.env` is tracked in this repository, so live
    credentials are in the history. Rotation, not deletion, is what fixes that.
+
+Both sandbox hosts now serve HTTPS with Let's Encrypt certificates that certbot
+renews automatically:
+
+| Host | Certificate |
+|---|---|
+| `sandbox.payments.mamlakapsp.com` | issued, HTTP redirects to HTTPS |
+| `sandbox.merchants-dashboard.mamlakapsp.com` | issued, HTTP redirects to HTTPS |
