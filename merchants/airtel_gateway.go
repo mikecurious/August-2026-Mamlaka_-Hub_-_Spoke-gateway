@@ -225,6 +225,12 @@ func settleAirtelTransaction(reference, status, providerRef, desc string) error 
 				if credit.Error != nil {
 					return credit.Error
 				}
+				if credit.RowsAffected == 0 {
+					// No collection-balance row: roll back rather than mark the
+					// row COMPLETE with the credit silently lost. It stays PENDING
+					// and the reconciler retries once the balance row exists.
+					return fmt.Errorf("merchant collection balance not found for %s", transaction.ImpalaMerchantID)
+				}
 			}
 		}
 		return nil

@@ -50,6 +50,7 @@ func main() {
 	merchants.RegisterRoutes(sun.Group("/v1"))
 	settlement.RegisterRoutes(sun.Group("/v1"))
 	merchants.StartPesalinkPayoutStatusCron()
+	merchants.StartAirtelReconciler()
 	forex.RegisterRoutes(sun.Group("/v1"))
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
