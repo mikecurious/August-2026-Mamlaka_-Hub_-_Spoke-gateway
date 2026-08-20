@@ -31,3 +31,4 @@ logs/
 # Environment / credential files -- never commit
 *.env
 .env*
+merchant-api-sandbox
