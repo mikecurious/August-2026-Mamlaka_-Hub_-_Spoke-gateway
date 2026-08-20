@@ -110,6 +110,20 @@ head_ "8. Sandbox configuration"
 grep '^Environment=' /etc/systemd/system/merchant-api-sandbox.service \
   | sed -E 's/(DB_DSN=|SIGNING_SECRET(_LIPAD)?=)[^"]*/\1<redacted>/'
 
+# Paybill routing must match production. A merchant present in prod's overrides
+# but missing from sandbox's silently falls back to a DIFFERENT paybill, so a
+# sandbox test charges the wrong short code. This drift is invisible otherwise.
+PROD_OV=$(grep -o 'MPESA_BRAND_OVERRIDE_[A-Z0-9_]*=[A-Za-z0-9_]*' /etc/systemd/system/merchant-api.service 2>/dev/null | sort -u)
+SBX_OV=$(grep -o 'MPESA_BRAND_OVERRIDE_[A-Z0-9_]*=[A-Za-z0-9_]*' /etc/systemd/system/merchant-api-sandbox.service 2>/dev/null | sort -u)
+DRIFT=$(comm -23 <(echo "$PROD_OV") <(echo "$SBX_OV"))
+if [ -n "$DRIFT" ]; then
+  bad "paybill override(s) in production but MISSING from sandbox:"
+  echo "$DRIFT" | sed 's/^/          /'
+  echo "          -> sandbox would charge a different paybill for these merchants"
+else
+  ok "paybill overrides match production ($(echo "$PROD_OV" | grep -c . ) merchant(s))"
+fi
+
 # Deliberate decision: the platform fallback signing secrets must NOT match
 # production, so a sandbox callback can never validate as a production one.
 # Compared by hash so the secrets themselves are never printed.
