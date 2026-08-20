@@ -108,6 +108,42 @@ WHERE environment IS NULL OR environment = '';
 Run the equivalent on the production database only when this code is deployed
 there. (Not required — blank already reads as `production`.)
 
+## Sandbox dashboard
+
+`http://sandbox.merchants-dashboard.mamlakapsp.com` — the merchant portal
+running against the sandbox database, so sandbox transactions are visible in
+the same UI merchants already know.
+
+| | Production | Sandbox |
+|---|---|---|
+| Host name | `merchants-dashboard.mamlakapsp.com` | `sandbox.merchants-dashboard.mamlakapsp.com` |
+| Portal API | `dashboard-api` :9091 | `dashboard-api-sandbox` :9092 |
+| Frontend | `dashboard-fe` :3000 | `dashboard-fe-sandbox` :3001 |
+| Database | `impala_gateway` | `impala_gateway_sandbox` |
+| Redis DB | `0` | `1` |
+
+**Neither component needed a code change.** Both already read their config from
+the environment, and both resolve a `.env` only for keys that are not already
+set — so the systemd unit's `Environment=` lines win. Each sandbox unit reuses
+the *same working directory and binary* as its production counterpart and
+differs only by environment:
+
+- `dashboard-api-sandbox` — `SERVER_ADDR=127.0.0.1:9092`, `DATABASE_DSN` → sandbox DB, `REDIS_DB=1`.
+- `dashboard-fe-sandbox` — `PORT=3001`, `API_URL=http://127.0.0.1:9092/api`, `AUTH_URL` → the sandbox host.
+
+`REDIS_DB=1` matters: production uses database `0` on the same Redis instance,
+and sharing it would let sandbox and production serve each other cached data.
+
+`AUTH_URL` matters too — NextAuth builds its callback URLs from it, so a wrong
+value breaks login. **It is currently `http://...`; change it to `https://...`
+when TLS is issued.**
+
+Logins work with existing credentials because the user tables came across in the
+database copy. Note that the copy also brings production's transaction history,
+so the sandbox dashboard shows historical production rows (labelled
+`production`) alongside new sandbox ones. Filter on `environment` if you want
+only sandbox activity.
+
 ## Callback delivery on sandbox
 
 Merchant callbacks are delivered from sandbox exactly as they are from
@@ -180,11 +216,18 @@ sudo mysql -e 'SELECT environment, COUNT(*) FROM
    Cloudflare: `52.204.175.2` (this host, serves the sandbox) and
    `52.204.58.147` (a different host, returns 404 for this name). Remove the
    `52.204.58.147` record so the name resolves only here.
-2. **TLS** — no certificate yet; the vhost is HTTP-only. After the DNS record is
-   corrected, run
-   `sudo certbot --nginx -d sandbox.payments.mamlakapsp.com`.
-   Certbot's HTTP-01 challenge cannot succeed while the name round-robins to a
-   host that does not serve it.
+   (`sandbox.merchants-dashboard.mamlakapsp.com` is already correct — a single
+   A record to this host.)
+2. **TLS** — neither sandbox vhost has a certificate; both are HTTP-only.
+   The dashboard can be issued immediately, its DNS is already correct:
+   ```
+   sudo certbot --nginx -d sandbox.merchants-dashboard.mamlakapsp.com
+   sudo certbot --nginx -d sandbox.payments.mamlakapsp.com   # after the DNS fix above
+   ```
+   Certbot's HTTP-01 challenge cannot succeed for the gateway while that name
+   round-robins to a host that does not serve it. After issuing the dashboard
+   certificate, update `AUTH_URL` in `dashboard-fe-sandbox.service` to `https://`
+   and restart it, or login will break.
 3. **Callback signing secrets** — per-merchant secrets come from the database,
    which is a copy of production, so those already match. The *platform fallback*
    secret is currently sandbox-specific, so a merchant on the fallback path gets

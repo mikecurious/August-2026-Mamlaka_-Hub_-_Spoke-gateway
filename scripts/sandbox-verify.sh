@@ -12,12 +12,17 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 FAILED=0
 
 head_ "1. Services"
-for s in merchant-api merchant-api-sandbox; do
+for s in merchant-api merchant-api-sandbox \
+         dashboard-api dashboard-api-sandbox \
+         dashboard-fe dashboard-fe-sandbox; do
   [ "$(systemctl is-active $s)" = active ] && ok "$s is active" || bad "$s is NOT active"
 done
 
-head_ "2. Ports (prod 8090, sandbox 8091 -- must be different processes)"
-sudo ss -tlnp 2>/dev/null | grep -E '127.0.0.1:(8090|8091)' | sed 's/^/  /'
+head_ "2. Ports (prod vs sandbox -- must be different processes)"
+echo "  gateway   8090 prod / 8091 sandbox"
+echo "  dash api  9091 prod / 9092 sandbox"
+echo "  dash web  3000 prod / 3001 sandbox"
+sudo ss -tlnp 2>/dev/null | grep -E ':(8090|8091|9091|9092|3000|3001) ' | sed 's/^/  /'
 
 head_ "3. Database isolation"
 sudo mysql -t -e "SELECT user, db, COUNT(*) conns FROM information_schema.processlist
@@ -86,6 +91,21 @@ printf '  sandbox (direct 8091)                   -> %s\n' \
 printf '  sandbox (via nginx vhost)               -> %s\n' \
   "$(curl -s -o /dev/null -w %{http_code} --max-time 10 -H 'Host: sandbox.payments.mamlakapsp.com' http://127.0.0.1/api/v1/)"
 echo "  (401 = reachable and asking for auth, which is correct)"
+
+head_ "7b. Dashboard"
+DH='Host: sandbox.merchants-dashboard.mamlakapsp.com'
+printf '  sandbox dashboard  /                 -> %s (308 = redirect, correct)\n' \
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H "$DH" http://127.0.0.1/)"
+printf '  sandbox dashboard  /api/auth/session -> %s (200 = NextAuth up)\n' \
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H "$DH" http://127.0.0.1/api/auth/session)"
+printf '  prod dashboard     /                 -> %s\n' \
+  "$(curl -s -o /dev/null -w %{http_code} --max-time 15 -H 'Host: merchants-dashboard.mamlakapsp.com' http://127.0.0.1/)"
+DAPI=$(grep -c 'impala_gateway_sandbox' /etc/systemd/system/dashboard-api-sandbox.service 2>/dev/null)
+[ "${DAPI:-0}" -gt 0 ] && ok "sandbox dashboard API points at the sandbox database" \
+                       || bad "sandbox dashboard API is NOT pointed at the sandbox database"
+RDB=$(grep -o 'REDIS_DB=[0-9]*' /etc/systemd/system/dashboard-api-sandbox.service 2>/dev/null | cut -d= -f2)
+[ "${RDB:-0}" != "0" ] && ok "sandbox dashboard uses a separate Redis DB ($RDB, prod uses 0)" \
+                       || bad "sandbox dashboard shares Redis DB 0 with production"
 
 head_ "8. Sandbox configuration"
 grep '^Environment=' /etc/systemd/system/merchant-api-sandbox.service \
