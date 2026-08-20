@@ -160,6 +160,27 @@ off in production) as a safety net: Airtel delivers its C2B result to a URL the
 gateway does not control, so a sandbox collection could still hang `PENDING`
 waiting for a callback that never arrives. The reconciler asks Airtel directly.
 
+### Callback signatures differ between sandbox and production — deliberately
+
+Callbacks are signed `X-Mamlaka-Signature: sha256=<hex(HMAC-SHA256(body, secret))>`.
+Which secret is used depends on the merchant:
+
+- **Per-merchant secret** (the normal case) — read from the database. The
+  sandbox database is a copy of production, so these are **identical** in both
+  environments. A merchant verifying with their own secret needs no change when
+  they migrate.
+- **Platform fallback secret** — used when a merchant has no secret of their
+  own. This is **deliberately different** on sandbox
+  (`CALLBACK_SIGNING_SECRET` / `CALLBACK_SIGNING_SECRET_LIPAD` in the sandbox
+  unit are sandbox-only values).
+
+Keeping the fallback distinct means a sandbox callback can never carry a
+signature that would validate as production. The trade-off is that a merchant on
+the fallback path must use a different verification secret per environment —
+tell them that during onboarding. Do not "simplify" this by copying
+production's fallback secret into the sandbox unit; that is the property being
+protected.
+
 Settlement via the reconciler goes through the same idempotent
 `settleAirtelTransaction` as the callback path, so a late-arriving callback
 cannot double-credit a row the reconciler already settled.
@@ -214,12 +235,7 @@ sudo mysql -e 'SELECT environment, COUNT(*) FROM
 
 ## Known outstanding items
 
-1. **Callback signing secrets** — per-merchant secrets come from the database,
-   which is a copy of production, so those already match. The *platform fallback*
-   secret is currently sandbox-specific, so a merchant on the fallback path gets
-   a different signature on sandbox than on production. Decide whether to keep
-   them distinct (safer) or match production (zero-friction migration).
-2. **Secrets in git history** — `.env` is tracked in this repository, so live
+1. **Secrets in git history** — `.env` is tracked in this repository, so live
    credentials are in the history. Rotation, not deletion, is what fixes that.
 
 Both sandbox hosts now serve HTTPS with Let's Encrypt certificates that certbot

@@ -111,6 +111,21 @@ head_ "8. Sandbox configuration"
 grep '^Environment=' /etc/systemd/system/merchant-api-sandbox.service \
   | sed -E 's/(DB_DSN=|SIGNING_SECRET(_LIPAD)?=)[^"]*/\1<redacted>/'
 
+# Deliberate decision: the platform fallback signing secrets must NOT match
+# production, so a sandbox callback can never validate as a production one.
+# Compared by hash so the secrets themselves are never printed.
+for f in CALLBACK_SIGNING_SECRET CALLBACK_SIGNING_SECRET_LIPAD; do
+  P=$(grep -o "${f}=[^\"]*" /etc/systemd/system/merchant-api.service 2>/dev/null | head -1 | cut -d= -f2- | sha256sum)
+  S=$(grep -o "${f}=[^\"]*" /etc/systemd/system/merchant-api-sandbox.service 2>/dev/null | head -1 | cut -d= -f2- | sha256sum)
+  if [ -z "$P" ] || [ -z "$S" ]; then
+    echo "  (skipped: $f not set in both units)"
+  elif [ "$P" = "$S" ]; then
+    bad "$f matches production -- sandbox callbacks could validate as production!"
+  else
+    ok "$f differs from production (intended)"
+  fi
+done
+
 head_ "9. Sandbox startup log"
 sudo journalctl -u merchant-api-sandbox -n 60 --no-pager 2>/dev/null \
   | grep -iE 'listening on|airtel reconciler:|DISABLE_CRONS' | tail -5
