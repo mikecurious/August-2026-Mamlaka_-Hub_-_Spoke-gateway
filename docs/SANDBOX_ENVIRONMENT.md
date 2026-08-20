@@ -144,6 +144,41 @@ so the sandbox dashboard shows historical production rows (labelled
 `production`) alongside new sandbox ones. Filter on `environment` if you want
 only sandbox activity.
 
+## Only the Cheza paybill is live
+
+**As of 2026-08-20, CHEZAMONSTA (STK `783484`, B2C `3039027`) is the only
+working M-Pesa short code.** The other brands in `mpesa/credentials.go` —
+`APP`, `VUKA`, `CRAY`, `TWD`, `LIPAD`, `SHILINGIBET`, `NEON` — are shut down at
+Safaricom. A push to any of them fails with `System internal error`.
+
+This is not visible in the code, and `STKBrandForMerchant`/`B2CBrandForMerchant`
+still **default to `BrandApp`** (`4041529`), which is dead. So any merchant
+without an explicit override silently pushes to a dead short code.
+
+Route a merchant to the live paybill with an env var on the unit — no code
+change, no redeploy:
+
+```
+Environment="MPESA_BRAND_OVERRIDE_<MERCHANTID>=CHEZAMONSTA"
+```
+
+`<MERCHANTID>` is the merchant id uppercased with non-alphanumerics replaced by
+`_`. Set it in **both** `merchant-api.service` and `merchant-api-sandbox.service`
+— `scripts/sandbox-verify.sh` fails if they drift apart.
+
+Currently overridden: `TESTCO`, `LIPAD`, `SHILINGIBET`.
+
+Diagnosing which short code a push actually used:
+
+```bash
+sudo journalctl -u merchant-api-sandbox --no-pager | grep "STK Push:" | tail
+# STK Push: merchant=shilingibet brand=CHEZAMONSTA paybill=783484
+```
+
+`responseDescription` distinguishes the two failure modes: `System internal
+error` means the short code is dead, while `Request Cancelled by user` or
+`No response from user` means the prompt was delivered and routing is fine.
+
 ## Callback delivery on sandbox
 
 Merchant callbacks are delivered from sandbox exactly as they are from
