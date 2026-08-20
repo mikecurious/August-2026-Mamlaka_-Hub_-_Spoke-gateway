@@ -115,14 +115,32 @@ grep '^Environment=' /etc/systemd/system/merchant-api-sandbox.service \
 # sandbox test charges the wrong short code. This drift is invisible otherwise.
 PROD_OV=$(grep -o 'MPESA_BRAND_OVERRIDE_[A-Z0-9_]*=[A-Za-z0-9_]*' /etc/systemd/system/merchant-api.service 2>/dev/null | sort -u)
 SBX_OV=$(grep -o 'MPESA_BRAND_OVERRIDE_[A-Z0-9_]*=[A-Za-z0-9_]*' /etc/systemd/system/merchant-api-sandbox.service 2>/dev/null | sort -u)
-DRIFT=$(comm -23 <(echo "$PROD_OV") <(echo "$SBX_OV"))
-if [ -n "$DRIFT" ]; then
+MISSING_SBX=$(comm -23 <(echo "$PROD_OV") <(echo "$SBX_OV"))
+MISSING_PROD=$(comm -13 <(echo "$PROD_OV") <(echo "$SBX_OV"))
+if [ -n "$MISSING_SBX" ]; then
   bad "paybill override(s) in production but MISSING from sandbox:"
-  echo "$DRIFT" | sed 's/^/          /'
-  echo "          -> sandbox would charge a different paybill for these merchants"
+  echo "$MISSING_SBX" | sed 's/^/          /'
+elif [ -n "$MISSING_PROD" ]; then
+  bad "paybill override(s) in sandbox but MISSING from production:"
+  echo "$MISSING_PROD" | sed 's/^/          /'
+  echo "          -> production would charge a DIFFERENT paybill for these merchants"
 else
   ok "paybill overrides match production ($(echo "$PROD_OV" | grep -c . ) merchant(s))"
 fi
+
+# Only CHEZAMONSTA (783484 / 3039027) is live at Safaricom; every other short
+# code is shut down. A merchant that loses its override silently pushes to a
+# dead paybill and fails with "System internal error".
+for U in merchant-api merchant-api-sandbox; do
+  for M in TESTCO LIPAD SHILINGIBET; do
+    if grep -q "MPESA_BRAND_OVERRIDE_${M}=CHEZAMONSTA" /etc/systemd/system/$U.service 2>/dev/null; then
+      :
+    else
+      bad "$U: $M is NOT routed to CHEZAMONSTA -- it would push to a dead paybill"
+    fi
+  done
+done
+ok "TESTCO/LIPAD/SHILINGIBET routed to the live Cheza paybill in both units"
 
 # Deliberate decision: the platform fallback signing secrets must NOT match
 # production, so a sandbox callback can never validate as a production one.
