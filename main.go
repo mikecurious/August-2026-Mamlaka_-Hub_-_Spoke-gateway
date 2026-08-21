@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"com.mam-laka/balances"
 	"com.mam-laka/database"
@@ -55,7 +56,13 @@ func main() {
 	// orders.Create(sun.Group("/orders"))
 	// Add Swagger UI
 
-	if err := router.Run("127.0.0.1:8090"); err != nil {
+	// LISTEN_ADDR lets a second instance (e.g. the sandbox) bind a different
+	// port; prod keeps the historical default when the var is unset.
+	addr := os.Getenv("LISTEN_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8090"
+	}
+	if err := router.Run(addr); err != nil {
 		panic(err)
 	}
 }
