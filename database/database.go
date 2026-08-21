@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,8 +18,13 @@ var DB *gorm.DB
 // Open the database and establish the connection
 func Init() *gorm.DB {
 	// Specify the connection properties for the MySQL database
-	dsn := "colls:djsjsjsoewe88wSSDDF.Sf*@tcp(localhost:3306)/impala_gateway?charset=utf8mb4&parseTime=True&loc=Local" //prod
-	// dsn := "colls:1234@tcp(localhost:3306)/impala?charset=utf8mb4&parseTime=True&loc=Local" //dev
+	// DATABASE_DSN lets a second instance (e.g. the sandbox) point at another
+	// database (impala_sandbox) without a code change. Falls back to the prod DSN
+	// when unset so existing behavior is unchanged.
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn == "" {
+		dsn = "colls:djsjsjsoewe88wSSDDF.Sf*@tcp(localhost:3306)/impala_gateway?charset=utf8mb4&parseTime=True&loc=Local" //prod
+	}
 	//
 	// Open the database connection.
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
