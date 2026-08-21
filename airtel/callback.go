@@ -55,8 +55,16 @@ func VerifyCallbackHash(body []byte) (bool, error) {
 		return false, errors.New("airtel: missing transaction or hash in callback body")
 	}
 
+	// Airtel signs the WRAPPED callback body — {"transaction":<tx>} — with the
+	// Hash Key, NOT the bare inner transaction object. Verified against a real
+	// production callback: HMAC-SHA256 over `{"transaction":`+rawTransaction+`}`
+	// reproduces the delivered hash exactly; over the inner object alone it does
+	// not. (The standalone service had the same bug but never caught it because
+	// it was fail-open when the key was unset.)
 	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(`{"transaction":`))
 	mac.Write(envelope.Transaction)
+	mac.Write([]byte(`}`))
 	expected := mac.Sum(nil)
 
 	got, err := base64.StdEncoding.DecodeString(envelope.Hash)
