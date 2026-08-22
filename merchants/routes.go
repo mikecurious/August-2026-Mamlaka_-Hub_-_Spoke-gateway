@@ -1001,6 +1001,36 @@ func sendAirtelAirtime(accessToken, phone string, amount int, email string) (*ai
 	return &sendResp, nil
 }
 
+// mpesaCallbackResultCode reads a ResultCode out of an M-Pesa callback.
+// Safaricom sends it as a JSON number on most callbacks but as a string on
+// others, including non-numeric codes such as "E3008". A plain
+// `v.(float64)` with the comma-ok discarded yields 0 for those, which reads
+// as success and marks a failed payment COMPLETE, so callers must treat
+// ok == false as a failure rather than as ResultCode 0.
+func mpesaCallbackResultCode(v interface{}) (code float64, raw string, ok bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, strconv.FormatFloat(t, 'f', -1, 64), true
+	case json.Number:
+		f, err := t.Float64()
+		return f, t.String(), err == nil
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return 0, "", false
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, s, false
+		}
+		return f, s, true
+	case nil:
+		return 0, "", false
+	default:
+		return 0, fmt.Sprintf("%v", t), false
+	}
+}
+
 func testMSISDNStatus(phone string) (string, bool) {
 	switch normalizeTestDigits(phone) {
 	case testSuccessMSISDN:
@@ -3168,13 +3198,16 @@ func MobileCallbackHandler(c *gin.Context) {
 		// Extract fields from STK callback
 		merchantRequestID, _ := stkCallback["MerchantRequestID"].(string)
 		checkoutRequestID, _ := stkCallback["CheckoutRequestID"].(string)
-		resultCode, _ := stkCallback["ResultCode"].(float64)
+		resultCode, resultCodeRaw, resultCodeOK := mpesaCallbackResultCode(stkCallback["ResultCode"])
 		resultDesc, _ := stkCallback["ResultDesc"].(string)
+		if !resultCodeOK {
+			log.Printf("STK callback %s: non-numeric ResultCode %q - treating as FAILED", checkoutRequestID, resultCodeRaw)
+		}
 
 		// Debug the extracted fields
 		log.Println("MerchantRequestID:", merchantRequestID)
 		log.Println("CheckoutRequestID:", checkoutRequestID)
-		log.Println("ResultCode:", resultCode)
+		log.Println("ResultCode:", resultCodeRaw)
 		log.Println("ResultDesc:", resultDesc)
 
 		// Get database connection
@@ -3207,8 +3240,10 @@ func MobileCallbackHandler(c *gin.Context) {
 			}
 		}
 
-		// Process the ResultCode to determine transaction success or failure
-		if resultCode == 0 { // Success
+		// Process the ResultCode to determine transaction success or failure.
+		// resultCodeOK guards against a non-numeric code (e.g. "E3008") being
+		// read as 0 and marking a failed collection COMPLETE.
+		if resultCodeOK && resultCode == 0 { // Success
 			// Extract metadata
 			fmt.Println("inside success")
 			metadata := make(map[string]interface{})
@@ -3377,8 +3412,11 @@ func MobileCallbackHandler(c *gin.Context) {
 
 		// Extract fields from the withdrawal response
 		resultType, _ := result["ResultType"].(float64)
-		resultCode, _ := result["ResultCode"].(float64)
+		resultCode, resultCodeRaw, resultCodeOK := mpesaCallbackResultCode(result["ResultCode"])
 		resultDesc, _ := result["ResultDesc"].(string)
+		if !resultCodeOK {
+			log.Printf("withdrawal callback: non-numeric ResultCode %q - treating as FAILED", resultCodeRaw)
+		}
 		originatorConversationID, _ := result["OriginatorConversationID"].(string)
 		conversationID, _ := result["ConversationID"].(string)
 		transactionID, _ := result["TransactionID"].(string)
@@ -3443,7 +3481,7 @@ func MobileCallbackHandler(c *gin.Context) {
 		log.Println("Withdrawal metadata:", metadata)
 
 		// Process the withdrawal response
-		if resultCode == 0 { // Success
+		if resultCodeOK && resultCode == 0 { // Success
 			log.Println("Withdrawal successful")
 
 			providerRef := mpesaReceiptFromB2CMetadata(metadata)
@@ -3583,8 +3621,11 @@ func B2CCallbackHandler(c *gin.Context) {
 
 	// Extract fields from the withdrawal response
 	resultType, _ := result["ResultType"].(float64)
-	resultCode, _ := result["ResultCode"].(float64)
+	resultCode, resultCodeRaw, resultCodeOK := mpesaCallbackResultCode(result["ResultCode"])
 	resultDesc, _ := result["ResultDesc"].(string)
+	if !resultCodeOK {
+		log.Printf("B2C callback: non-numeric ResultCode %q - treating as FAILED", resultCodeRaw)
+	}
 	originatorConversationID, _ := result["OriginatorConversationID"].(string)
 	conversationID, _ := result["ConversationID"].(string)
 	transactionID, _ := result["TransactionID"].(string)
@@ -3644,7 +3685,7 @@ func B2CCallbackHandler(c *gin.Context) {
 	}
 
 	// Process based on ResultCode
-	if resultCode == 0 { // Success
+	if resultCodeOK && resultCode == 0 { // Success
 		log.Println("✅ B2C withdrawal successful")
 
 		providerRef := mpesaReceiptFromB2CMetadata(metadata)
