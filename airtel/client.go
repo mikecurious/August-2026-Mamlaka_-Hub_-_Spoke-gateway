@@ -21,6 +21,7 @@ type Result struct {
 	Message       string
 	ResponseCode  string
 	ResultCode    string
+	Success       bool // status.success — false means Airtel rejected the request
 	Raw           string
 	parsedOK      bool
 }
@@ -70,6 +71,14 @@ func (r *Result) CollectionStatus() string {
 	}
 	if r.StatusCode != "" {
 		return MapStatus(r.StatusCode)
+	}
+	// No transaction status: an ACCEPTED push (success=true) is awaiting the
+	// customer + callback -> PENDING; an explicit REJECTION (success=false, e.g.
+	// amount out of range, "sender not in system") is terminal -> FAILED, so it
+	// doesn't sit PENDING forever and the reconciler doesn't chase a txn Airtel
+	// never created.
+	if !r.Success {
+		return "FAILED"
 	}
 	return "PENDING"
 }
@@ -199,6 +208,7 @@ func parseResult(httpStatus int, respBytes []byte) *Result {
 		r.Message = env.Status.Message
 		r.ResponseCode = env.Status.ResponseCode
 		r.ResultCode = env.Status.ResultCode
+		r.Success = env.Status.Success
 	}
 	return r
 }

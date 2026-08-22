@@ -1,6 +1,7 @@
 package merchants
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -298,6 +300,18 @@ func AirtelCallbackHandler(c *gin.Context) {
 	}
 
 	if serr := settleAirtelTransaction(reference, status, cb.Transaction.AirtelMoneyID, cb.Transaction.Message); serr != nil {
+		// Reference not in THIS instance's DB? If a peer is configured (e.g. prod
+		// forwarding to the sandbox, since the live Airtel app posts all callbacks
+		// to the one registered prod URL), forward the raw callback there. The peer
+		// re-verifies the hash from the body and settles its own row. Env-gated and
+		// only for not-found, so prod without the var is unchanged and there is no
+		// loop (the peer leaves AIRTEL_CALLBACK_FORWARD_URL unset).
+		if fwd := strings.TrimSpace(os.Getenv("AIRTEL_CALLBACK_FORWARD_URL")); fwd != "" && errors.Is(serr, gorm.ErrRecordNotFound) {
+			if forwardAirtelCallback(fwd, c.Request.URL.Path, body) {
+				c.JSON(http.StatusOK, gin.H{"status": "SUCCESS", "message": "callback forwarded"})
+				return
+			}
+		}
 		// Unknown reference or DB error — 404 so Airtel retries (logged loudly).
 		log.Printf("airtel callback settle failed reference=%s: %v", reference, serr)
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found or not settled"})
@@ -305,4 +319,28 @@ func AirtelCallbackHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "SUCCESS", "message": "callback processed"})
+}
+
+// forwardAirtelCallback re-POSTs a raw Airtel callback body to a peer instance
+// (baseURL, no trailing slash) preserving the request path. Best-effort. The peer
+// re-verifies the hash from the body itself, so no headers need to be copied.
+// Returns true on a 2xx from the peer.
+func forwardAirtelCallback(baseURL, path string, body []byte) bool {
+	url := strings.TrimRight(baseURL, "/") + path
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("airtel callback forward: build request failed url=%s: %v", url, err)
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("airtel callback forward failed url=%s: %v", url, err)
+		return false
+	}
+	defer resp.Body.Close()
+	ok := resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
+	log.Printf("airtel callback forwarded url=%s http_status=%d ok=%v", url, resp.StatusCode, ok)
+	return ok
 }

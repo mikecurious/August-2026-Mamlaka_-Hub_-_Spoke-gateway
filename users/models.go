@@ -136,10 +136,5 @@ func (u *UserModel) setPassword(Password string) error {
 func (u *UserModel) CheckPassword(Password string) error {
 	bytePassword := []byte(Password)
 	byteHashedPassword := []byte(u.Password)
-
-	// Debugging inputs
-	fmt.Printf("Plaintext Password: %s\n", Password)
-	fmt.Printf("Hashed Password from DB: %s\n", u.Password)
-
 	return bcrypt.CompareHashAndPassword(byteHashedPassword, bytePassword)
 }
