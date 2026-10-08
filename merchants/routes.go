@@ -2557,8 +2557,20 @@ func MobileWithdrawalHandler(c *gin.Context) {
 			destPhone = westafrica.NormalizeCameroonMSISDN(req.RecipientPhone)
 		}
 
+		// The payout balance was already debited above; give it back on any
+		// failure before a transaction row exists, as the XOF path does.
+		refundDebit := func() {
+			if transactionReport != "withdraw" {
+				return
+			}
+			if refundErr := balances.AddXAFBalance(req.ImpalaMerchantId, float64(req.Amount)); refundErr != nil {
+				log.Printf("Failed to refund XAF balance for merchant %s: %v", req.ImpalaMerchantId, refundErr)
+			}
+		}
+
 		apiKey, ok := pixelAPIKeyOrUnavailable(c)
 		if !ok {
+			refundDebit()
 			return
 		}
 		ipnWithdraw := westafrica.ResolveIPNURL()
@@ -2577,6 +2589,7 @@ func MobileWithdrawalHandler(c *gin.Context) {
 
 		response, err := client.SendAirtimeTransaction(ctx, westAfricaRequest)
 		if err != nil {
+			refundDebit()
 			respondPaymentFailed(c, "pixel cameroon payout", err)
 			return
 		}
